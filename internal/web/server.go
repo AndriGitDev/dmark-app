@@ -3,6 +3,7 @@ package web
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -12,7 +13,11 @@ import (
 
 func NewRouter() http.Handler {
 	r := chi.NewRouter()
-	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
+	assetsDir := os.Getenv("ASSETS_DIR")
+	if assetsDir == "" {
+		assetsDir = "assets"
+	}
+	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(assetsDir))))
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
