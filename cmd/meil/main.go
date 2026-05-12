@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/AndriGitDev/meil/internal/config"
+	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/web"
 )
 
@@ -34,9 +36,41 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(stubCommand("worker"))
 	root.AddCommand(stubCommand("ingest"))
 	root.AddCommand(stubCommand("migrate"))
-	root.AddCommand(stubCommand("scan"))
+	root.AddCommand(newScanCommand())
 
 	return root
+}
+
+func newScanCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "scan <domain>",
+		Short: "Run a one-off email-auth scan",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := scanner.New(nil).Scan(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return printScanResult(cmd.OutOrStdout(), result)
+		},
+	}
+}
+
+func printScanResult(w io.Writer, result scanner.Result) error {
+	if _, err := fmt.Fprintf(w, "Domain: %s\n", result.Domain); err != nil {
+		return err
+	}
+	for _, check := range []scanner.CheckResult{result.SPF, result.DMARC, result.BIMI, result.DKIM} {
+		if _, err := fmt.Fprintf(w, "%s: %s - %s\n", check.Name, check.Status, check.Message); err != nil {
+			return err
+		}
+		if check.Record != "" {
+			if _, err := fmt.Fprintf(w, "  %s\n", check.Record); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func newHealthcheckCommand() *cobra.Command {
