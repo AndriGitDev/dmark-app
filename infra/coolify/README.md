@@ -24,6 +24,7 @@ Required environment variables:
 ```env
 HTTP_ADDR=:8080
 PUBLIC_BASE_URL=https://meil.kastro.is
+ASSETS_DIR=/assets
 ```
 
 DNS:
