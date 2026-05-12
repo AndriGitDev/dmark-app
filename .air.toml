@@ -1,0 +1,14 @@
+root = "."
+tmp_dir = ".air_tmp"
+
+[build]
+cmd = "templ generate && go build -o .air_tmp/meil ./cmd/meil"
+bin = ".air_tmp/meil"
+args_bin = ["serve"]
+include_ext = ["go", "templ", "css"]
+exclude_dir = [".git", ".air_tmp", "bin"]
+delay = 1000
+stop_on_error = true
+
+[log]
+time = true
