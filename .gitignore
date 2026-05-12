@@ -1,0 +1,4 @@
+.air_tmp/
+.env
+bin/
+tmp/
