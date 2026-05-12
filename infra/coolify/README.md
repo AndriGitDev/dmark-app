@@ -15,6 +15,10 @@ Coolify settings:
 5. Set the exposed port to `8080` if Coolify asks for it.
 6. Set the health check path to `/healthz` if Coolify asks for it.
 
+The compose file assumes Coolify runs Docker Compose with the repository root as `--project-directory`, which is Coolify's default for Git deployments.
+
+The Dockerfile builds from committed generated files. Run `templ generate` before committing template changes; CI checks that generated templ output is current.
+
 Required environment variables:
 
 ```env

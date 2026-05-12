@@ -4,7 +4,6 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go run github.com/a-h/templ/cmd/templ generate
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/meil ./cmd/meil
 
 FROM gcr.io/distroless/static-debian12:nonroot
