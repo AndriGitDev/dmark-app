@@ -4,7 +4,8 @@ package config
 import "github.com/caarlos0/env/v11"
 
 type Config struct {
-	HTTPAddr string `env:"HTTP_ADDR" envDefault:":8080"`
+	HTTPAddr      string `env:"HTTP_ADDR" envDefault:":8080"`
+	PublicBaseURL string `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8080"`
 }
 
 func Load() (Config, error) {

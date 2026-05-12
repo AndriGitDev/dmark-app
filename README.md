@@ -19,3 +19,7 @@ make test
 make lint
 make build
 ```
+
+## Coolify
+
+The P0 deployment target is `https://meil.kastro.is`. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.

@@ -30,12 +30,36 @@ func newRootCommand() *cobra.Command {
 	}
 
 	root.AddCommand(newServeCommand())
+	root.AddCommand(newHealthcheckCommand())
 	root.AddCommand(stubCommand("worker"))
 	root.AddCommand(stubCommand("ingest"))
 	root.AddCommand(stubCommand("migrate"))
 	root.AddCommand(stubCommand("scan"))
 
 	return root
+}
+
+func newHealthcheckCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:    "healthcheck",
+		Short:  "Check the HTTP server health endpoint",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client := http.Client{Timeout: 2 * time.Second}
+			resp, err := client.Get("http://127.0.0.1:8080/healthz")
+			if err != nil {
+				return fmt.Errorf("checking health endpoint: %w", err)
+			}
+			defer func() {
+				_ = resp.Body.Close()
+			}()
+
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("checking health endpoint: status %d", resp.StatusCode)
+			}
+			return nil
+		},
+	}
 }
 
 func stubCommand(name string) *cobra.Command {
