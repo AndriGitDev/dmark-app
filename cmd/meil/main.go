@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,10 +12,18 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alexedwards/scs/v2"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 
+	"github.com/AndriGitDev/meil/internal/auth"
 	"github.com/AndriGitDev/meil/internal/config"
+	"github.com/AndriGitDev/meil/internal/domains"
+	"github.com/AndriGitDev/meil/internal/notifier"
 	"github.com/AndriGitDev/meil/internal/scanner"
+	"github.com/AndriGitDev/meil/internal/store/pg"
 	"github.com/AndriGitDev/meil/internal/web"
 )
 
@@ -35,10 +44,44 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newHealthcheckCommand())
 	root.AddCommand(stubCommand("worker"))
 	root.AddCommand(stubCommand("ingest"))
-	root.AddCommand(stubCommand("migrate"))
+	root.AddCommand(newMigrateCommand())
 	root.AddCommand(newScanCommand())
 
 	return root
+}
+
+func newMigrateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "migrate [up|down|status]",
+		Short: "Run database migrations",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
+			db, err := sql.Open("pgx", cfg.DatabaseURL)
+			if err != nil {
+				return fmt.Errorf("opening database: %w", err)
+			}
+			defer func() { _ = db.Close() }()
+			if err := goose.SetDialect("postgres"); err != nil {
+				return fmt.Errorf("setting migration dialect: %w", err)
+			}
+
+			switch args[0] {
+			case "up":
+				return goose.Up(db, "migrations/postgres")
+			case "down":
+				return goose.Down(db, "migrations/postgres")
+			case "status":
+				return goose.Status(db, "migrations/postgres")
+			default:
+				return fmt.Errorf("unknown migration direction %q", args[0])
+			}
+		},
+	}
+	return cmd
 }
 
 func newScanCommand() *cobra.Command {
@@ -116,11 +159,28 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
+			pool, err := pgxpool.New(cmd.Context(), cfg.DatabaseURL)
+			if err != nil {
+				return fmt.Errorf("connecting to database: %w", err)
+			}
+			defer pool.Close()
+
+			store := pg.NewAppStore(pg.New(pool))
+			emailScanner := scanner.New(nil)
+			sessionManager := scs.New()
+			sessionManager.Lifetime = 24 * time.Hour
 
 			logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 			server := &http.Server{
-				Addr:              cfg.HTTPAddr,
-				Handler:           web.NewRouter(),
+				Addr: cfg.HTTPAddr,
+				Handler: web.NewRouterWithDeps(web.Deps{
+					Scanner:        emailScanner,
+					Auth:           auth.NewService(store, time.Duration(cfg.AuthTokenTTL)*time.Minute),
+					Domains:        domains.NewService(store, emailScanner),
+					Sender:         notifier.NewLettermintSender(cfg.LettermintBaseURL, cfg.LettermintToken, cfg.LettermintFrom),
+					SessionManager: sessionManager,
+					PublicBaseURL:  cfg.PublicBaseURL,
+				}),
 				ReadHeaderTimeout: 5 * time.Second,
 			}
 

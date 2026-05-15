@@ -55,3 +55,33 @@ Definition of Done:
 4. DNS lookups have bounded timeouts and return `unknown` instead of hanging or crashing.
 5. Scanner tests use mocked DNS and cover common SPF, DMARC, BIMI, and DKIM cases.
 6. No alerts, reports, suggested records, billing, RUA ingestion, or sender attribution are implemented in P1.
+
+## P2 Passwordless Saved Domains
+
+Goal: ship real passwordless email login and let authenticated users save domains, re-run checks, and revisit each domain's latest SPF, DKIM, DMARC, and BIMI posture.
+
+Product boundary:
+
+1. Public/free: one-off domain checks remain usable without an account or persistence.
+2. Account/free: passwordless email login, saved domains, manual rechecks, and latest saved posture.
+3. Premium/later: alerts, drift automation, historical reporting UI, suggested DNS records, billing, RUA ingestion, and sender attribution remain deferred.
+
+Tasks:
+
+1. Fold the missing P1 schema gap into Phase 2 by adding Postgres tables for users, login tokens, saved domains, and domain check snapshots.
+2. Add real passwordless login with single-use, hashed, expiring magic-link tokens.
+3. Send magic-link emails through Lettermint's Sending API using configurable API token, from address, and base URL.
+4. Wire session-backed `/login`, `/auth/callback`, `/logout`, and protected `/app/domains` routes.
+5. Let authenticated users add, list, manually recheck, and delete saved domains.
+6. Persist latest scanner results for saved domains while keeping public one-off checks persistence-free.
+7. Add tests for email normalization, token consumption, Lettermint request shape, saved-domain service behavior, and protected web route behavior.
+
+Definition of Done:
+
+1. A user can request a login email and complete passwordless login through a Lettermint-delivered magic link.
+2. Magic-link tokens are hashed at rest, single-use, and expire.
+3. A logged-in user can add, list, recheck, and delete saved domains.
+4. Saved domains render latest SPF, DKIM, DMARC, and BIMI results.
+5. Public `/` and `/check` still work without auth or database writes.
+6. `meil migrate up` creates the Phase 2 tables from a fresh Postgres database.
+7. `make test`, `make build`, `make lint`, and generated templ output checks pass in CI.

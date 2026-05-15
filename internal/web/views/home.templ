@@ -1,6 +1,9 @@
 package views
 
-import "github.com/AndriGitDev/meil/internal/scanner"
+import (
+	"github.com/AndriGitDev/meil/internal/domains"
+	"github.com/AndriGitDev/meil/internal/scanner"
+)
 
 templ Home() {
 	<!doctype html>
@@ -152,6 +155,129 @@ templ checkResultCard(check scanner.CheckResult) {
 		<p class="mt-4 text-sm leading-6 text-muted">{ check.Message }</p>
 		if check.Record != "" {
 			<pre class="mt-4 overflow-hidden border border-white/10 bg-black/30 p-4 text-xs leading-6 text-muted">{ check.Record }</pre>
+		}
+	</article>
+}
+
+templ Login() {
+	<!doctype html>
+	<html lang="en" class="bg-[#0a0a0a] text-[#e8e8e8]">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Sign in - Meil</title>
+			<link rel="stylesheet" href="/assets/css/marketing-20260512.css"/>
+		</head>
+		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
+			<main class="mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12">
+				<section class="w-full border border-white/10 bg-card p-8">
+					<a href="/" class="font-mono text-xs uppercase tracking-[0.2em] text-accent">meil</a>
+					<h1 class="mt-6 text-4xl font-semibold tracking-[-0.05em] text-white">Sign in with email</h1>
+					<p class="mt-4 text-sm leading-6 text-muted">Enter your email and Meil will send a one-time magic link.</p>
+					<form method="post" action="/login" class="mt-8 grid gap-3">
+						<label class="sr-only" for="email">Email</label>
+						<input id="email" name="email" type="email" required class="min-h-14 border border-white/10 bg-black/30 px-4 font-mono text-base text-white outline-none placeholder:text-muted/60" placeholder="you@example.com" autocomplete="email"/>
+						<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white">Send magic link</button>
+					</form>
+				</section>
+			</main>
+		</body>
+	</html>
+}
+
+templ LoginSent(email string) {
+	<!doctype html>
+	<html lang="en" class="bg-[#0a0a0a] text-[#e8e8e8]">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Check your email - Meil</title>
+			<link rel="stylesheet" href="/assets/css/marketing-20260512.css"/>
+		</head>
+		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
+			<main class="mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12">
+				<section class="w-full border border-white/10 bg-card p-8">
+					<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Magic link sent</p>
+					<h1 class="mt-6 text-4xl font-semibold tracking-[-0.05em] text-white">Check your email</h1>
+					<p class="mt-4 text-sm leading-6 text-muted">A one-time sign-in link was sent to { email }. It expires shortly and can only be used once.</p>
+				</section>
+			</main>
+		</body>
+	</html>
+}
+
+templ AppDomains(email string, saved []domains.Domain) {
+	<!doctype html>
+	<html lang="en" class="bg-[#0a0a0a] text-[#e8e8e8]">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Saved domains - Meil</title>
+			<link rel="stylesheet" href="/assets/css/marketing-20260512.css"/>
+		</head>
+		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
+			<main class="mx-auto max-w-6xl px-5 py-6 sm:px-8 lg:px-10">
+				<header class="flex items-center justify-between border-b border-white/10 pb-5">
+					<a href="/" class="flex items-center gap-3" aria-label="Meil home">
+						<span class="grid h-9 w-9 place-items-center border border-accent/40 bg-accent/10 font-mono text-sm font-semibold text-accent">m</span>
+						<span class="text-lg font-semibold tracking-tight">meil</span>
+					</a>
+					<form method="post" action="/logout">
+						<button class="font-mono text-xs uppercase tracking-[0.2em] text-accent" type="submit">Sign out</button>
+					</form>
+				</header>
+				<section class="space-y-8 py-12">
+					<div class="space-y-3">
+						<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Signed in as { email }</p>
+						<h1 class="text-5xl font-semibold tracking-[-0.06em] text-white">Saved domains</h1>
+						<p class="max-w-2xl text-lg leading-8 text-muted">Save domains and revisit their latest SPF, DKIM, DMARC, and BIMI posture.</p>
+					</div>
+					<form method="post" action="/app/domains" class="grid max-w-2xl gap-3 border border-white/10 bg-card/80 p-2 sm:grid-cols-[1fr_auto]">
+						<label class="sr-only" for="domain">Domain</label>
+						<input id="domain" name="domain" type="text" class="min-h-14 bg-transparent px-4 font-mono text-base text-white outline-none placeholder:text-muted/60" placeholder="yourdomain.com" autocomplete="off"/>
+						<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white">Add domain</button>
+					</form>
+					<div class="grid gap-4">
+						if len(saved) == 0 {
+							<p class="border border-white/10 bg-card p-6 text-muted">No saved domains yet.</p>
+						}
+						for _, domain := range saved {
+							@domainRow(domain)
+						}
+					</div>
+				</section>
+			</main>
+		</body>
+	</html>
+}
+
+templ domainRow(domain domains.Domain) {
+	<article class="border border-white/10 bg-card p-5">
+		<div class="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+			<div>
+				<h2 class="text-2xl font-semibold text-white">{ domain.Domain }</h2>
+				if domain.LatestCheck != nil {
+					<p class="mt-2 font-mono text-xs uppercase tracking-[0.18em] text-muted">Checked { domain.LatestCheck.CheckedAt.Format("2006-01-02 15:04 UTC") }</p>
+				} else {
+					<p class="mt-2 text-sm text-muted">No check has been recorded yet.</p>
+				}
+			</div>
+			<div class="flex gap-2">
+				<form method="post" action={ "/app/domains/" + domain.ID + "/check" }>
+					<button class="border border-accent/40 px-4 py-3 font-mono text-xs uppercase tracking-[0.18em] text-accent" type="submit">Recheck</button>
+				</form>
+				<form method="post" action={ "/app/domains/" + domain.ID + "/delete" }>
+					<button class="border border-white/10 px-4 py-3 font-mono text-xs uppercase tracking-[0.18em] text-muted" type="submit">Delete</button>
+				</form>
+			</div>
+		</div>
+		if domain.LatestCheck != nil {
+			<div class="mt-5 grid gap-3 md:grid-cols-4">
+				@checkResultCard(domain.LatestCheck.SPF)
+				@checkResultCard(domain.LatestCheck.DKIM)
+				@checkResultCard(domain.LatestCheck.DMARC)
+				@checkResultCard(domain.LatestCheck.BIMI)
+			</div>
 		}
 	</article>
 }

@@ -28,4 +28,4 @@ build:
 
 templ-check:
 	templ generate
-	git diff --exit-code -- internal/web/views
+	git diff --exit-code -- internal/web/views/*_templ.go

@@ -3,3 +3,49 @@
 //   sqlc v1.31.1
 
 package pg
+
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type Domain struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	Domain    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type DomainCheck struct {
+	ID           pgtype.UUID
+	DomainID     pgtype.UUID
+	SpfStatus    string
+	SpfMessage   string
+	SpfRecord    string
+	DkimStatus   string
+	DkimMessage  string
+	DkimRecord   string
+	DmarcStatus  string
+	DmarcMessage string
+	DmarcRecord  string
+	BimiStatus   string
+	BimiMessage  string
+	BimiRecord   string
+	CreatedAt    pgtype.Timestamptz
+}
+
+type LoginToken struct {
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+	TokenHash  []byte
+	ExpiresAt  pgtype.Timestamptz
+	ConsumedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}
+
+type User struct {
+	ID        pgtype.UUID
+	Email     string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
