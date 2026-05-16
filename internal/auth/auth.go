@@ -13,7 +13,11 @@ import (
 	"time"
 )
 
-var ErrInvalidToken = errors.New("invalid or expired login token")
+var (
+	ErrInvalidToken  = errors.New("invalid login token")
+	ErrExpiredToken  = errors.New("expired login token")
+	ErrConsumedToken = errors.New("consumed login token")
+)
 
 type User struct {
 	ID    string
@@ -78,6 +82,9 @@ func (s *Service) FinishLogin(ctx context.Context, token string) (LoginToken, er
 	}
 	login, err := s.store.ConsumeLoginToken(ctx, hash)
 	if err != nil {
+		if errors.Is(err, ErrExpiredToken) || errors.Is(err, ErrConsumedToken) {
+			return LoginToken{}, err
+		}
 		return LoginToken{}, ErrInvalidToken
 	}
 	return login, nil

@@ -1,17 +1,21 @@
 module github.com/AndriGitDev/meil
 
-go 1.23.0
+go 1.25.0
+
+toolchain go1.25.10
 
 require (
 	github.com/a-h/templ v0.3.924
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/go-chi/chi/v5 v5.2.5
-	github.com/jackc/pgx/v5 v5.7.6
+	github.com/jackc/pgx/v5 v5.9.0
 	github.com/pressly/goose/v3 v3.24.3
 	github.com/riverqueue/river v0.20.0
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.20.0
 	github.com/spf13/cobra v1.10.2
 	go.opentelemetry.io/otel v1.35.0
+	golang.org/x/net v0.54.0
 )
 
 require (
@@ -39,8 +43,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/sync v0.14.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

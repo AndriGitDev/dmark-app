@@ -1,1 +1,8 @@
-# v2 placeholder. Postfix pipe transport will invoke `meil ingest stdin`.
+# Example pipe service for raw DMARC XML payloads.
+#
+# This assumes the delivery agent receives a raw aggregate report payload on
+# stdin. If the mailbox receives full MIME messages, extract supported XML,
+# gzip, or zip attachments before invoking `meil ingest`.
+#
+# meil-dmarc unix - n n - - pipe
+#   flags=Rq user=meil argv=/usr/local/bin/meil ingest -

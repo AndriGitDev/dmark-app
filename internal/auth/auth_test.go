@@ -9,11 +9,17 @@ import (
 
 type memoryStore struct {
 	users  map[string]User
-	tokens map[string]LoginToken
+	tokens map[string]memoryLoginToken
 }
 
 func newMemoryStore() *memoryStore {
-	return &memoryStore{users: map[string]User{}, tokens: map[string]LoginToken{}}
+	return &memoryStore{users: map[string]User{}, tokens: map[string]memoryLoginToken{}}
+}
+
+type memoryLoginToken struct {
+	login     LoginToken
+	expiresAt time.Time
+	consumed  bool
 }
 
 func (s *memoryStore) UpsertUserByEmail(ctx context.Context, email string) (User, error) {
@@ -26,17 +32,27 @@ func (s *memoryStore) UpsertUserByEmail(ctx context.Context, email string) (User
 }
 
 func (s *memoryStore) CreateLoginToken(ctx context.Context, userID string, tokenHash []byte, expiresAt time.Time) error {
-	s.tokens[string(tokenHash)] = LoginToken{UserID: userID, Email: "person@example.com"}
+	s.tokens[string(tokenHash)] = memoryLoginToken{
+		login:     LoginToken{UserID: userID, Email: "person@example.com"},
+		expiresAt: expiresAt,
+	}
 	return nil
 }
 
 func (s *memoryStore) ConsumeLoginToken(ctx context.Context, tokenHash []byte) (LoginToken, error) {
-	login, ok := s.tokens[string(tokenHash)]
+	token, ok := s.tokens[string(tokenHash)]
 	if !ok {
 		return LoginToken{}, errors.New("not found")
 	}
-	delete(s.tokens, string(tokenHash))
-	return login, nil
+	if token.consumed {
+		return LoginToken{}, ErrConsumedToken
+	}
+	if time.Now().After(token.expiresAt) {
+		return LoginToken{}, ErrExpiredToken
+	}
+	token.consumed = true
+	s.tokens[string(tokenHash)] = token
+	return token.login, nil
 }
 
 func TestStartAndFinishLogin(t *testing.T) {
@@ -74,8 +90,22 @@ func TestFinishLoginRejectsConsumedToken(t *testing.T) {
 	if _, err := service.FinishLogin(context.Background(), token); err != nil {
 		t.Fatalf("first FinishLogin returned error: %v", err)
 	}
-	if _, err := service.FinishLogin(context.Background(), token); !errors.Is(err, ErrInvalidToken) {
-		t.Fatalf("second FinishLogin error = %v, want ErrInvalidToken", err)
+	if _, err := service.FinishLogin(context.Background(), token); !errors.Is(err, ErrConsumedToken) {
+		t.Fatalf("second FinishLogin error = %v, want ErrConsumedToken", err)
+	}
+}
+
+func TestFinishLoginRejectsExpiredToken(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(newMemoryStore(), time.Minute)
+	service.ttl = -time.Minute
+	_, token, err := service.StartLogin(context.Background(), "person@example.com")
+	if err != nil {
+		t.Fatalf("StartLogin returned error: %v", err)
+	}
+	if _, err := service.FinishLogin(context.Background(), token); !errors.Is(err, ErrExpiredToken) {
+		t.Fatalf("FinishLogin error = %v, want ErrExpiredToken", err)
 	}
 }
 

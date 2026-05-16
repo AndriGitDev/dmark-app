@@ -21,5 +21,23 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12-alpine
+    environment:
+      CLICKHOUSE_DB: meil
+      CLICKHOUSE_USER: meil
+      CLICKHOUSE_PASSWORD: meil
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+
 volumes:
   postgres-data:
+  clickhouse-data:

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feedback>
+  <report_metadata>
+    <org_name>microsoft.com</org_name>
+    <email>dmarcrep@microsoft.com</email>
+    <report_id>microsoft-report-1</report_id>
+    <date_range>
+      <begin>1778889600</begin>
+      <end>1778975999</end>
+    </date_range>
+  </report_metadata>
+  <policy_published>
+    <domain>example.com</domain>
+    <adkim>s</adkim>
+    <aspf>r</aspf>
+    <p>quarantine</p>
+    <pct>100</pct>
+  </policy_published>
+  <record>
+    <row>
+      <source_ip>203.0.113.20</source_ip>
+      <count>5</count>
+      <policy_evaluated>
+        <disposition>quarantine</disposition>
+        <dkim>fail</dkim>
+        <spf>pass</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <header_from>example.com</header_from>
+    </identifiers>
+    <auth_results>
+      <spf>
+        <domain>mail.example.net</domain>
+        <result>pass</result>
+      </spf>
+    </auth_results>
+  </record>
+</feedback>

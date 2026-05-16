@@ -1,1 +1,11 @@
-# v2 placeholder. Postfix is not provisioned for P0/v1 Checker scaffold.
+# Example DMARC aggregate report ingestion transport.
+#
+# Route a dedicated ingestion domain, such as ingest.meil.example, to the
+# `meil-dmarc` pipe service from master.cf through transport_maps:
+#
+# transport_maps = hash:/etc/postfix/transport
+#
+# /etc/postfix/transport:
+# ingest.meil.example meil-dmarc:
+#
+# Run `postmap /etc/postfix/transport` after editing the map.

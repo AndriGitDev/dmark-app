@@ -1,6 +1,6 @@
 # Coolify Deployment
 
-P0 deploys a single `app` service running `meil serve`. The `worker` role exists in the binary but is intentionally not deployed until real River jobs exist.
+P0 deploys a single `app` service running `meil serve`. The binary also includes `meil worker` for River-backed scan and enrichment jobs; deploy it as a separate worker process when the target environment provides Postgres migrations and service credentials.
 
 ## Temporary Domain
 
