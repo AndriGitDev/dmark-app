@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feedback>
+  <report_metadata>
+    <org_name>Yahoo</org_name>
+    <email>dmarc-support@yahoo-inc.com</email>
+    <report_id>yahoo-report-1</report_id>
+    <date_range>
+      <begin>1778889600</begin>
+      <end>1778975999</end>
+    </date_range>
+  </report_metadata>
+  <policy_published>
+    <domain>example.com</domain>
+    <p>reject</p>
+    <sp>reject</sp>
+    <pct>100</pct>
+  </policy_published>
+  <record>
+    <row>
+      <source_ip>203.0.113.30</source_ip>
+      <count>3</count>
+      <policy_evaluated>
+        <disposition>reject</disposition>
+        <dkim>fail</dkim>
+        <spf>fail</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <header_from>example.com</header_from>
+    </identifiers>
+    <auth_results>
+      <dkim>
+        <domain>example.org</domain>
+        <selector>mail</selector>
+        <result>fail</result>
+      </dkim>
+      <spf>
+        <domain>example.org</domain>
+        <result>fail</result>
+      </spf>
+    </auth_results>
+  </record>
+</feedback>

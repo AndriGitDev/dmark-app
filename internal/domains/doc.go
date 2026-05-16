@@ -1,2 +1,2 @@
-// Package domains will contain domain persistence and CRUD workflows.
+// Package domains contains saved-domain workflows, settings, history, and ownership verification.
 package domains

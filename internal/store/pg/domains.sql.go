@@ -23,9 +23,17 @@ type CreateDomainParams struct {
 	Domain string
 }
 
-func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (Domain, error) {
+type CreateDomainRow struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	Domain    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) CreateDomain(ctx context.Context, arg CreateDomainParams) (CreateDomainRow, error) {
 	row := q.db.QueryRow(ctx, createDomain, arg.UserID, arg.Domain)
-	var i Domain
+	var i CreateDomainRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -135,9 +143,17 @@ type GetDomainForUserParams struct {
 	UserID pgtype.UUID
 }
 
-func (q *Queries) GetDomainForUser(ctx context.Context, arg GetDomainForUserParams) (Domain, error) {
+type GetDomainForUserRow struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	Domain    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetDomainForUser(ctx context.Context, arg GetDomainForUserParams) (GetDomainForUserRow, error) {
 	row := q.db.QueryRow(ctx, getDomainForUser, arg.ID, arg.UserID)
-	var i Domain
+	var i GetDomainForUserRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,

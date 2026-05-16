@@ -1,0 +1,193 @@
+package pg
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
+
+	"github.com/AndriGitDev/meil/internal/auth"
+	"github.com/AndriGitDev/meil/internal/scanner"
+)
+
+func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
+	if os.Getenv("MEIL_DB_INTEGRATION") != "1" {
+		t.Skip("set MEIL_DB_INTEGRATION=1 and DATABASE_URL to run Postgres integration tests")
+	}
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL is required for Postgres integration tests")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open migration database: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := goose.SetDialect("postgres"); err != nil {
+		t.Fatalf("set migration dialect: %v", err)
+	}
+	migrationDir := filepath.Join("..", "..", "..", "migrations", "postgres")
+	if err := goose.UpContext(ctx, db, migrationDir); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pgx pool: %v", err)
+	}
+	defer pool.Close()
+
+	store := NewAppStore(New(pool))
+	suffix := time.Now().UnixNano()
+	userEmail := fmt.Sprintf("pg-it-%d@example.com", suffix)
+	otherEmail := fmt.Sprintf("pg-it-other-%d@example.com", suffix)
+	defer func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		_, _ = pool.Exec(cleanupCtx, `DELETE FROM users WHERE email = ANY($1)`, []string{userEmail, otherEmail})
+	}()
+
+	user, err := store.UpsertUserByEmail(ctx, userEmail)
+	if err != nil {
+		t.Fatalf("upsert user: %v", err)
+	}
+	sameUser, err := store.UpsertUserByEmail(ctx, userEmail)
+	if err != nil {
+		t.Fatalf("upsert same user: %v", err)
+	}
+	if sameUser.ID != user.ID {
+		t.Fatalf("upsert user id = %q, want original %q", sameUser.ID, user.ID)
+	}
+	otherUser, err := store.UpsertUserByEmail(ctx, otherEmail)
+	if err != nil {
+		t.Fatalf("upsert other user: %v", err)
+	}
+
+	validHash := []byte(fmt.Sprintf("valid-%d", suffix))
+	if err := store.CreateLoginToken(ctx, user.ID, validHash, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("create login token: %v", err)
+	}
+	consumed, err := store.ConsumeLoginToken(ctx, validHash)
+	if err != nil {
+		t.Fatalf("consume login token: %v", err)
+	}
+	if consumed.UserID != user.ID || consumed.Email != userEmail {
+		t.Fatalf("consumed token = %+v, want user %s email %s", consumed, user.ID, userEmail)
+	}
+	if _, err := store.ConsumeLoginToken(ctx, validHash); !errors.Is(err, auth.ErrConsumedToken) {
+		t.Fatalf("consume used token error = %v, want %v", err, auth.ErrConsumedToken)
+	}
+
+	expiredHash := []byte(fmt.Sprintf("expired-%d", suffix))
+	if err := store.CreateLoginToken(ctx, user.ID, expiredHash, time.Now().Add(-time.Hour)); err != nil {
+		t.Fatalf("create expired token: %v", err)
+	}
+	if _, err := store.ConsumeLoginToken(ctx, expiredHash); !errors.Is(err, auth.ErrExpiredToken) {
+		t.Fatalf("consume expired token error = %v, want %v", err, auth.ErrExpiredToken)
+	}
+
+	domain, err := store.CreateDomain(ctx, user.ID, "example.com")
+	if err != nil {
+		t.Fatalf("create domain: %v", err)
+	}
+	duplicate, err := store.CreateDomain(ctx, user.ID, "example.com")
+	if err != nil {
+		t.Fatalf("create duplicate domain: %v", err)
+	}
+	if duplicate.ID != domain.ID {
+		t.Fatalf("duplicate domain id = %q, want original %q", duplicate.ID, domain.ID)
+	}
+	otherDomain, err := store.CreateDomain(ctx, otherUser.ID, "example.com")
+	if err != nil {
+		t.Fatalf("create other user's domain: %v", err)
+	}
+	if otherDomain.ID == domain.ID {
+		t.Fatalf("cross-user domain reused id %q", domain.ID)
+	}
+
+	if err := store.CreateCheck(ctx, domain.ID, scanner.Result{
+		SPF:   scanner.CheckResult{Name: "SPF", Status: scanner.StatusWarn, Message: "SPF warning", Record: "v=spf1 ~all"},
+		DKIM:  scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
+		DMARC: scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor"},
+		BIMI:  scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
+	}); err != nil {
+		t.Fatalf("create first check: %v", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if err := store.CreateCheck(ctx, domain.ID, scanner.Result{
+		SPF:   scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF pass", Record: "v=spf1 -all"},
+		DKIM:  scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass, Message: "DKIM pass"},
+		DMARC: scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass, Message: "DMARC pass"},
+		BIMI:  scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
+	}); err != nil {
+		t.Fatalf("create latest check: %v", err)
+	}
+
+	domains, err := store.ListDomains(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("list domains: %v", err)
+	}
+	if len(domains) != 1 {
+		t.Fatalf("list domains length = %d, want 1: %+v", len(domains), domains)
+	}
+	if domains[0].LatestCheck == nil || domains[0].LatestCheck.SPF.Status != scanner.StatusPass {
+		t.Fatalf("latest check = %+v, want SPF pass", domains[0].LatestCheck)
+	}
+
+	if err := store.DeleteDomain(ctx, otherUser.ID, domain.ID); err != nil {
+		t.Fatalf("cross-user delete domain: %v", err)
+	}
+	domains, err = store.ListDomains(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("list after cross-user delete: %v", err)
+	}
+	if len(domains) != 1 {
+		t.Fatalf("cross-user delete removed domain: %+v", domains)
+	}
+	if err := store.DeleteDomain(ctx, user.ID, domain.ID); err != nil {
+		t.Fatalf("delete own domain: %v", err)
+	}
+	domains, err = store.ListDomains(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("list after own delete: %v", err)
+	}
+	if len(domains) != 0 {
+		t.Fatalf("own delete left domains: %+v", domains)
+	}
+
+	if err := store.CreateLoginToken(ctx, otherUser.ID, []byte(fmt.Sprintf("cascade-%d", suffix)), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("create cascade token: %v", err)
+	}
+	otherUserID, err := uuidFromString(otherUser.ID)
+	if err != nil {
+		t.Fatalf("parse other user id: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, otherUserID); err != nil {
+		t.Fatalf("delete user for cascade check: %v", err)
+	}
+	assertCount(t, ctx, pool, `SELECT count(*) FROM login_tokens WHERE user_id = $1`, otherUserID, 0)
+	assertCount(t, ctx, pool, `SELECT count(*) FROM domains WHERE user_id = $1`, otherUserID, 0)
+}
+
+func assertCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, query string, arg any, want int) {
+	t.Helper()
+	var got int
+	if err := pool.QueryRow(ctx, query, arg).Scan(&got); err != nil {
+		t.Fatalf("count query failed: %v", err)
+	}
+	if got != want {
+		t.Fatalf("count = %d, want %d for %s", got, want, query)
+	}
+}

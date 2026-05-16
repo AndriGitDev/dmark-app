@@ -1,2 +1,2 @@
-// Package pg will contain Postgres connection and sqlc-generated queries.
+// Package pg contains Postgres storage and sqlc-generated queries.
 package pg

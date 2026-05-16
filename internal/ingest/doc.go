@@ -1,2 +1,2 @@
-// Package ingest will contain DMARC aggregate report ingestion.
+// Package ingest contains DMARC aggregate report parsing and import helpers.
 package ingest

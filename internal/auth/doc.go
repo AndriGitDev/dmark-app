@@ -1,2 +1,2 @@
-// Package auth will contain sessions, signup, login, and email verification.
+// Package auth contains passwordless login and email verification services.
 package auth

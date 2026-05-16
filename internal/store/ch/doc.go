@@ -1,2 +1,2 @@
-// Package ch will contain the ClickHouse client wrapper for v2 reporting.
+// Package ch contains ClickHouse aggregate storage and migration helpers.
 package ch

@@ -1,2 +1,2 @@
-// Package jobs will contain River job definitions and workers.
+// Package jobs contains River job definitions and workers.
 package jobs

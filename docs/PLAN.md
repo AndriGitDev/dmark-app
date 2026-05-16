@@ -1,87 +1,30 @@
-# Meil Bootstrap Plan
+# Meil Implementation Plan
 
-Email-auth monitoring for domain owners. The free Checker tier watches SPF, DKIM, DMARC, and BIMI records and alerts on drift. The paid Reporter tier will ingest DMARC aggregate reports and map every IP that sends mail as a customer's domain.
+This document records the current implementation posture. The long-form product roadmap lives in `docs/ROADMAP.md`; this file is the short release-oriented companion for the repository state.
 
-## P0 Scaffold
+## Current Scope
 
-Goal: empty but well-formed repo, `make dev` works, a "hello world" page at `/` renders via templ, and CI is green.
+Meil is now beyond the original P0/P1 bootstrap. The repository includes implementation slices for:
 
-Tasks:
+1. Public SPF, DKIM, DMARC, and BIMI checking with shared web and CLI scanner semantics.
+2. Passwordless login, saved domains, CSRF-protected app routes, and domain CSV import/export.
+3. Scanner metadata, posture summaries, drift classification, alert lifecycle rules, and background job helpers.
+4. DMARC aggregate report ingestion, ClickHouse aggregate models, Reporter summaries, sender attribution, recommendations, and risk scoring.
+5. Paid-product foundations: plans, entitlements, teams, billing webhook handling, API-key helpers, webhooks, audit, privacy, admin, abuse, status, and operations support packages.
+6. Operational docs for DNS setup, API/webhooks, security, threat modeling, QA, and incident handling.
 
-1. Initialize `github.com/AndriGitDev/meil`.
-2. Add core deps: chi, templ, scs, pgx, river, goose, sqlc, slog, otel, cobra, env.
-3. Wire cobra root plus `serve`, `worker`, `ingest`, `migrate`, and `scan` subcommands.
-4. Stand up `internal/web` with `GET /` rendering a templ page that says "Meil" using the dark design baseline.
-5. Add Dockerfile, dev compose, and `.env.example`.
-6. Add GitHub Actions for build, lint, test, and templ-generate-check.
-7. Add `.golangci.yml` with govet, staticcheck, gofumpt, errcheck, and gosec.
-8. Add README with product summary and `make dev` recipe.
+## Release Gates
 
-Definition of Done:
+Before treating this roadmap implementation as releasable, run the QA plan in `docs/QA_TEST_PLAN.md` from a machine with Go, Docker, `templ`, `sqlc`, `tailwindcss`, `govulncheck`, and `golangci-lint` installed.
 
-1. `git clone && make dev` works on a fresh machine with Go, Docker, `templ`, `sqlc`, `tailwindcss`, and `air` installed.
-2. CI passes on first PR.
-3. `curl localhost:8080/` returns rendered HTML.
+Required gates:
 
-## Phase Boundary
+1. `make qa-code`
+2. `make qa-services`
+3. `make qa` when both code tooling and service dependencies are available
+4. Fresh Postgres and ClickHouse migration checks through `make qa-services`
+5. Browser/manual QA gates from `docs/QA_TEST_PLAN.md`
 
-Do not start P1 in the P0 PR. Auth, domain CRUD, scanning, drift detection, alerts, billing, RUA ingestion, attribution, and paid-tier alerts are deferred to later phases.
+## Known Local Blocker
 
-## P1 Public Checker
-
-Goal: ship the public one-off Checker. Anyone can enter a single domain and see the current SPF, DKIM, DMARC, and BIMI posture without creating an account. Account creation is only required when a user wants to save and list multiple domains.
-
-Product boundary:
-
-1. Public/free: one-off domain checks with current DNS posture.
-2. Account/free: save multiple domains and revisit their latest checks.
-3. Premium/later: alerts, historical reports, suggested DNS records, DMARC aggregate reporting, attribution, and paid-tier automation.
-
-Tasks:
-
-1. Add DNS lookup and classification code for SPF, DMARC, BIMI, and DKIM selector probing.
-2. Define result states for each check: `pass`, `warn`, `fail`, `missing`, and `unknown`.
-3. Add a public checker route where submitting a domain runs a live one-off scan and renders the result.
-4. Add a `meil scan <domain>` CLI path for manual verification of the same scanner logic.
-5. Add Postgres schema only for data needed by the account-backed saved-domain path; keep public one-off checks usable without persistence.
-6. Add domain/account tables behind the boundary for a later authenticated saved-domain dashboard, but do not build premium features in P1.
-7. Add tests for DNS parsing, classification, invalid domains, timeout/error handling, and the public checker response.
-
-Definition of Done:
-
-1. `make dev` still works on a fresh machine.
-2. A visitor can enter a domain on `/` and see live SPF, DKIM, DMARC, and BIMI results.
-3. `meil scan example.com` prints the same classifications as the web checker.
-4. DNS lookups have bounded timeouts and return `unknown` instead of hanging or crashing.
-5. Scanner tests use mocked DNS and cover common SPF, DMARC, BIMI, and DKIM cases.
-6. No alerts, reports, suggested records, billing, RUA ingestion, or sender attribution are implemented in P1.
-
-## P2 Passwordless Saved Domains
-
-Goal: ship real passwordless email login and let authenticated users save domains, re-run checks, and revisit each domain's latest SPF, DKIM, DMARC, and BIMI posture.
-
-Product boundary:
-
-1. Public/free: one-off domain checks remain usable without an account or persistence.
-2. Account/free: passwordless email login, saved domains, manual rechecks, and latest saved posture.
-3. Premium/later: alerts, drift automation, historical reporting UI, suggested DNS records, billing, RUA ingestion, and sender attribution remain deferred.
-
-Tasks:
-
-1. Fold the missing P1 schema gap into Phase 2 by adding Postgres tables for users, login tokens, saved domains, and domain check snapshots.
-2. Add real passwordless login with single-use, hashed, expiring magic-link tokens.
-3. Send magic-link emails through Lettermint's Sending API using configurable API token, from address, and base URL.
-4. Wire session-backed `/login`, `/auth/callback`, `/logout`, and protected `/app/domains` routes.
-5. Let authenticated users add, list, manually recheck, and delete saved domains.
-6. Persist latest scanner results for saved domains while keeping public one-off checks persistence-free.
-7. Add tests for email normalization, token consumption, Lettermint request shape, saved-domain service behavior, and protected web route behavior.
-
-Definition of Done:
-
-1. A user can request a login email and complete passwordless login through a Lettermint-delivered magic link.
-2. Magic-link tokens are hashed at rest, single-use, and expire.
-3. A logged-in user can add, list, recheck, and delete saved domains.
-4. Saved domains render latest SPF, DKIM, DMARC, and BIMI results.
-5. Public `/` and `/check` still work without auth or database writes.
-6. `meil migrate up` creates the Phase 2 tables from a fresh Postgres database.
-7. `make test`, `make build`, `make lint`, and generated templ output checks pass in CI.
+The current environment can run `make qa-code` with the temporary local Go 1.25.10 toolchain and cached CLI tools. It cannot complete `make qa-services` because Docker socket access is denied, localhost Postgres rejects the documented `meil:meil` credentials, and ClickHouse is not reachable on `localhost:8123`.

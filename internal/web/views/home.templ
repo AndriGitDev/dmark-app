@@ -5,6 +5,22 @@ import (
 	"github.com/AndriGitDev/meil/internal/scanner"
 )
 
+type Flash struct {
+	Kind    string
+	Message string
+}
+
+func flashClass(kind string) string {
+	switch kind {
+	case "success":
+		return "border-accent/30 bg-accent/10 text-accent"
+	case "error":
+		return "border-fail/30 bg-fail/10 text-fail"
+	default:
+		return "border-white/10 bg-white/[0.03] text-muted"
+	}
+}
+
 templ Home() {
 	<!doctype html>
 	<html lang="en" class="bg-[#0a0a0a] text-[#e8e8e8]">
@@ -41,7 +57,7 @@ templ Home() {
 							Email-auth drift monitoring
 						</div>
 						<div class="space-y-5">
-							<h1 class="max-w-4xl text-5xl font-semibold tracking-[-0.06em] text-white sm:text-6xl lg:text-7xl">Know when your domain stops looking trustworthy.</h1>
+							<h1 class="max-w-4xl text-5xl font-semibold tracking-tight text-white sm:text-6xl lg:text-7xl">Know when your domain stops looking trustworthy.</h1>
 							<p class="max-w-2xl text-lg leading-8 text-muted sm:text-xl sm:leading-9">Meil watches SPF, DKIM, DMARC, and BIMI records for drift so technical operators can catch authentication failures before deliverability, brand trust, or customer replies break.</p>
 						</div>
 						<form method="post" action="/check" class="grid max-w-2xl gap-3 border border-white/10 bg-card/80 p-2 shadow-2xl shadow-black/30 sm:grid-cols-[1fr_auto]">
@@ -95,12 +111,12 @@ templ Home() {
 
 				<section id="reporter" class="grid gap-8 py-16 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
 					<div class="space-y-4">
-						<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Checker now, Reporter later</p>
+						<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Checker and Reporter foundations</p>
 						<h2 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Start with DNS truth. Grow into sender attribution.</h2>
 					</div>
 					<div class="grid gap-4 sm:grid-cols-2">
-						@roadmapCard("Now", "Checker monitors the public records that decide whether receivers should trust your domain.")
-						@roadmapCard("Later", "Reporter will ingest DMARC aggregate reports and show who is sending mail as you.")
+						@roadmapCard("Checker", "Monitor the public records that decide whether receivers should trust your domain.")
+						@roadmapCard("Reporter", "Ingest DMARC aggregate reports and model who is sending mail as you.")
 					</div>
 				</section>
 			</main>
@@ -130,8 +146,9 @@ templ CheckResult(result scanner.Result) {
 				<section class="space-y-8 py-12">
 					<div class="space-y-4">
 						<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Live DNS posture</p>
-						<h1 class="text-5xl font-semibold tracking-[-0.06em] text-white">{ result.Domain }</h1>
-						<p class="max-w-2xl text-lg leading-8 text-muted">Current public SPF, DKIM, DMARC, and BIMI records. Missing DKIM means Meil did not find a key across common selectors; registered users will be able to add custom selectors later.</p>
+						<h1 class="text-5xl font-semibold tracking-tight text-white">{ result.Domain }</h1>
+						<p class="max-w-2xl text-lg leading-8 text-muted">Current public SPF, DKIM, DMARC, and BIMI records. Missing DKIM means Meil did not find a key across common selectors; saved-domain settings can track custom selectors.</p>
+						<a href="/login" class="inline-flex min-h-12 items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white">Save this domain</a>
 					</div>
 
 					<div class="grid gap-4 md:grid-cols-4">
@@ -159,7 +176,7 @@ templ checkResultCard(check scanner.CheckResult) {
 	</article>
 }
 
-templ Login() {
+templ Login(csrfToken string) {
 	<!doctype html>
 	<html lang="en" class="bg-[#0a0a0a] text-[#e8e8e8]">
 		<head>
@@ -172,9 +189,10 @@ templ Login() {
 			<main class="mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12">
 				<section class="w-full border border-white/10 bg-card p-8">
 					<a href="/" class="font-mono text-xs uppercase tracking-[0.2em] text-accent">meil</a>
-					<h1 class="mt-6 text-4xl font-semibold tracking-[-0.05em] text-white">Sign in with email</h1>
+					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-white">Sign in with email</h1>
 					<p class="mt-4 text-sm leading-6 text-muted">Enter your email and Meil will send a one-time magic link.</p>
 					<form method="post" action="/login" class="mt-8 grid gap-3">
+						<input type="hidden" name="csrf_token" value={ csrfToken }/>
 						<label class="sr-only" for="email">Email</label>
 						<input id="email" name="email" type="email" required class="min-h-14 border border-white/10 bg-black/30 px-4 font-mono text-base text-white outline-none placeholder:text-muted/60" placeholder="you@example.com" autocomplete="email"/>
 						<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white">Send magic link</button>
@@ -198,15 +216,38 @@ templ LoginSent(email string) {
 			<main class="mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12">
 				<section class="w-full border border-white/10 bg-card p-8">
 					<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Magic link sent</p>
-					<h1 class="mt-6 text-4xl font-semibold tracking-[-0.05em] text-white">Check your email</h1>
+					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-white">Check your email</h1>
 					<p class="mt-4 text-sm leading-6 text-muted">A one-time sign-in link was sent to { email }. It expires shortly and can only be used once.</p>
+					<a href="/login" class="mt-8 inline-flex min-h-12 items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white">Request another link</a>
 				</section>
 			</main>
 		</body>
 	</html>
 }
 
-templ AppDomains(email string, saved []domains.Domain) {
+templ LoginProblem(title string, detail string) {
+	<!doctype html>
+	<html lang="en" class="bg-[#0a0a0a] text-[#e8e8e8]">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } - Meil</title>
+			<link rel="stylesheet" href="/assets/css/marketing-20260512.css"/>
+		</head>
+		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
+			<main class="mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12">
+				<section class="w-full border border-white/10 bg-card p-8">
+					<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Sign in</p>
+					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-white">{ title }</h1>
+					<p class="mt-4 text-sm leading-6 text-muted">{ detail }</p>
+					<a href="/login" class="mt-8 inline-flex min-h-12 items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white">Request new link</a>
+				</section>
+			</main>
+		</body>
+	</html>
+}
+
+templ AppDomains(email string, saved []domains.Domain, csrfToken string, flashes []Flash) {
 	<!doctype html>
 	<html lang="en" class="bg-[#0a0a0a] text-[#e8e8e8]">
 		<head>
@@ -222,17 +263,23 @@ templ AppDomains(email string, saved []domains.Domain) {
 						<span class="grid h-9 w-9 place-items-center border border-accent/40 bg-accent/10 font-mono text-sm font-semibold text-accent">m</span>
 						<span class="text-lg font-semibold tracking-tight">meil</span>
 					</a>
-					<form method="post" action="/logout">
-						<button class="font-mono text-xs uppercase tracking-[0.2em] text-accent" type="submit">Sign out</button>
-					</form>
+					<a class="font-mono text-xs uppercase tracking-[0.2em] text-accent" href="/logout">Sign out</a>
 				</header>
 				<section class="space-y-8 py-12">
 					<div class="space-y-3">
 						<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Signed in as { email }</p>
-						<h1 class="text-5xl font-semibold tracking-[-0.06em] text-white">Saved domains</h1>
+						<h1 class="text-5xl font-semibold tracking-tight text-white">Saved domains</h1>
 						<p class="max-w-2xl text-lg leading-8 text-muted">Save domains and revisit their latest SPF, DKIM, DMARC, and BIMI posture.</p>
 					</div>
+					if len(flashes) > 0 {
+						<div class="grid gap-2" role="status" aria-live="polite">
+							for _, flash := range flashes {
+								<p class={ "border px-4 py-3 text-sm " + flashClass(flash.Kind) }>{ flash.Message }</p>
+							}
+						</div>
+					}
 					<form method="post" action="/app/domains" class="grid max-w-2xl gap-3 border border-white/10 bg-card/80 p-2 sm:grid-cols-[1fr_auto]">
+						<input type="hidden" name="csrf_token" value={ csrfToken }/>
 						<label class="sr-only" for="domain">Domain</label>
 						<input id="domain" name="domain" type="text" class="min-h-14 bg-transparent px-4 font-mono text-base text-white outline-none placeholder:text-muted/60" placeholder="yourdomain.com" autocomplete="off"/>
 						<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white">Add domain</button>
@@ -242,7 +289,7 @@ templ AppDomains(email string, saved []domains.Domain) {
 							<p class="border border-white/10 bg-card p-6 text-muted">No saved domains yet.</p>
 						}
 						for _, domain := range saved {
-							@domainRow(domain)
+							@domainRow(domain, csrfToken)
 						}
 					</div>
 				</section>
@@ -251,7 +298,7 @@ templ AppDomains(email string, saved []domains.Domain) {
 	</html>
 }
 
-templ domainRow(domain domains.Domain) {
+templ domainRow(domain domains.Domain, csrfToken string) {
 	<article class="border border-white/10 bg-card p-5">
 		<div class="flex flex-col justify-between gap-4 md:flex-row md:items-start">
 			<div>
@@ -264,9 +311,11 @@ templ domainRow(domain domains.Domain) {
 			</div>
 			<div class="flex gap-2">
 				<form method="post" action={ "/app/domains/" + domain.ID + "/check" }>
+					<input type="hidden" name="csrf_token" value={ csrfToken }/>
 					<button class="border border-accent/40 px-4 py-3 font-mono text-xs uppercase tracking-[0.18em] text-accent" type="submit">Recheck</button>
 				</form>
 				<form method="post" action={ "/app/domains/" + domain.ID + "/delete" }>
+					<input type="hidden" name="csrf_token" value={ csrfToken }/>
 					<button class="border border-white/10 px-4 py-3 font-mono text-xs uppercase tracking-[0.18em] text-muted" type="submit">Delete</button>
 				</form>
 			</div>

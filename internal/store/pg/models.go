@@ -5,15 +5,116 @@
 package pg
 
 import (
+	"net/netip"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type Domain struct {
+type AbuseDecision struct {
+	ID         pgtype.UUID
+	Identifier string
+	Action     string
+	Reason     string
+	ExpiresAt  pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}
+
+type AdminCase struct {
+	ID         pgtype.UUID
+	Kind       string
+	Status     string
+	Subject    string
+	UserID     pgtype.UUID
+	DomainID   pgtype.UUID
+	AssignedTo pgtype.UUID
+	ResolvedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}
+
+type AdminCaseNote struct {
 	ID        pgtype.UUID
-	UserID    pgtype.UUID
-	Domain    string
+	CaseID    pgtype.UUID
+	AuthorID  pgtype.UUID
+	Body      string
 	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+}
+
+type ApiKey struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	Name           string
+	TokenHash      []byte
+	Scopes         []string
+	LastUsedAt     pgtype.Timestamptz
+	RevokedAt      pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+}
+
+type AuditLog struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	UserID         pgtype.UUID
+	DomainID       pgtype.UUID
+	Action         string
+	TargetType     string
+	TargetID       string
+	Metadata       []byte
+	CreatedAt      pgtype.Timestamptz
+}
+
+type DmarcAggregateRow struct {
+	ID                pgtype.UUID
+	ReportID          pgtype.UUID
+	SourceIp          netip.Addr
+	SourceOrg         string
+	SourceAsn         string
+	SourceCountry     string
+	Count             int32
+	Disposition       string
+	DkimAlignedResult string
+	SpfAlignedResult  string
+	HeaderFrom        string
+	CreatedAt         pgtype.Timestamptz
+}
+
+type DmarcIngestionFailure struct {
+	ID          pgtype.UUID
+	DomainID    pgtype.UUID
+	SourceFile  string
+	ContentHash string
+	Reason      string
+	Detail      string
+	ReviewedAt  pgtype.Timestamptz
+	CreatedAt   pgtype.Timestamptz
+}
+
+type DmarcReport struct {
+	ID           pgtype.UUID
+	DomainID     pgtype.UUID
+	OrgName      string
+	ReportID     string
+	Email        string
+	BeginAt      pgtype.Timestamptz
+	EndAt        pgtype.Timestamptz
+	PolicyDomain string
+	PolicyAdkim  string
+	PolicyAspf   string
+	PolicyP      string
+	PolicySp     string
+	PolicyPct    int32
+	ContentHash  string
+	SourceFile   string
+	RawXml       []byte
+	CreatedAt    pgtype.Timestamptz
+}
+
+type Domain struct {
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	Domain         string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	OrganizationID pgtype.UUID
 }
 
 type DomainCheck struct {
@@ -34,6 +135,71 @@ type DomainCheck struct {
 	CreatedAt    pgtype.Timestamptz
 }
 
+type DomainSetting struct {
+	DomainID            pgtype.UUID
+	NotificationEmail   pgtype.Text
+	DkimSelectors       []string
+	ExpectedSenders     []string
+	IgnoredFindings     []string
+	ScanCadence         pgtype.Interval
+	OwnershipChallenge  string
+	OwnershipVerifiedAt pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type DomainTransfer struct {
+	ID                 pgtype.UUID
+	DomainID           pgtype.UUID
+	FromOrganizationID pgtype.UUID
+	ToOrganizationID   pgtype.UUID
+	RequestedByUserID  pgtype.UUID
+	Status             string
+	DecidedByUserID    pgtype.UUID
+	DecidedAt          pgtype.Timestamptz
+	CreatedAt          pgtype.Timestamptz
+}
+
+type DriftEvent struct {
+	ID             pgtype.UUID
+	DomainID       pgtype.UUID
+	BeforeCheckID  pgtype.UUID
+	AfterCheckID   pgtype.UUID
+	CheckName      string
+	Kind           string
+	Severity       string
+	Message        string
+	BeforeStatus   string
+	AfterStatus    string
+	BeforeRecord   string
+	AfterRecord    string
+	AcknowledgedAt pgtype.Timestamptz
+	MutedUntil     pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+}
+
+type EnrichmentCache struct {
+	SourceIp     netip.Addr
+	ReverseDns   string
+	Asn          string
+	CountryCode  string
+	ProviderHint string
+	Confidence   string
+	Evidence     []byte
+	RefreshedAt  pgtype.Timestamptz
+	ExpiresAt    pgtype.Timestamptz
+}
+
+type JobDeadLetter struct {
+	ID             pgtype.UUID
+	Kind           string
+	IdempotencyKey string
+	Args           []byte
+	LastError      string
+	Attempts       int32
+	ReviewedAt     pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+}
+
 type LoginToken struct {
 	ID         pgtype.UUID
 	UserID     pgtype.UUID
@@ -43,9 +209,137 @@ type LoginToken struct {
 	CreatedAt  pgtype.Timestamptz
 }
 
+type NotificationDispatch struct {
+	ID                pgtype.UUID
+	DomainID          pgtype.UUID
+	DriftEventID      pgtype.UUID
+	Channel           string
+	Recipient         string
+	Subject           string
+	Status            string
+	ProviderMessageID string
+	Error             string
+	CreatedAt         pgtype.Timestamptz
+}
+
+type Organization struct {
+	ID                       pgtype.UUID
+	Name                     string
+	Plan                     string
+	BillingCustomerID        string
+	BillingSubscriptionID    string
+	BillingLastEventID       string
+	BillingStatus            string
+	BillingCancelRequestedAt pgtype.Timestamptz
+	BillingCancelEffectiveAt pgtype.Timestamptz
+	CreatedAt                pgtype.Timestamptz
+	UpdatedAt                pgtype.Timestamptz
+}
+
+type OrganizationInvitation struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	Email          string
+	Role           string
+	TokenHash      []byte
+	ExpiresAt      pgtype.Timestamptz
+	AcceptedAt     pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+}
+
+type OrganizationMember struct {
+	OrganizationID pgtype.UUID
+	UserID         pgtype.UUID
+	Role           string
+	CreatedAt      pgtype.Timestamptz
+}
+
+type OrganizationRetentionSetting struct {
+	OrganizationID      pgtype.UUID
+	RawReportDays       int32
+	AggregateRowDays    int32
+	NotificationLogDays int32
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type ScanJob struct {
+	ID             pgtype.UUID
+	DomainID       pgtype.UUID
+	IdempotencyKey string
+	ScheduledFor   pgtype.Timestamptz
+	Status         string
+	Attempts       int32
+	LastError      string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type SenderAttribution struct {
+	ID          pgtype.UUID
+	DomainID    pgtype.UUID
+	SourceIp    netip.Addr
+	ReverseDns  string
+	Asn         string
+	Provider    string
+	Confidence  string
+	Evidence    []byte
+	FirstSeenAt pgtype.Timestamptz
+	LastSeenAt  pgtype.Timestamptz
+	Expected    bool
+	Ignored     bool
+	Suspicious  bool
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type StatusComponent struct {
+	ID        pgtype.UUID
+	Name      string
+	Status    string
+	UpdatedAt pgtype.Timestamptz
+}
+
+type StatusIncident struct {
+	ID         pgtype.UUID
+	Title      string
+	Status     string
+	StartedAt  pgtype.Timestamptz
+	ResolvedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}
+
+type StatusIncidentUpdate struct {
+	ID         pgtype.UUID
+	IncidentID pgtype.UUID
+	Message    string
+	CreatedAt  pgtype.Timestamptz
+}
+
 type User struct {
 	ID        pgtype.UUID
 	Email     string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+}
+
+type WebhookDelivery struct {
+	ID          pgtype.UUID
+	EndpointID  pgtype.UUID
+	EventID     string
+	EventType   string
+	Status      string
+	Attempts    int32
+	LastError   string
+	DeliveredAt pgtype.Timestamptz
+	CreatedAt   pgtype.Timestamptz
+}
+
+type WebhookEndpoint struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	Url            string
+	SecretHash     []byte
+	EventTypes     []string
+	Enabled        bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
