@@ -89,6 +89,10 @@ func (s *Service) ListDomains(ctx context.Context, userID string) ([]Domain, err
 	return s.store.ListDomains(ctx, userID)
 }
 
+func (s *Service) GetDomain(ctx context.Context, userID string, domainID string) (Domain, error) {
+	return s.store.GetDomain(ctx, userID, domainID)
+}
+
 func (s *Service) DeleteDomain(ctx context.Context, userID string, domainID string) error {
 	return s.store.DeleteDomain(ctx, userID, domainID)
 }

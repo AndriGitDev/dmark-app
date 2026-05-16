@@ -6,7 +6,7 @@ services:
     command: ["serve"]
     environment:
       HTTP_ADDR: ":8080"
-      PUBLIC_BASE_URL: "https://meil.kastro.is"
+      PUBLIC_BASE_URL: "https://recordmaster.kastro.is"
       ASSETS_DIR: "/assets"
     expose:
       - "8080"

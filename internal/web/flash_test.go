@@ -25,7 +25,7 @@ func TestVisibleFlashesNormalizesAndDropsEmpty(t *testing.T) {
 func TestDomainFlashHelpers(t *testing.T) {
 	t.Parallel()
 
-	if flash := DomainAddedFlash("example.com"); flash.Kind != FlashSuccess || flash.Message != "Saved example.com." {
+	if flash := DomainAddedFlash("example.com"); flash.Kind != FlashSuccess || flash.Message != "Protected example.com." {
 		t.Fatalf("DomainAddedFlash = %+v", flash)
 	}
 	if flash := DomainRecheckQueuedFlash("example.com"); flash.Kind != FlashInfo || flash.Message != "Recheck queued for example.com." {

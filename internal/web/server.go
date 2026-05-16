@@ -31,6 +31,8 @@ import (
 	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/auth"
 	"github.com/AndriGitDev/meil/internal/billing"
+	"github.com/AndriGitDev/meil/internal/brand"
+	"github.com/AndriGitDev/meil/internal/brandrisk"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
@@ -188,12 +190,14 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 
 	r := chi.NewRouter()
 	r.Use(requestIDMiddleware)
+	r.Use(legacyHostRedirect)
 	r.Use(deps.SessionManager.LoadAndSave)
 	assetsDir := os.Getenv("ASSETS_DIR")
 	if assetsDir == "" {
 		assetsDir = "assets"
 	}
 	r.Get("/assets/css/marketing-20260512.css", func(w http.ResponseWriter, r *http.Request) {
+		// #nosec G703 -- assetsDir is an operator-controlled directory, and the served file path is fixed.
 		http.ServeFile(w, r, filepath.Join(assetsDir, "css", "output.css"))
 	})
 	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(assetsDir))))
@@ -219,9 +223,9 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		link := deps.PublicBaseURL + "/auth/callback?token=" + token
 		if err := deps.Sender.Send(r.Context(), notifier.Email{
 			To:      email,
-			Subject: "Sign in to Meil",
-			Text:    fmt.Sprintf("Sign in to Meil: %s", link),
-			HTML:    fmt.Sprintf(`<p>Sign in to Meil:</p><p><a href="%s">Open your magic link</a></p>`, link),
+			Subject: "Sign in to " + brand.FullProductName,
+			Text:    fmt.Sprintf("Sign in to %s: %s", brand.FullProductName, link),
+			HTML:    fmt.Sprintf(`<p>Sign in to %s:</p><p><a href="%s">Open your magic link</a></p>`, brand.FullProductName, link),
 		}); err != nil {
 			renderError(w, http.StatusBadGateway, "Email delivery failed", "The login email could not be sent. Try again shortly.")
 			return
@@ -383,7 +387,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		w.Header().Set("Content-Disposition", `attachment; filename="meil-domains.csv"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="recordmaster-protected-domains.csv"`)
 		if err := domains.WriteCSV(w, saved); err != nil {
 			// Headers are already committed, so fall back to the connection error path.
 			return
@@ -1215,28 +1219,58 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		r.Use(requireLogin(deps.SessionManager))
 		r.Get("/domains", func(w http.ResponseWriter, r *http.Request) {
 			if deps.Domains == nil {
-				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Saved domains are not configured for this environment.")
+				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
 				return
 			}
 			saved, err := deps.Domains.ListDomains(r.Context(), currentUserID(deps.SessionManager, r))
 			if err != nil {
-				renderError(w, http.StatusInternalServerError, "Unable to load domains", "Saved domains could not be loaded. Try again shortly.")
+				renderError(w, http.StatusInternalServerError, "Unable to load domains", "Protected domains could not be loaded. Try again shortly.")
 				return
 			}
 			templ.Handler(views.AppDomains(currentUserEmail(deps.SessionManager, r), saved, csrfToken(deps.SessionManager, r), popFlashViews(deps.SessionManager, r))).ServeHTTP(w, r)
 		})
+		r.Get("/defender", func(w http.ResponseWriter, r *http.Request) {
+			writeStaticPage(w, "Brand Risk", "Select a protected domain to review DNS and email-auth evidence for current brand-risk findings.", []string{
+				"Domain trust findings from SPF, DKIM, DMARC, and BIMI.",
+				"Evidence and recommended action on every finding.",
+				"Lookalike-domain monitoring remains planned until the Defender feed is implemented.",
+			})
+		})
+		r.Get("/domains/{id}/brand-risk", func(w http.ResponseWriter, r *http.Request) {
+			if deps.Domains == nil {
+				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
+				return
+			}
+			saved, err := deps.Domains.GetDomain(r.Context(), currentUserID(deps.SessionManager, r), chi.URLParam(r, "id"))
+			if err != nil {
+				renderError(w, http.StatusNotFound, "Domain not found", "The protected domain could not be found for this account.")
+				return
+			}
+			findings := []brandrisk.Finding{}
+			if saved.LatestCheck != nil {
+				findings = brandrisk.FromScan(scanner.Result{
+					Domain:    saved.Domain,
+					CheckedAt: saved.LatestCheck.CheckedAt,
+					SPF:       saved.LatestCheck.SPF,
+					DKIM:      saved.LatestCheck.DKIM,
+					DMARC:     saved.LatestCheck.DMARC,
+					BIMI:      saved.LatestCheck.BIMI,
+				})
+			}
+			templ.Handler(views.BrandRisk(currentUserEmail(deps.SessionManager, r), saved, findings, csrfToken(deps.SessionManager, r))).ServeHTTP(w, r)
+		})
 		r.Get("/domains/export", func(w http.ResponseWriter, r *http.Request) {
 			if deps.Domains == nil {
-				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Saved domains are not configured for this environment.")
+				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
 				return
 			}
 			var export strings.Builder
 			if err := deps.Domains.ExportCSV(r.Context(), currentUserID(deps.SessionManager, r), &export); err != nil {
-				renderError(w, http.StatusInternalServerError, "Export failed", "Saved domains could not be exported. Try again shortly.")
+				renderError(w, http.StatusInternalServerError, "Export failed", "Protected domains could not be exported. Try again shortly.")
 				return
 			}
 			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-			w.Header().Set("Content-Disposition", `attachment; filename="meil-domains.csv"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="recordmaster-protected-domains.csv"`)
 			_, _ = io.WriteString(w, export.String())
 		})
 		r.Get("/privacy/export", func(w http.ResponseWriter, r *http.Request) {
@@ -1268,7 +1302,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		})
 		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/domains/import", func(w http.ResponseWriter, r *http.Request) {
 			if deps.Domains == nil {
-				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Saved domains are not configured for this environment.")
+				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
 				return
 			}
 			reader, closeFn, err := csvImportReader(r)
@@ -1287,7 +1321,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		})
 		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/domains", func(w http.ResponseWriter, r *http.Request) {
 			if deps.Domains == nil {
-				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Saved domains are not configured for this environment.")
+				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, 4096)
@@ -1305,7 +1339,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		})
 		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/domains/{id}/check", func(w http.ResponseWriter, r *http.Request) {
 			if err := deps.Domains.ScanDomain(r.Context(), currentUserID(deps.SessionManager, r), chi.URLParam(r, "id")); err != nil {
-				renderError(w, http.StatusBadRequest, "Recheck failed", "The saved domain could not be checked. Confirm it still belongs to your account.")
+				renderError(w, http.StatusBadRequest, "Recheck failed", "The protected domain could not be checked. Confirm it still belongs to your account.")
 				return
 			}
 			pushFlash(deps.SessionManager, r, NewFlash(FlashInfo, "Recheck queued."))
@@ -1313,7 +1347,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		})
 		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/domains/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
 			if err := deps.Domains.DeleteDomain(r.Context(), currentUserID(deps.SessionManager, r), chi.URLParam(r, "id")); err != nil {
-				renderError(w, http.StatusBadRequest, "Delete failed", "The saved domain could not be deleted. Confirm it still belongs to your account.")
+				renderError(w, http.StatusBadRequest, "Delete failed", "The protected domain could not be deleted. Confirm it still belongs to your account.")
 				return
 			}
 			pushFlash(deps.SessionManager, r, NewFlash(FlashSuccess, "Deleted domain."))
@@ -1350,9 +1384,9 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		_, _ = w.Write([]byte("ok"))
 	})
 	r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
-		writeStaticPage(w, "Meil status", "All core components are operational.", []string{
+		writeStaticPage(w, brand.ProductName+" status", "All core components are operational.", []string{
 			"Public checker",
-			"Saved-domain monitoring",
+			"Protected-domain monitoring",
 			"DMARC report ingestion",
 			"Notifications",
 		})
@@ -1377,9 +1411,31 @@ func configureSessionManager(sessionManager *scs.SessionManager, publicBaseURL s
 	sessionManager.Cookie.Secure = err == nil && strings.EqualFold(parsed.Scheme, "https")
 }
 
+func legacyHostRedirect(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if strings.Contains(host, ":") {
+			if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+				host = parsedHost
+			}
+		}
+		if strings.EqualFold(host, brand.LegacyDomain) {
+			target := (&url.URL{
+				Scheme:   "https",
+				Host:     brand.PrimaryDomain,
+				Path:     r.URL.EscapedPath(),
+				RawQuery: r.URL.RawQuery,
+			}).String()
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func writeStaticPage(w http.ResponseWriter, title string, lead string, items []string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto max-w-3xl px-5 py-12\"><a href=\"/\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-accent\">meil</a><h1 class=\"mt-6 text-5xl font-semibold text-white\">%s</h1><p class=\"mt-4 text-muted\">%s</p><ul class=\"mt-8 grid gap-3\">", title, title, lead)
+	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%s - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto max-w-3xl px-5 py-12\"><a href=\"/\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-yellow\">RecordMaster</a><h1 class=\"mt-6 text-5xl font-semibold text-white\">%s</h1><p class=\"mt-4 text-muted\">%s</p><ul class=\"mt-8 grid gap-3\">", title, brand.FullProductName, title, lead)
 	for _, item := range items {
 		_, _ = fmt.Fprintf(w, "<li class=\"border border-white/10 bg-card p-4 text-sm text-muted\">%s</li>", item)
 	}
@@ -1395,8 +1451,9 @@ func renderError(w http.ResponseWriter, status int, title string, detail string)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%s - Meil</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12\"><section class=\"w-full border border-white/10 bg-card p-8\"><a href=\"/\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-accent\">meil</a><p class=\"mt-6 font-mono text-xs uppercase tracking-[0.24em] text-muted\">%d</p><h1 class=\"mt-3 text-4xl font-semibold text-white\">%s</h1><p class=\"mt-4 text-sm leading-6 text-muted\">%s</p><a href=\"/\" class=\"mt-8 inline-flex min-h-12 items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white\">Return home</a></section></main></body></html>",
+	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%s - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12\"><section class=\"w-full border border-white/10 bg-card p-8\"><a href=\"/\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-yellow\">RecordMaster</a><p class=\"mt-6 font-mono text-xs uppercase tracking-[0.24em] text-muted\">%d</p><h1 class=\"mt-3 text-4xl font-semibold text-white\">%s</h1><p class=\"mt-4 text-sm leading-6 text-muted\">%s</p><a href=\"/\" class=\"mt-8 inline-flex min-h-12 items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black\">Return home</a></section></main></body></html>",
 		html.EscapeString(title),
+		brand.FullProductName,
 		status,
 		html.EscapeString(title),
 		html.EscapeString(detail),
@@ -1405,7 +1462,8 @@ func renderError(w http.ResponseWriter, status int, title string, detail string)
 
 func writeLogoutConfirmationPage(w http.ResponseWriter, csrfToken string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Sign out - Meil</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12\"><section class=\"w-full border border-white/10 bg-card p-8\"><a href=\"/app/domains\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-accent\">meil</a><h1 class=\"mt-6 text-4xl font-semibold text-white\">Sign out?</h1><p class=\"mt-4 text-sm leading-6 text-muted\">End this Meil session on the current browser.</p><form method=\"post\" action=\"/logout\" class=\"mt-8 flex flex-wrap gap-3\"><input type=\"hidden\" name=\"csrf_token\" value=\"%s\"><button type=\"submit\" class=\"min-h-12 bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white\">Sign out</button><a href=\"/app/domains\" class=\"inline-flex min-h-12 items-center border border-white/10 px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-muted transition hover:text-white\">Stay signed in</a></form></section></main></body></html>",
+	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Sign out - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12\"><section class=\"w-full border border-white/10 bg-card p-8\"><a href=\"/app/domains\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-yellow\">RecordMaster</a><h1 class=\"mt-6 text-4xl font-semibold text-white\">Sign out?</h1><p class=\"mt-4 text-sm leading-6 text-muted\">End this RecordMaster session on the current browser.</p><form method=\"post\" action=\"/logout\" class=\"mt-8 flex flex-wrap gap-3\"><input type=\"hidden\" name=\"csrf_token\" value=\"%s\"><button type=\"submit\" class=\"min-h-12 bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black\">Sign out</button><a href=\"/app/domains\" class=\"inline-flex min-h-12 items-center border border-white/10 px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-muted transition hover:text-white\">Stay signed in</a></form></section></main></body></html>",
+		brand.FullProductName,
 		html.EscapeString(csrfToken),
 	)
 }
@@ -1549,6 +1607,7 @@ func csrfPost(sessionManager *scs.SessionManager) func(http.Handler) http.Handle
 			r.Body = http.MaxBytesReader(w, r.Body, 4096)
 			var err error
 			if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+				// #nosec G120 -- r.Body is capped by MaxBytesReader immediately above.
 				err = r.ParseMultipartForm(4096)
 			} else {
 				err = r.ParseForm()

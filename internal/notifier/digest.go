@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/AndriGitDev/meil/internal/brand"
 	"github.com/AndriGitDev/meil/internal/drift"
 )
 
@@ -29,14 +30,14 @@ func BuildDigestEmail(digest Digest) Email {
 		}
 		return severityRank(items[i].Event.Severity) > severityRank(items[j].Event.Severity)
 	})
-	lines := []string{"Meil digest", ""}
+	lines := []string{brand.ProductName + " digest", ""}
 	for _, item := range items {
 		lines = append(lines, fmt.Sprintf("- [%s] %s %s: %s", strings.ToUpper(string(item.Event.Severity)), item.Domain, item.Event.CheckName, item.Event.Message))
 	}
 	if len(items) == 0 {
 		lines = append(lines, "No drift events in this digest window.")
 	}
-	subject := fmt.Sprintf("Meil digest: %d event(s)", len(items))
+	subject := fmt.Sprintf("%s digest: %d event(s)", brand.ProductName, len(items))
 	return Email{To: digest.Recipient, Subject: subject, Text: strings.Join(lines, "\n")}
 }
 

@@ -17,7 +17,7 @@ type Section struct {
 func NewExportManifest(userID string, email string, includeRawXML bool) ExportManifest {
 	sections := []Section{
 		{Name: "account", Description: "User email, account creation time, and session-independent profile data."},
-		{Name: "domains", Description: "Saved domains, domain settings, latest checks, and custom selectors."},
+		{Name: "domains", Description: "Protected domains, domain settings, latest checks, and custom selectors."},
 		{Name: "checks", Description: "Saved DNS check snapshots for SPF, DKIM, DMARC, and BIMI."},
 		{Name: "drift_events", Description: "Detected DNS posture changes, acknowledgements, mutes, and alert state."},
 		{Name: "notifications", Description: "Notification dispatch audit rows and provider delivery status."},
@@ -47,7 +47,7 @@ func NewDeletionPlan(userID string) DeletionPlan {
 		Steps: []DeletionStep{
 			{Name: "revoke_api_keys", Description: "Revoke organization API keys owned by the user.", Destructive: true},
 			{Name: "remove_invitations", Description: "Remove pending organization invitations for the user email.", Destructive: true},
-			{Name: "delete_domains", Description: "Delete saved domains; cascades checks, settings, drift events, notifications, reports, and attributions.", Destructive: true},
+			{Name: "delete_domains", Description: "Delete protected domains; cascades checks, settings, drift events, notifications, reports, and attributions.", Destructive: true},
 			{Name: "remove_memberships", Description: "Remove organization memberships or transfer ownership before deletion.", Destructive: true},
 			{Name: "delete_user", Description: "Delete the user row; cascades login tokens.", Destructive: true},
 			{Name: "retain_audit_tombstone", Description: "Retain minimal audit tombstones required for security and billing integrity.", Destructive: false},

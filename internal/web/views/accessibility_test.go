@@ -23,7 +23,7 @@ func TestRenderedViewsKeepStaticAccessibilityContracts(t *testing.T) {
 	pages := map[string]string{
 		"home":    renderView(t, Home()),
 		"login":   renderView(t, Login("csrf-token")),
-		"domains": renderView(t, AppDomains("user@example.com", sampleDomains(), "csrf-token", []Flash{{Kind: "success", Message: "Saved example.com."}})),
+		"domains": renderView(t, AppDomains("user@example.com", sampleDomains(), "csrf-token", []Flash{{Kind: "success", Message: "Protected example.com."}})),
 	}
 	for name, html := range pages {
 		t.Run(name, func(t *testing.T) {

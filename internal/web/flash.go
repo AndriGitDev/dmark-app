@@ -24,7 +24,7 @@ func NewFlash(kind FlashKind, message string) FlashMessage {
 }
 
 func DomainAddedFlash(domain string) FlashMessage {
-	return NewFlash(FlashSuccess, "Saved "+strings.TrimSpace(domain)+".")
+	return NewFlash(FlashSuccess, "Protected "+strings.TrimSpace(domain)+".")
 }
 
 func DomainDeletedFlash(domain string) FlashMessage {

@@ -46,7 +46,7 @@ func main() {
 func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "meil",
-		Short: "Email-auth monitoring for domain owners",
+		Short: "Kastro RecordMaster brand-name risk defense",
 	}
 
 	root.AddCommand(newServeCommand())
@@ -385,7 +385,7 @@ func newScanCommand() *cobra.Command {
 	var providers []string
 	cmd := &cobra.Command{
 		Use:   "scan <domain>",
-		Short: "Run a one-off email-auth scan",
+		Short: "Run a one-off record check",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			for _, provider := range providers {

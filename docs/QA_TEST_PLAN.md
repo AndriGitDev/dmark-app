@@ -1,4 +1,4 @@
-# Meil QA Test Plan
+# Kastro RecordMaster QA Test Plan
 
 This plan stages QA from the current Checker/Auth baseline through the long-term Reporter product. Each stage should be treated as a release gate: automated checks run in CI, and manual exploratory checks are completed before promoting to production.
 

@@ -1,15 +1,15 @@
-# Meil Implementation Plan
+# Kastro RecordMaster Implementation Plan
 
 This document records the current implementation posture. The long-form product roadmap lives in `docs/ROADMAP.md`; this file is the short release-oriented companion for the repository state.
 
 ## Current Scope
 
-Meil is now beyond the original P0/P1 bootstrap. The repository includes implementation slices for:
+Kastro RecordMaster is now beyond the original P0/P1 bootstrap. The repository is still named `meil`, and includes implementation slices for:
 
 1. Public SPF, DKIM, DMARC, and BIMI checking with shared web and CLI scanner semantics.
-2. Passwordless login, saved domains, CSRF-protected app routes, and domain CSV import/export.
+2. Passwordless login, protected domains, CSRF-protected app routes, and domain CSV import/export.
 3. Scanner metadata, posture summaries, drift classification, alert lifecycle rules, and background job helpers.
-4. DMARC aggregate report ingestion, ClickHouse aggregate models, Reporter summaries, sender attribution, recommendations, and risk scoring.
+4. DMARC aggregate report ingestion, ClickHouse aggregate models, Reporter summaries, sender attribution, recommendations, risk scoring, and initial Brand Risk findings from existing DNS/email-auth checks.
 5. Paid-product foundations: plans, entitlements, teams, billing webhook handling, API-key helpers, webhooks, audit, privacy, admin, abuse, status, and operations support packages.
 6. Operational docs for DNS setup, API/webhooks, security, threat modeling, QA, and incident handling.
 

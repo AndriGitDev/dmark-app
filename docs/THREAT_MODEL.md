@@ -1,11 +1,11 @@
 # Threat Model
 
-This threat model covers the current roadmap surfaces: auth, public checker abuse, saved-domain monitoring, DMARC report ingestion, API keys, outbound webhooks, and billing webhooks.
+This threat model covers the current roadmap surfaces: auth, public checker abuse, protected-domain monitoring, Brand Risk findings, DMARC report ingestion, API keys, outbound webhooks, and billing webhooks.
 
 ## Assets
 
 - User accounts, sessions, and login-token hashes.
-- Saved domains, domain settings, DNS snapshots, drift events, and notification dispatches.
+- Protected domains, domain settings, DNS snapshots, Brand Risk findings, drift events, and notification dispatches.
 - DMARC aggregate report metadata, raw XML, aggregate rows, and sender attribution evidence.
 - Organization membership, roles, billing state, API keys, webhook secrets, and audit logs.
 
@@ -16,7 +16,7 @@ This threat model covers the current roadmap surfaces: auth, public checker abus
 - Public API clients to API-key authenticated routes.
 - External mailbox providers to DMARC report ingestion.
 - Billing provider to billing webhook receiver.
-- Meil to outbound email, Slack, and webhook delivery providers.
+- RecordMaster to outbound email, Slack, and webhook delivery providers.
 - Application workers to Postgres and ClickHouse.
 
 ## Auth And Sessions
@@ -48,6 +48,26 @@ Controls:
 - Public check requests are body-limited, domain-length guarded, rate-limited per client address, and persistence-free by default.
 - Scanner results carry resolver error classes and lookup timing for monitoring.
 - DKIM selector probes use bounded concurrency.
+
+## Brand-Name Risk
+
+Threats:
+
+- Lookalike domain impersonation.
+- Homoglyph domains.
+- Mail-enabled spoofing domains.
+- Weak DMARC policy abuse.
+- Unknown sender infrastructure.
+- DNS drift causing spoofing exposure.
+- Brand-risk alert abuse.
+- False positives in impersonation detection.
+
+Controls:
+
+- Current Brand Risk findings are limited to evidence already present in DNS, email-auth checks, drift history, and Reporter data.
+- Every finding must carry evidence and a recommended action.
+- Unsupported lookalike-domain detection must remain clearly marked as planned until the feed exists.
+- Future external intelligence feeds need rate limits, privacy review, and abuse controls before production use.
 
 ## DMARC Report Ingestion
 

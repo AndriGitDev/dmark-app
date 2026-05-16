@@ -1,4 +1,4 @@
-# Security
+# Kastro RecordMaster Security
 
 Report security issues privately to the project owner before opening public issues.
 
@@ -13,7 +13,7 @@ Report security issues privately to the project owner before opening public issu
 ## Data Handling
 
 - Public one-off checks should not be persisted.
-- Saved-domain snapshots, drift events, notifications, and audit logs are customer data.
+- Protected-domain snapshots, Brand Risk findings, drift events, notifications, and audit logs are customer data.
 - Raw DMARC XML is retained for auditability and must follow plan-level retention controls.
 - Audit logs should be append-only and should not include secret tokens, raw API keys, or magic links.
 

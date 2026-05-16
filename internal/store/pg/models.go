@@ -62,6 +62,48 @@ type AuditLog struct {
 	CreatedAt      pgtype.Timestamptz
 }
 
+type BrandDomain struct {
+	ID               pgtype.UUID
+	ProtectedBrandID pgtype.UUID
+	DomainID         pgtype.UUID
+	Domain           string
+	Role             string
+	CreatedAt        pgtype.Timestamptz
+}
+
+type BrandRiskFinding struct {
+	ID                pgtype.UUID
+	ProtectedBrandID  pgtype.UUID
+	DomainID          pgtype.UUID
+	FindingType       string
+	ObservedValue     string
+	Severity          string
+	Status            string
+	EvidenceJson      []byte
+	RecommendedAction string
+	FirstSeenAt       pgtype.Timestamptz
+	LastSeenAt        pgtype.Timestamptz
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type BrandRiskObservation struct {
+	ID                 pgtype.UUID
+	BrandRiskFindingID pgtype.UUID
+	Source             string
+	ObservedValue      string
+	EvidenceJson       []byte
+	ObservedAt         pgtype.Timestamptz
+}
+
+type BrandWatchTerm struct {
+	ID               pgtype.UUID
+	ProtectedBrandID pgtype.UUID
+	Term             string
+	Kind             string
+	CreatedAt        pgtype.Timestamptz
+}
+
 type DmarcAggregateRow struct {
 	ID                pgtype.UUID
 	ReportID          pgtype.UUID
@@ -260,6 +302,16 @@ type OrganizationRetentionSetting struct {
 	AggregateRowDays    int32
 	NotificationLogDays int32
 	UpdatedAt           pgtype.Timestamptz
+}
+
+type ProtectedBrand struct {
+	ID             pgtype.UUID
+	OrganizationID pgtype.UUID
+	UserID         pgtype.UUID
+	DisplayName    string
+	PrimaryDomain  string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type ScanJob struct {

@@ -6,13 +6,10 @@ This audit maps `docs/ROADMAP.md` to concrete repository artifacts. It is intent
 
 - Implementation breadth: Phase 1 through Phase 7 now have code and documentation artifacts.
 - Local verification: `make qa-code` passes using a temporary local Go 1.25.10 toolchain and covers unit tests, race tests, vet, lint, `govulncheck`, short fuzz smoke runs, generated-file idempotence for templ/sqlc/Tailwind, and build.
-- Completion status: not complete until service-backed QA gates pass with valid Postgres/ClickHouse credentials and Docker socket access.
-- Latest blocked service-gate evidence:
-  - `make qa-services` fails at `docker build -f infra/coolify/Dockerfile .` because the Docker socket at `/var/run/docker.sock` denied access.
-  - `go run ./cmd/meil migrate postgres up` reached localhost Postgres but failed SASL authentication for `user=meil database=meil`.
-  - `go run ./cmd/meil migrate clickhouse up` failed because `localhost:8123` refused connections.
-  - `docker build -f infra/coolify/Dockerfile .` failed because the Docker socket at `/var/run/docker.sock` denied access.
-  - `sudo docker compose -f infra/coolify/docker-compose.dev.yml up -d postgres clickhouse` could not run noninteractively because sudo requires a terminal for authentication.
+- Completion status: code and service-backed QA gates pass against the local dev Postgres and ClickHouse stack.
+- Latest service-gate evidence:
+  - `make qa-code` passes: unit tests, race tests, vet, golangci-lint, `govulncheck`, fuzz smoke runs, generated-file idempotence, and build.
+  - `make qa-services` passes after starting `infra/coolify/docker-compose.dev.yml`: Docker image build, Postgres migrations through `00003_brand_risk_foundations.sql`, River migrations, and ClickHouse migrations.
 
 ## Phase 1: Checker Reliability And UX
 
@@ -22,7 +19,7 @@ Evidence:
 - International domain normalization via IDNA/punycode: `internal/scanner/scanner.go`, `internal/scanner/scanner_test.go`.
 - Shared web/CLI scanner surface and JSON output: `internal/web/server.go`, `cmd/meil/main.go`, `cmd/meil/main_test.go`.
 - Public rate limiting and form/body controls: `internal/web/server.go`.
-- Public result save path: `internal/web/views/home.templ` and generated `home_templ.go` render `Save this domain`.
+- Public result protection path: `internal/web/views/home.templ` and generated `home_templ.go` render `Protect this domain`.
 - Static accessibility contracts for rendered public/auth/app views: `internal/web/views/accessibility_test.go`.
 
 Verification gaps:

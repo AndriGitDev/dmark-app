@@ -1,6 +1,8 @@
-# Meil Product Roadmap
+# Kastro RecordMaster Product Roadmap
 
-Meil is an email-auth monitoring product for domain owners. The product starts as a public Checker for SPF, DKIM, DMARC, and BIMI posture, grows into authenticated saved-domain monitoring with drift alerts, and later becomes a Reporter that ingests DMARC aggregate reports to identify who is sending mail as a customer's domain.
+RecordMaster is Kastro's brand-name risk defense product for domain owners.
+
+It starts with public DNS, SPF, DKIM, DMARC, and BIMI posture checks. It then grows into protected-domain monitoring, drift alerts, DMARC aggregate report ingestion, sender attribution, and brand-name risk defense for spoofing and impersonation risks.
 
 ## Current Baseline
 
@@ -71,7 +73,7 @@ Features:
 - Add domain ownership verification before enabling automation-heavy features.
 - Add domain-level settings: notification email, selectors, expected senders, scan cadence, and ignored findings.
 - Add historical checks per saved domain with filters by status and check type.
-- Add domain import from CSV and export of saved domains and latest checks.
+- Add domain import from CSV and export of protected domains and latest checks.
 
 Engineering:
 
@@ -94,14 +96,14 @@ Goal: turn snapshots into monitoring by detecting meaningful changes and notifyi
 
 Features:
 
-- Scheduled scans for saved domains.
+- Scheduled scans for protected domains.
 - Drift classifier for material changes: record missing, policy relaxed, include removed, DKIM selector removed, BIMI removed, DNS lookup count exceeded, and status regressions.
 - Alert rules by domain and check type.
 - Email notifications with before/after records, severity, and recommended action.
 - Notification digest mode for low-priority changes.
 - Alert acknowledgement, mute, and suppression windows.
 - Incident timeline per domain.
-- Weekly posture summary for saved domains.
+- Weekly posture summary for protected domains.
 
 Engineering:
 
@@ -114,7 +116,7 @@ Engineering:
 
 Definition of Done:
 
-- Saved domains are scanned on schedule without web requests.
+- Protected domains are scanned on schedule without web requests.
 - Material drift creates a durable event and sends the correct notification once.
 - Users can acknowledge or mute noisy findings.
 - Job processing is observable and failures are retryable.
@@ -179,14 +181,14 @@ Definition of Done:
 
 ## Phase 6: Paid Product, Teams, And Billing
 
-Goal: turn Meil into a sustainable SaaS product with collaboration and plan boundaries.
+Goal: turn RecordMaster into a sustainable SaaS product with collaboration and plan boundaries.
 
 Features:
 
 - Plans for free Checker, monitored domains, Reporter, and higher-volume usage.
 - Billing provider integration.
 - Team accounts, invitations, roles, and domain ownership transfer.
-- Usage limits for saved domains, scan cadence, report retention, and alert channels.
+- Usage limits for protected domains, scan cadence, report retention, and alert channels.
 - Webhooks and Slack notifications for paid tiers.
 - Audit log for security-sensitive actions.
 - API keys for programmatic checks and exports.
@@ -208,7 +210,7 @@ Definition of Done:
 
 ## Phase 7: Platform Hardening And Compliance
 
-Goal: make Meil reliable, secure, and maintainable as customer data and background volume grow.
+Goal: make RecordMaster reliable, secure, and maintainable as customer data and background volume grow.
 
 Features:
 

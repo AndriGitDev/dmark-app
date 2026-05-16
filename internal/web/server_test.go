@@ -483,8 +483,8 @@ func TestHomeRenders(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if !strings.Contains(rec.Body.String(), "meil") {
-		t.Fatalf("body does not contain meil: %q", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "Kastro RecordMaster") {
+		t.Fatalf("body does not contain Kastro RecordMaster: %q", rec.Body.String())
 	}
 	if !strings.Contains(rec.Body.String(), `/assets/css/marketing-20260512.css`) {
 		t.Fatalf("body does not contain fingerprinted stylesheet: %q", rec.Body.String())
@@ -893,7 +893,7 @@ func TestDomainAddShowsFlashOnce(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if body := rec.Body.String(); !strings.Contains(body, "Saved example.com.") || !strings.Contains(body, `role="status"`) {
+	if body := rec.Body.String(); !strings.Contains(body, "Protected example.com.") || !strings.Contains(body, `role="status"`) {
 		t.Fatalf("body missing flash message: %s", body)
 	}
 	cookie = latestCookie(cookie, rec)
@@ -902,7 +902,7 @@ func TestDomainAddShowsFlashOnce(t *testing.T) {
 	req.AddCookie(cookie)
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	if strings.Contains(rec.Body.String(), "Saved example.com.") {
+	if strings.Contains(rec.Body.String(), "Protected example.com.") {
 		t.Fatalf("flash message was not cleared after display: %s", rec.Body.String())
 	}
 }
@@ -986,7 +986,7 @@ func TestCheckDomainRendersScannerResult(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"example.com", "SPF", "pass", "DMARC", "warn", "v=spf1 -all", "Save this domain"} {
+	for _, want := range []string{"example.com", "SPF", "pass", "DMARC", "warn", "v=spf1 -all", "Protect this domain"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
@@ -1280,7 +1280,7 @@ func TestAPIDomainsExportReturnsCSV(t *testing.T) {
 	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/csv") {
 		t.Fatalf("Content-Type = %q, want text/csv", contentType)
 	}
-	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "meil-domains.csv") {
+	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "recordmaster-protected-domains.csv") {
 		t.Fatalf("Content-Disposition = %q, want CSV attachment", disposition)
 	}
 	if body := rec.Body.String(); !strings.Contains(body, "domain,created_at,last_checked_at") || !strings.Contains(body, "example.com") {
@@ -2292,7 +2292,7 @@ func TestStatusPageRenders(t *testing.T) {
 		t.Fatalf("Content-Type = %q, want text/html", contentType)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Meil status", "Public checker", "DMARC report ingestion"} {
+	for _, want := range []string{"RecordMaster status", "Public checker", "DMARC report ingestion"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}

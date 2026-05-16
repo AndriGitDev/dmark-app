@@ -17,7 +17,7 @@ func TestBuildDigestEmail(t *testing.T) {
 			{Domain: "a.example", Event: drift.Event{CheckName: "DMARC", Severity: drift.SeverityCritical, Message: "DMARC relaxed."}},
 		},
 	})
-	if email.To != "ops@example.com" || email.Subject != "Meil digest: 2 event(s)" {
+	if email.To != "ops@example.com" || email.Subject != "RecordMaster digest: 2 event(s)" {
 		t.Fatalf("unexpected digest email: %+v", email)
 	}
 	first := strings.Index(email.Text, "a.example")

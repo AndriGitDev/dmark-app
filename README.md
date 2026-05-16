@@ -1,6 +1,10 @@
-# Meil
+# Kastro RecordMaster
 
-Meil is email-auth monitoring for domain owners. The free Checker tier watches SPF, DKIM, DMARC, and BIMI records for drift; Reporter foundations ingest DMARC aggregate reports and model who is sending mail as your domain.
+Kastro RecordMaster is brand-name risk defense for domain owners. It monitors DNS records, SPF, DKIM, DMARC, BIMI, sender evidence, and spoofing indicators so teams can catch trust failures before customers do.
+
+The free Checker provides public DNS and email-auth posture checks. Monitor adds protected domains, scheduled scans, drift alerts, and history. Reporter ingests DMARC aggregate reports and models who is sending mail as your domain. Defender expands the platform into brand-name and lookalike-domain risk monitoring.
+
+The repository is still named `meil` during the transition from the original email-auth monitoring product. The Go module, binary, CLI command, database names, and deployment service names intentionally remain `meil` for now.
 
 ## Local Development
 
@@ -24,7 +28,7 @@ make build
 
 ## Coolify
 
-The P0 deployment target is `https://meil.kastro.is`. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.
+The canonical deployment target is `https://recordmaster.kastro.is`. The legacy hostname `https://meil.kastro.is` should remain available as a redirect during the transition. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.
 
 ## Planning
 
@@ -36,3 +40,4 @@ The P0 deployment target is `https://meil.kastro.is`. Use the Docker Compose fil
 - Security and data-handling notes: `docs/SECURITY.md`
 - API and webhook contracts: `docs/API.md`
 - Threat model: `docs/THREAT_MODEL.md`
+- Brand-risk research: `docs/BRAND_RISK_RESEARCH.md`

@@ -1,4 +1,4 @@
-# Meil Operations
+# Kastro RecordMaster Operations
 
 ## Release Gates
 
@@ -24,17 +24,17 @@ Before production promotion, run the automated gates from `docs/QA_TEST_PLAN.md`
 The repository includes a small HTTP load utility for release and incident drills:
 
 ```sh
-BASE_URL=https://meil.example DOMAIN=example.com REQUESTS=200 CONCURRENCY=20 make load-checker
-BASE_URL=https://meil.example PATH=/healthz REQUESTS=200 CONCURRENCY=20 make load-api
-BASE_URL=https://meil.example API_TOKEN=... DOMAIN_ID=... REQUESTS=200 CONCURRENCY=20 make load-reporter
-BASE_URL=https://meil.example API_TOKEN=... DOMAIN_ID=... REQUESTS=50 CONCURRENCY=5 make load-scan-job
+BASE_URL=https://recordmaster.example DOMAIN=example.com REQUESTS=200 CONCURRENCY=20 make load-checker
+BASE_URL=https://recordmaster.example PATH=/healthz REQUESTS=200 CONCURRENCY=20 make load-api
+BASE_URL=https://recordmaster.example API_TOKEN=... DOMAIN_ID=... REQUESTS=200 CONCURRENCY=20 make load-reporter
+BASE_URL=https://recordmaster.example API_TOKEN=... DOMAIN_ID=... REQUESTS=50 CONCURRENCY=5 make load-scan-job
 ```
 
 Use the `checker` scenario for the public checker, `api-get`/`reporter-get` for authenticated API and Reporter read endpoints, and `api-post` for domain recheck or other job-triggering endpoints. Record p50, p95, max latency, status distribution, target commit, and environment size with the release notes.
 
 ## Incident Process
 
-1. Confirm user-visible impact and affected surfaces: public checker, login, saved domains, jobs, notifications, or Reporter ingestion.
+1. Confirm user-visible impact and affected surfaces: public checker, login, protected domains, Brand Risk findings, jobs, notifications, or Reporter ingestion.
 2. Capture current deploy version, recent migrations, and relevant logs with request IDs.
 3. Mitigate first: disable noisy alerts, pause ingestion, roll back deploy, or scale workers as appropriate.
 4. Preserve source material for auditability: DNS snapshots, DMARC raw reports, notification dispatch rows, and drift events.

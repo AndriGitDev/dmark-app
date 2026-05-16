@@ -1,4 +1,4 @@
-# API And Webhooks
+# RecordMaster API And Webhooks
 
 This document defines the external API and webhook contracts for paid tiers. API access requires an API key with the required scope.
 
@@ -7,17 +7,17 @@ This document defines the external API and webhook contracts for paid tiers. API
 Send API keys with the `Authorization` header:
 
 ```http
-Authorization: Bearer meil_example
+Authorization: Bearer recordmaster_example
 ```
 
 Keys are stored as hashes only. Revoke and rotate keys from organization settings.
 
 ## Scopes
 
-- `scan:read`: run or read scan results.
-- `domain:read`: list or export saved domains and latest checks.
-- `domain:write`: add, update, recheck, import, or delete saved domains.
-- `reporter:read`: read DMARC aggregate report summaries, sender inventory, and attribution.
+- `scan:read`: run or read Record checks.
+- `domain:read`: list or export Protected domains and latest checks.
+- `domain:write`: add, update, recheck, import, or delete Protected domains.
+- `reporter:read`: read Reporter reports, sender inventory, and attribution.
 - `billing:manage`: request billing cancellation and manage billing lifecycle actions.
 - `privacy:manage`: read and update organization data retention settings.
 - `api_key:manage`: create, list, and revoke organization API keys.
@@ -69,6 +69,8 @@ POST /billing/webhook
 ```
 
 Responses include stable IDs, timestamps in RFC3339, and machine-readable status strings that match internal scanner, drift, report-health, and risk models.
+
+Public terminology maps these endpoints to Record checks, Protected domains, Findings, Alerts, Reporter reports, Sender inventory, and Brand risk findings. Endpoint paths keep `/domains` for compatibility while the UI presents them as Protected domains.
 
 Status component and incident operations require `admin:manage`. Components accept status values such as `operational`, `degraded`, and `outage`; incidents keep an operator-facing status string and can be closed through the resolve endpoint.
 
