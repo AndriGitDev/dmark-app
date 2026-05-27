@@ -89,6 +89,10 @@ type UserReporterStore interface {
 	GetUserReporterHealth(ctx context.Context, userID string, domainID string) (reporter.HealthResult, error)
 }
 
+type AuditClaimStore interface {
+	CreateAuditClaim(ctx context.Context, claim salesaudit.Claim) (salesaudit.Claim, error)
+}
+
 type OrganizationWebhookStore interface {
 	ListOrganizationWebhookEndpoints(ctx context.Context, organizationID string) ([]webhooks.Endpoint, error)
 	CreateOrganizationWebhookEndpoint(ctx context.Context, organizationID string, rawURL string, eventTypes []string) (webhooks.Endpoint, string, error)
@@ -151,6 +155,7 @@ type Deps struct {
 	APIDomainDrift         OrganizationDomainDriftStore
 	APIReporter            OrganizationReporterStore
 	UserReporter           UserReporterStore
+	AuditClaims            AuditClaimStore
 	APIWebhooks            OrganizationWebhookStore
 	Billing                BillingWebhookStore
 	BillingCancellation    BillingCancellationStore
@@ -265,6 +270,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			renderError(w, http.StatusBadGateway, "Email delivery failed", "The audit claim email could not be sent. Try again shortly.")
 			return
 		}
+		recordAuditClaim(r.Context(), deps.AuditClaims, domainName, sentEmail, auditForClaimRecord(r.Context(), deps.Scanner, domainName, email, audit))
 		deps.SessionManager.Put(r.Context(), claimDomainSessionKey, domainName)
 		templ.Handler(views.ClaimSent(sentEmail, domainName)).ServeHTTP(w, r)
 	})
@@ -1625,6 +1631,28 @@ func popClaimDomain(sessionManager *scs.SessionManager, r *http.Request) string 
 	}
 	sessionManager.Remove(r.Context(), claimDomainSessionKey)
 	return domain
+}
+
+func recordAuditClaim(ctx context.Context, store AuditClaimStore, domain string, email string, audit salesaudit.Result) {
+	if store == nil {
+		return
+	}
+	claim, err := salesaudit.NewClaim(domain, email, audit, time.Now().UTC())
+	if err != nil {
+		return
+	}
+	_, _ = store.CreateAuditClaim(ctx, claim)
+}
+
+func auditForClaimRecord(ctx context.Context, emailScanner EmailScanner, domain string, email string, fallback salesaudit.Result) salesaudit.Result {
+	if emailScanner == nil {
+		return fallback
+	}
+	result, err := emailScanner.Scan(ctx, domain)
+	if err != nil {
+		return fallback
+	}
+	return salesaudit.Assess(result, salesaudit.Options{RequestedEmail: email})
 }
 
 func buildTrustReport(ctx context.Context, email string, userID string, domain domains.Domain, reporterStore UserReporterStore) trustreport.Report {

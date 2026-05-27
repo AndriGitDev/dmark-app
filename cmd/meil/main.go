@@ -572,6 +572,7 @@ func newServeCommand() *cobra.Command {
 					APIDomainDrift:        store,
 					APIReporter:           store,
 					UserReporter:          store,
+					AuditClaims:           store,
 					APIWebhooks:           store,
 					Billing:               store,
 					BillingCancellation:   store,

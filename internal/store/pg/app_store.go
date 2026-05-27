@@ -22,6 +22,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/entitlements"
 	"github.com/AndriGitDev/meil/internal/privacy"
 	"github.com/AndriGitDev/meil/internal/reporter"
+	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/statuspage"
 	"github.com/AndriGitDev/meil/internal/teams"
@@ -1355,6 +1356,22 @@ LIMIT 200
 		return reporter.HealthResult{}, err
 	}
 	return reporter.EvaluateHealth(reporter.HealthCheck{Now: time.Now().UTC(), Receipts: receipts}), nil
+}
+
+func (s *AppStore) CreateAuditClaim(ctx context.Context, claim salesaudit.Claim) (salesaudit.Claim, error) {
+	row := s.queries.db.QueryRow(ctx, `
+INSERT INTO sales_audit_claims (domain, email, grade, risk, safe, proof_eligible, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, created_at
+`, claim.Domain, claim.Email, claim.Grade, string(claim.Risk), claim.Safe, claim.ProofEligible, string(claim.Status))
+	var id pgtype.UUID
+	var createdAt pgtype.Timestamptz
+	if err := row.Scan(&id, &createdAt); err != nil {
+		return salesaudit.Claim{}, err
+	}
+	claim.ID = uuidToString(id)
+	claim.CreatedAt = createdAt.Time
+	return claim, nil
 }
 
 func (s *AppStore) ListUserReporterSenders(ctx context.Context, userID string, domainID string, limit int) ([]reporter.InventoryEntry, error) {

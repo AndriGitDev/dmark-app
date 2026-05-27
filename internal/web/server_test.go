@@ -22,6 +22,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/notifier"
 	"github.com/AndriGitDev/meil/internal/privacy"
 	"github.com/AndriGitDev/meil/internal/reporter"
+	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/statuspage"
 	"github.com/AndriGitDev/meil/internal/teams"
@@ -80,6 +81,7 @@ type webDomainStore struct {
 	apiKeys          []apikeys.Key
 	invitations      []teams.Invitation
 	retention        privacy.RetentionRequest
+	auditClaims      []salesaudit.Claim
 	adminCases       []admin.Case
 	abuseDecisions   []admin.AbuseDecision
 	statusComponents []statuspage.Component
@@ -168,6 +170,12 @@ func (s *webDomainStore) ListUserReporterSenders(ctx context.Context, userID str
 
 func (s *webDomainStore) GetUserReporterHealth(ctx context.Context, userID string, domainID string) (reporter.HealthResult, error) {
 	return s.reportHealth, nil
+}
+
+func (s *webDomainStore) CreateAuditClaim(ctx context.Context, claim salesaudit.Claim) (salesaudit.Claim, error) {
+	claim.ID = "claim-1"
+	s.auditClaims = append(s.auditClaims, claim)
+	return claim, nil
 }
 
 func (s *webDomainStore) ListOrganizationWebhookEndpoints(ctx context.Context, organizationID string) ([]webhooks.Endpoint, error) {
@@ -1012,8 +1020,10 @@ func TestClaimAuditSendsMagicLinkAndProtectsDomainAfterCallback(t *testing.T) {
 	sender := &webEmailSender{}
 	domainStore := &webDomainStore{}
 	router := NewRouterWithDeps(Deps{
-		Auth:   auth.NewService(authStore, time.Minute),
-		Sender: sender,
+		Scanner:     fakeScanner{result: scanner.Result{Domain: "example.com", SPF: scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass}, DKIM: scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass}, DMARC: scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Record: "v=DMARC1; p=none"}, BIMI: scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing}}},
+		Auth:        auth.NewService(authStore, time.Minute),
+		Sender:      sender,
+		AuditClaims: domainStore,
 		Domains: domains.NewService(domainStore, fakeScanner{result: scanner.Result{
 			Domain: "example.com",
 			SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass},
@@ -1041,6 +1051,12 @@ func TestClaimAuditSendsMagicLinkAndProtectsDomainAfterCallback(t *testing.T) {
 	}
 	if len(sender.sent) != 1 {
 		t.Fatalf("len(sent emails) = %d, want 1", len(sender.sent))
+	}
+	if len(domainStore.auditClaims) != 1 {
+		t.Fatalf("len(auditClaims) = %d, want 1", len(domainStore.auditClaims))
+	}
+	if claim := domainStore.auditClaims[0]; claim.Domain != "example.com" || claim.Email != "person@example.com" || claim.Grade != "B" || claim.Risk != salesaudit.RiskMedium || claim.Status != salesaudit.ClaimMagicLinkSent {
+		t.Fatalf("audit claim = %+v, want persisted example.com claim", claim)
 	}
 	cookie = latestCookie(cookie, rec)
 	token := magicLinkToken(t, sender.sent[0].Text)

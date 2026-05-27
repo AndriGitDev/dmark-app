@@ -15,6 +15,7 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"github.com/AndriGitDev/meil/internal/auth"
+	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
 )
 
@@ -56,6 +57,7 @@ func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
+		_, _ = pool.Exec(cleanupCtx, `DELETE FROM sales_audit_claims WHERE email = ANY($1)`, []string{userEmail, otherEmail})
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM users WHERE email = ANY($1)`, []string{userEmail, otherEmail})
 	}()
 
@@ -151,6 +153,20 @@ func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
 	}
 	if domainWithCheck.LatestCheck == nil || domainWithCheck.LatestCheck.SPF.Status != scanner.StatusPass {
 		t.Fatalf("get domain latest check = %+v, want SPF pass", domainWithCheck.LatestCheck)
+	}
+	claim, err := store.CreateAuditClaim(ctx, salesaudit.Claim{
+		Domain:        "example.com",
+		Email:         userEmail,
+		Grade:         "B",
+		Risk:          salesaudit.RiskMedium,
+		ProofEligible: true,
+		Status:        salesaudit.ClaimMagicLinkSent,
+	})
+	if err != nil {
+		t.Fatalf("create audit claim: %v", err)
+	}
+	if claim.ID == "" || claim.CreatedAt.IsZero() {
+		t.Fatalf("audit claim missing persisted fields: %+v", claim)
 	}
 
 	if err := store.DeleteDomain(ctx, otherUser.ID, domain.ID); err != nil {

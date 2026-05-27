@@ -2,6 +2,7 @@ package salesaudit
 
 import (
 	"testing"
+	"time"
 
 	"github.com/AndriGitDev/meil/internal/scanner"
 )
@@ -61,5 +62,18 @@ func TestAssessBlocksConsumerMailboxDomains(t *testing.T) {
 
 	if result.ProofEligible || result.BlockedReason != "domain is blocked from proof dispatch" {
 		t.Fatalf("result = %+v, want consumer mailbox block", result)
+	}
+}
+
+func TestNewClaimCapturesAuditResult(t *testing.T) {
+	t.Parallel()
+
+	audit := Result{Grade: "C", Risk: RiskHigh, ProofEligible: true}
+	claim, err := NewClaim("Example.IS", "SECURITY@Example.IS", audit, time.Date(2026, 5, 27, 15, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("NewClaim returned error: %v", err)
+	}
+	if claim.Domain != "example.is" || claim.Email != "security@example.is" || claim.Grade != "C" || claim.Risk != RiskHigh || !claim.ProofEligible || claim.Status != ClaimMagicLinkSent {
+		t.Fatalf("claim = %+v, want normalized audit claim", claim)
 	}
 }
