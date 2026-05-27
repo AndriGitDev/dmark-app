@@ -503,8 +503,8 @@ func TestHomeRenders(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if !strings.Contains(rec.Body.String(), "Kastro RecordMaster") {
-		t.Fatalf("body does not contain Kastro RecordMaster: %q", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "See if your domain can be spoofed right now.") {
+		t.Fatalf("body does not contain Dmark hero: %q", rec.Body.String())
 	}
 	if !strings.Contains(rec.Body.String(), `/assets/css/marketing-20260512.css`) {
 		t.Fatalf("body does not contain fingerprinted stylesheet: %q", rec.Body.String())
@@ -1470,7 +1470,7 @@ func TestAPIDomainsExportReturnsCSV(t *testing.T) {
 	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/csv") {
 		t.Fatalf("Content-Type = %q, want text/csv", contentType)
 	}
-	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "recordmaster-protected-domains.csv") {
+	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "dmark-protected-domains.csv") {
 		t.Fatalf("Content-Disposition = %q, want CSV attachment", disposition)
 	}
 	if body := rec.Body.String(); !strings.Contains(body, "domain,created_at,last_checked_at") || !strings.Contains(body, "example.com") {
@@ -2482,7 +2482,7 @@ func TestStatusPageRenders(t *testing.T) {
 		t.Fatalf("Content-Type = %q, want text/html", contentType)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"RecordMaster status", "Public checker", "DMARC report ingestion"} {
+	for _, want := range []string{"Dmark status", "Public checker", "DMARC report ingestion"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}

@@ -1,8 +1,8 @@
-# Kastro RecordMaster
+# Dmark
 
-Kastro RecordMaster is brand-name risk defense for domain owners. It monitors DNS records, SPF, DKIM, DMARC, BIMI, sender evidence, and spoofing indicators so teams can catch trust failures before customers do.
+Dmark is an interactive DMARC, SPF, and DKIM diagnostic tool and remediation platform for teams that need trusted email delivery.
 
-The free Checker provides public DNS and email-auth posture checks. Monitor adds protected domains, scheduled scans, drift alerts, and history. Reporter ingests DMARC aggregate reports and models who is sending mail as your domain. Defender expands the platform into brand-name and lookalike-domain risk monitoring.
+The free diagnostic flow provides public DNS and email-auth posture checks. Monitor adds protected domains, scheduled scans, drift alerts, and history. Reporter ingests DMARC aggregate reports and models who is sending mail as your domain. Defender expands the platform into brand-name and lookalike-domain risk monitoring.
 
 The repository is still named `meil` during the transition from the original email-auth monitoring product. The Go module, binary, CLI command, database names, and deployment service names intentionally remain `meil` for now.
 
@@ -28,7 +28,7 @@ make build
 
 ## Coolify
 
-The canonical deployment target is `https://recordmaster.kastro.is`. The legacy hostname `https://meil.kastro.is` should remain available as a redirect during the transition. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.
+The canonical deployment target is `https://dmark.is`. The legacy hostname `https://recordmaster.kastro.is` should remain available as a redirect during the transition. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.
 
 ## Planning
 

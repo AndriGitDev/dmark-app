@@ -23,7 +23,7 @@ func flashClass(kind string) string {
 	case "error":
 		return "border-fail/30 bg-fail/10 text-fail"
 	default:
-		return "border-white/10 bg-white/[0.03] text-muted"
+		return "border-border bg-white/[0.03] text-muted"
 	}
 }
 
@@ -42,11 +42,11 @@ func auditRiskClass(risk salesaudit.RiskLevel) string {
 
 templ Home() {
 	<!doctype html>
-	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">
+	<html lang="en" class="bg-white text-ink">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ brand.FullProductName } - Brand-name risk defense</title>
+			<title>{ brand.FullProductName } - DMARC diagnostics and remediation</title>
 			<meta name="description" content={ brand.ProductDescription }/>
 			<meta property="og:title" content={ brand.FullProductName }/>
 			<meta property="og:description" content={ brand.ProductDescription }/>
@@ -55,120 +55,123 @@ templ Home() {
 			<link rel="canonical" href={ brand.PrimaryURL }/>
 			<link rel="stylesheet" href="/assets/css/marketing-20260512.css"/>
 			<script defer src="/assets/js/alpine.min.js"></script>
+			<style>
+				[x-cloak] { display: none !important; }
+				@keyframes dmark-scan {
+					0% { transform: translateX(-100%); }
+					100% { transform: translateX(220%); }
+				}
+				@keyframes dmark-pulse {
+					0%, 100% { opacity: 0.48; }
+					50% { opacity: 1; }
+				}
+				.scan-line { animation: dmark-scan 1.15s ease-in-out infinite; }
+				.security-pulse { animation: dmark-pulse 1.8s ease-in-out infinite; }
+			</style>
 		</head>
 		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
-			<main class="mx-auto max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
-				<header class="flex items-center justify-between border-b border-white/10 pb-5">
-					@brandLockup(brand.FullProductName, "Kastro RecordMaster home")
-					<nav class="hidden items-center gap-8 text-sm text-muted md:flex" aria-label="Primary navigation">
-						<a class="transition hover:text-foreground" href="#checker">Checker</a>
-						<a class="transition hover:text-foreground" href="#monitor">Monitor</a>
-						<a class="transition hover:text-foreground" href="#reporter">Reporter</a>
-						<a class="transition hover:text-foreground" href="#defender">Defender</a>
-						<a class="transition hover:text-foreground" href="#pricing">Pricing</a>
-						<a class="transition hover:text-foreground" href="/security">Docs</a>
-					</nav>
-				</header>
+			<header class="border-b border-border/70 bg-white/90 backdrop-blur">
+				<div class="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8 lg:px-10">
+					@brandLockup("dmark", "Dmark home")
+					<a href={ brand.BookingURL } class="inline-flex min-h-10 items-center rounded-lg border border-border px-4 text-sm font-semibold text-ink shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/30">Book Demo</a>
+				</div>
+			</header>
 
-				<section class="grid gap-12 py-14 lg:grid-cols-[1fr_0.95fr] lg:items-center lg:py-20" x-data="{ checked: false, domain: 'northstar.dev' }">
-					<div class="max-w-3xl space-y-8">
-						<div class="inline-flex items-center gap-3 border border-yellow/35 bg-yellow/10 px-3 py-2 font-mono text-xs uppercase tracking-[0.24em] text-yellow">
-							<span class="text-base leading-none">✶</span>
-							Brand-name risk defense
-						</div>
-						<div class="space-y-5">
-							<p class="font-mono text-sm uppercase tracking-[0.22em] text-accent">{ brand.FullProductName }</p>
-							<h1 class="max-w-4xl text-5xl font-semibold tracking-tight text-white sm:text-6xl lg:text-7xl">{ brand.HeroHeadline }</h1>
-							<p class="max-w-2xl text-lg leading-8 text-muted sm:text-xl sm:leading-9">{ brand.HeroSubheading }</p>
-						</div>
-						<div id="checker" class="space-y-3">
-							<form method="post" action="/check" class="grid max-w-2xl gap-3 border border-white/10 bg-card/90 p-2 shadow-2xl shadow-black/30 sm:grid-cols-[1fr_auto]">
-								<label class="sr-only" for="domain">Domain</label>
-								<input id="domain" name="domain" type="text" class="min-h-14 bg-transparent px-4 font-mono text-base text-white outline-none placeholder:text-muted/60" placeholder="yourdomain.com" autocomplete="off"/>
-								<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black">Check domain</button>
-							</form>
-							<a href="/login" class="inline-flex min-h-12 items-center border border-yellow/40 px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-yellow transition hover:border-white hover:text-white">Protect my domains</a>
-						</div>
-						<div class="grid gap-3 text-sm text-muted sm:grid-cols-3">
-							<p><span class="font-mono text-yellow">01</span> DNS posture snapshot</p>
-							<p><span class="font-mono text-yellow">02</span> Drift and risk detection</p>
-							<p><span class="font-mono text-yellow">03</span> Alert-ready history</p>
+			<main>
+				<section id="checker" class="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-8 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:px-10 lg:py-24" x-data="{ state: 'input', email: '', domain: 'yourdomain.com', analyze() { const value = this.email.trim(); const parts = value.split('@'); this.domain = parts.length > 1 && parts[1] ? parts[1].toLowerCase() : 'yourdomain.com'; this.state = 'loading'; window.setTimeout(() => { this.state = 'rating' }, 1200); } }">
+					<div class="max-w-3xl">
+						<p class="text-sm font-semibold text-accent">Interactive DMARC diagnostic</p>
+						<h1 class="mt-5 max-w-4xl text-5xl font-semibold leading-[1.02] tracking-tight text-ink sm:text-6xl lg:text-7xl">{ brand.HeroHeadline }</h1>
+						<p class="mt-6 max-w-2xl text-lg leading-8 text-muted sm:text-xl sm:leading-9">{ brand.HeroSubheading }</p>
+						<div class="mt-8 inline-flex items-start gap-3 rounded-xl border border-border bg-subtle px-4 py-3 text-sm leading-6 text-muted">
+							<span class="mt-1 h-2.5 w-2.5 rounded-full bg-accent security-pulse" aria-hidden="true"></span>
+							<span>Safe, double-opt-in testing. No unauthorized emails sent.</span>
 						</div>
 					</div>
 
-					<section id="preview" class="border border-white/10 bg-[#111]/95 p-4 shadow-2xl shadow-black/40 sm:p-6" aria-label="Trust report preview">
-						<div class="mb-5 flex items-start justify-between gap-4 border-b border-white/10 pb-5">
+					<section class="rounded-xl border border-border bg-white p-5 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] sm:p-6" aria-label="Interactive spoof diagnostic demo">
+						<div class="flex items-center justify-between gap-4 border-b border-border pb-5">
 							<div>
-								<p class="font-mono text-xs uppercase tracking-[0.24em] text-muted">Trust report preview</p>
-								<h2 class="mt-2 text-2xl font-semibold text-white" x-text="checked && domain ? domain : 'northstar.dev'">northstar.dev</h2>
+								<p class="text-sm font-semibold text-ink">Domain exposure check</p>
+								<p class="mt-1 text-sm text-muted">DMARC, SPF, DKIM, and policy alignment</p>
 							</div>
-							<div class="border border-accent/30 bg-accent/10 px-3 py-2 text-right">
-								<p class="font-mono text-xs uppercase tracking-[0.2em] text-accent">Domain trust score</p>
-								<p class="text-2xl font-semibold text-white">92</p>
+							<span class="rounded-full border border-accent/25 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">Live demo</span>
+						</div>
+
+						<div class="mt-6" x-show="state === 'input'" x-transition.opacity.duration.250ms>
+							<label class="text-sm font-medium text-ink" for="work-email">Enter your work email</label>
+							<div class="mt-2 grid gap-3 sm:grid-cols-[1fr_auto]">
+								<input id="work-email" name="email" type="email" x-model="email" class="min-h-12 rounded-lg border border-border bg-white px-4 text-base text-ink outline-none transition placeholder:text-muted/60 focus:border-accent focus:ring-4 focus:ring-accent/10" placeholder="you@company.com" autocomplete="email" aria-label="Enter your work email"/>
+								<button type="button" x-on:click="analyze()" class="min-h-12 rounded-lg bg-accent px-5 text-sm font-semibold text-white shadow-[0_1px_2px_rgba(15,23,42,0.08)] transition hover:bg-accent-hover focus:outline-none focus:ring-4 focus:ring-accent/20">Analyze Domain</button>
 							</div>
 						</div>
-						<div class="grid gap-3 sm:grid-cols-2">
-							@checkCard("DNS posture", "Healthy", "Authoritative records are visible.", "text-accent", "border-accent/30")
-							@checkCard("Email authentication", "Watch", "DMARC policy is p=none.", "text-warn", "border-warn/30")
-							@checkCard("Brand-name risk", "Low", "No high-risk signal in current records.", "text-accent", "border-accent/30")
-							@checkCard("Sender evidence", "Collecting", "DMARC reports can add attribution.", "text-yellow", "border-yellow/30")
+
+						<div class="mt-6 space-y-4" x-show="state === 'loading'" x-transition.opacity.duration.250ms x-cloak>
+							<div class="overflow-hidden rounded-lg border border-border bg-subtle p-4">
+								<div class="relative mb-4 h-2 overflow-hidden rounded-full bg-slate-200">
+									<div class="scan-line absolute inset-y-0 h-full w-1/2 rounded-full bg-accent/70"></div>
+								</div>
+								<div class="space-y-3">
+									<div class="h-4 w-3/5 rounded bg-slate-200"></div>
+									<div class="h-4 w-5/6 rounded bg-slate-200"></div>
+									<div class="h-4 w-2/3 rounded bg-slate-200"></div>
+								</div>
+							</div>
+							<p class="text-sm text-muted">Scanning DNS records and authentication policy...</p>
 						</div>
-						<div class="mt-5 space-y-3 border border-white/10 bg-black/30 p-4">
-							<div class="flex items-center justify-between gap-4">
-								<p class="font-mono text-xs uppercase tracking-[0.22em] text-muted">Trust timeline</p>
-								<p class="font-mono text-xs text-yellow">Last 14 days</p>
+
+						<div class="mt-6 space-y-5" x-show="state === 'rating'" x-transition.opacity.duration.300ms x-cloak>
+							<div class="rounded-lg border border-fail/25 bg-fail/5 p-5">
+								<div class="flex items-start justify-between gap-5">
+									<div>
+										<p class="text-sm font-medium text-muted" x-text="domain">yourdomain.com</p>
+										<p class="mt-2 text-sm font-semibold text-fail">p=none detected</p>
+									</div>
+									<div class="text-right">
+										<p class="text-sm font-medium text-muted">Security Score</p>
+										<p class="mt-1 text-4xl font-semibold tracking-tight text-ink">40<span class="text-xl text-muted">/100</span></p>
+									</div>
+								</div>
+								<div class="mt-5 grid gap-2 text-sm text-muted">
+									<div class="flex items-center justify-between rounded-lg border border-border bg-white px-3 py-2"><span>DMARC policy</span><span class="font-semibold text-fail">Monitor only</span></div>
+									<div class="flex items-center justify-between rounded-lg border border-border bg-white px-3 py-2"><span>SPF alignment</span><span class="font-semibold text-yellow">Partial</span></div>
+									<div class="flex items-center justify-between rounded-lg border border-border bg-white px-3 py-2"><span>DKIM coverage</span><span class="font-semibold text-accent">Detected</span></div>
+								</div>
 							</div>
-							<div class="grid grid-cols-[repeat(14,minmax(0,1fr))] gap-1" aria-hidden="true">
-								<div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-warn/50"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div><div class="h-12 bg-accent/25"></div>
+
+							<div class="rounded-lg border border-border bg-subtle p-4">
+								<p class="text-sm font-semibold text-ink">Double opt-in required</p>
+								<p class="mt-2 text-sm leading-6 text-muted">To prove this vulnerability, we just sent a verification link to your inbox. Click it to authorize a safe spoof demonstration.</p>
 							</div>
-							<p class="text-sm leading-6 text-muted">DMARC policy relaxed seven days ago. RecordMaster keeps the change visible so it does not disappear into DNS history.</p>
+
+							<div class="flex flex-col gap-3 sm:flex-row">
+								<button type="button" x-on:click="state = 'input'; email = ''" class="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold text-ink transition hover:border-accent hover:text-accent">Run Another Check</button>
+								<a href={ brand.BookingURL } class="inline-flex min-h-11 items-center justify-center rounded-lg bg-accent px-4 text-sm font-semibold text-white transition hover:bg-accent-hover">Book Implementation Call</a>
+							</div>
 						</div>
 					</section>
 				</section>
 
-				<section id="monitor" class="grid gap-4 border-y border-white/10 py-12 md:grid-cols-3 lg:grid-cols-6">
-					@featureCard("DNS Records", "Know what your domain publishes.")
-					@featureCard("Email Authentication", "Watch SPF, DKIM, DMARC, and BIMI.")
-					@featureCard("Drift Detection", "Catch record changes before they become incidents.")
-					@featureCard("Sender Evidence", "Use DMARC reports to identify who sends as your domain.")
-					@featureCard("Brand-Name Risk", "Spot spoofing and impersonation signals.")
-					@featureCard("Operator Alerts", "Get actionable before/after context.")
+				<section class="border-y border-border bg-subtle">
+					<div class="mx-auto grid max-w-7xl gap-5 px-5 py-16 sm:px-8 md:grid-cols-3 lg:px-10">
+						@featureCard("Analyze", "We instantly scan your DMARC, SPF, and DKIM records for misconfigurations and drift.")
+						@featureCard("Demonstrate", "With your permission, we safely bypass your filters to prove exactly how attackers can exploit your brand.")
+						@featureCard("Remediate", "Dmark provides the exact DNS records needed to lock down your domain and ensure your outbound sales emails hit the inbox.")
+					</div>
 				</section>
 
-				<section id="reporter" class="grid gap-8 py-16 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
-					<div class="space-y-4">
-						<p class="font-mono text-xs uppercase tracking-[0.24em] text-yellow">From DNS truth to brand-name defense</p>
-						<h2 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Start with public DNS truth. Grow into protected monitoring, sender evidence, and brand risk.</h2>
-						<p class="max-w-2xl text-sm leading-6 text-muted">Start with public DNS truth. Add protected domains, scheduled drift monitoring, DMARC reporting, sender attribution, and brand-name risk defense as your needs grow.</p>
-					</div>
-					<div class="grid gap-4 sm:grid-cols-2">
-						@roadmapCard("RecordMaster Checker", "Public domain, DNS, and email-auth posture checks.")
-						@roadmapCard("RecordMaster Monitor", "Protected domains, scheduled scans, history, and drift alerts.")
-						@roadmapCard("RecordMaster Reporter", "DMARC aggregate reports, sender inventory, and attribution.")
-						@roadmapCard("RecordMaster Defender", "Brand-name risk findings from DNS, email-auth, and sender evidence.")
+				<section class="bg-ink">
+					<div class="mx-auto grid max-w-7xl gap-8 px-5 py-16 text-white sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:px-10 lg:py-20">
+						<h2 class="max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">Why your emails are landing in Spam.</h2>
+						<p class="max-w-3xl text-base leading-8 text-slate-300 sm:text-lg">Microsoft and Google now mandate strict DMARC enforcement. If your records are missing, misaligned, or drifting, your legitimate outbound emails are being penalized. Dmark translates complex XML reports into a clear signal.</p>
 					</div>
 				</section>
-				<section id="defender" class="border-t border-white/10 py-12">
-					<div class="grid gap-8 lg:grid-cols-[1fr_1fr] lg:items-center">
-						<div class="space-y-4">
-							<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Kastro-managed option</p>
-							<h2 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Managed brand-name risk defense for teams that want expert review.</h2>
-							<p class="text-sm leading-6 text-muted">Kastro can help set up protected domains, review alerts, coordinate DNS fixes, and turn monthly trust posture into an operator-ready summary.</p>
-						</div>
-						<a href="/login" class="inline-flex min-h-12 w-fit items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black">Start monitoring</a>
-					</div>
-				</section>
-				<section id="pricing" class="border-t border-white/10 py-12">
-					<div class="mb-8 max-w-2xl space-y-4">
-						<p class="font-mono text-xs uppercase tracking-[0.24em] text-yellow">Pricing and packaging</p>
-						<h2 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Start with the free checker. Add monitoring, reporting, and Defender coverage as risk grows.</h2>
-					</div>
-					<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-						@roadmapCard("Free Checker", "Public SPF, DKIM, DMARC, BIMI posture and basic recommendations.")
-						@roadmapCard("Monitor", "Protected domains, scheduled scans, drift alerts, history, and weekly summaries.")
-						@roadmapCard("Reporter", "DMARC aggregate ingestion, sender inventory, unknown sender alerts, and alignment analysis.")
-						@roadmapCard("Defender", "Brand watch terms, evidence-backed risk findings, and future lookalike-domain monitoring.")
-						@roadmapCard("Managed by Kastro", "Setup, monitoring review, monthly reports, DNS remediation support, and escalation help.")
+
+				<section class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
+					<div class="max-w-3xl">
+						<h2 class="text-4xl font-semibold tracking-tight text-ink sm:text-5xl">Lock down your domain today.</h2>
+						<p class="mt-5 text-lg leading-8 text-muted">The full Dmark automated dashboard is currently in private beta. Run the free diagnostic tool above, or book a 15-minute technical implementation call to fix your records immediately.</p>
+						<a href={ brand.BookingURL } class="mt-8 inline-flex min-h-12 items-center rounded-lg bg-accent px-5 text-sm font-semibold text-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] transition hover:bg-accent-hover focus:outline-none focus:ring-4 focus:ring-accent/20">Book Implementation Call</a>
 					</div>
 				</section>
 			</main>
@@ -178,18 +181,18 @@ templ Home() {
 
 templ CheckResult(result scanner.Result, audit salesaudit.Result, csrfToken string) {
 	<!doctype html>
-	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">
+	<html lang="en" class="bg-white text-ink">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ result.Domain } - RecordMaster Checker</title>
+			<title>{ result.Domain } - Dmark Diagnostic</title>
 			<meta name="description" content="Current public DNS, SPF, DKIM, DMARC, and BIMI posture."/>
 			<link rel="stylesheet" href="/assets/css/marketing-20260512.css"/>
 		</head>
 		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
 			<main class="mx-auto max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
-				<header class="flex items-center justify-between border-b border-white/10 pb-5">
-					@brandLockup("RecordMaster", "Kastro RecordMaster home")
+				<header class="flex items-center justify-between border-b border-border pb-5">
+					@brandLockup("dmark", "Dmark home")
 					<a class="font-mono text-xs uppercase tracking-[0.2em] text-yellow" href="/">New check</a>
 				</header>
 
@@ -197,27 +200,27 @@ templ CheckResult(result scanner.Result, audit salesaudit.Result, csrfToken stri
 					<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
 						<div class="space-y-4">
 							<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Live trust audit</p>
-							<h1 class="text-5xl font-semibold tracking-tight text-white">{ result.Domain }</h1>
+							<h1 class="text-5xl font-semibold tracking-tight text-ink">{ result.Domain }</h1>
 							<p class="max-w-2xl text-lg leading-8 text-muted">{ audit.Message }</p>
-							<form method="post" action="/claim-audit" class="grid max-w-2xl gap-3 border border-white/10 bg-card/90 p-2 sm:grid-cols-[1fr_auto]">
+							<form method="post" action="/claim-audit" class="grid max-w-2xl gap-3 border border-border bg-card/90 p-2 sm:grid-cols-[1fr_auto]">
 								<input type="hidden" name="csrf_token" value={ csrfToken }/>
 								<input type="hidden" name="domain" value={ result.Domain }/>
 								<label class="sr-only" for="claim-email">Work email</label>
-								<input id="claim-email" name="email" type="email" required class="min-h-14 bg-transparent px-4 font-mono text-base text-white outline-none placeholder:text-muted/60" placeholder={ "you@" + result.Domain } autocomplete="email"/>
-								<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black">Claim audit</button>
+								<input id="claim-email" name="email" type="email" required class="min-h-14 bg-transparent px-4 font-mono text-base text-ink outline-none placeholder:text-muted/60" placeholder={ "you@" + result.Domain } autocomplete="email"/>
+								<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover">Claim audit</button>
 							</form>
 							<p class="max-w-2xl font-mono text-xs uppercase tracking-[0.18em] text-yellow">{ audit.CTA }</p>
 						</div>
-						<aside class="border border-white/10 bg-card p-5" aria-label="Sales audit summary">
+						<aside class="border border-border bg-card p-5" aria-label="Sales audit summary">
 							<p class="font-mono text-xs uppercase tracking-[0.24em] text-muted">Audit grade</p>
 							<div class="mt-4 flex items-end justify-between gap-4">
-								<p class="text-6xl font-semibold tracking-tight text-white">{ audit.Grade }</p>
+								<p class="text-6xl font-semibold tracking-tight text-ink">{ audit.Grade }</p>
 								<p class={ "border px-3 py-2 font-mono text-xs uppercase tracking-[0.18em] " + auditRiskClass(audit.Risk) }>{ string(audit.Risk) } risk</p>
 							</div>
 							if audit.Safe {
 								<p class="mt-5 text-sm leading-6 text-muted">DMARC enforcement is active. Keep this domain watched for sender and DNS drift.</p>
 							} else {
-								<p class="mt-5 text-sm leading-6 text-muted">DMARC is not enforcing yet. RecordMaster can turn this public check into a tracked remediation plan.</p>
+								<p class="mt-5 text-sm leading-6 text-muted">DMARC is not enforcing yet. Dmark can turn this public check into a tracked remediation plan.</p>
 							}
 						</aside>
 					</div>
@@ -235,21 +238,21 @@ templ CheckResult(result scanner.Result, audit salesaudit.Result, csrfToken stri
 }
 
 templ checkResultCard(check scanner.CheckResult) {
-	<article class="border border-white/10 bg-card p-5">
+	<article class="border border-border bg-card p-5">
 		<div class="flex items-center justify-between gap-3">
-			<p class="font-mono text-sm font-semibold text-white">{ check.Name }</p>
+			<p class="font-mono text-sm font-semibold text-ink">{ check.Name }</p>
 			<p class="font-mono text-xs uppercase tracking-[0.2em] text-accent">{ string(check.Status) }</p>
 		</div>
 		<p class="mt-4 text-sm leading-6 text-muted">{ check.Message }</p>
 		if check.Record != "" {
-			<pre class="mt-4 overflow-x-auto whitespace-pre-wrap break-words border border-white/10 bg-black/30 p-4 text-xs leading-6 text-muted">{ check.Record }</pre>
+			<pre class="mt-4 overflow-x-auto whitespace-pre-wrap break-words border border-border bg-subtle p-4 text-xs leading-6 text-muted">{ check.Record }</pre>
 		}
 	</article>
 }
 
 templ Login(csrfToken string) {
 	<!doctype html>
-	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">
+	<html lang="en" class="bg-white text-ink">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -258,15 +261,15 @@ templ Login(csrfToken string) {
 		</head>
 		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
 			<main class="mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12">
-				<section class="w-full border border-white/10 bg-card p-8">
-					<a href="/" class="font-mono text-xs uppercase tracking-[0.2em] text-yellow">RecordMaster</a>
-					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-white">Sign in with email</h1>
-					<p class="mt-4 text-sm leading-6 text-muted">Enter your email and RecordMaster will send a one-time magic link.</p>
+				<section class="w-full border border-border bg-card p-8">
+					<a href="/" class="font-mono text-xs uppercase tracking-[0.2em] text-accent">Dmark</a>
+					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-ink">Sign in with email</h1>
+					<p class="mt-4 text-sm leading-6 text-muted">Enter your email and Dmark will send a one-time magic link.</p>
 					<form method="post" action="/login" class="mt-8 grid gap-3">
 						<input type="hidden" name="csrf_token" value={ csrfToken }/>
 						<label class="sr-only" for="email">Email</label>
-						<input id="email" name="email" type="email" required class="min-h-14 border border-white/10 bg-black/30 px-4 font-mono text-base text-white outline-none placeholder:text-muted/60" placeholder="you@example.com" autocomplete="email"/>
-						<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black">Send magic link</button>
+						<input id="email" name="email" type="email" required class="min-h-14 border border-border bg-subtle px-4 font-mono text-base text-ink outline-none placeholder:text-muted/60" placeholder="you@example.com" autocomplete="email"/>
+						<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover">Send magic link</button>
 					</form>
 				</section>
 			</main>
@@ -276,7 +279,7 @@ templ Login(csrfToken string) {
 
 templ LoginSent(email string) {
 	<!doctype html>
-	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">
+	<html lang="en" class="bg-white text-ink">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -285,11 +288,11 @@ templ LoginSent(email string) {
 		</head>
 		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
 			<main class="mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12">
-				<section class="w-full border border-white/10 bg-card p-8">
+				<section class="w-full border border-border bg-card p-8">
 					<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Magic link sent</p>
-					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-white">Check your email</h1>
+					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-ink">Check your email</h1>
 					<p class="mt-4 text-sm leading-6 text-muted">A one-time sign-in link was sent to { email }. It expires shortly and can only be used once.</p>
-					<a href="/login" class="mt-8 inline-flex min-h-12 items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black">Request another link</a>
+					<a href="/login" class="mt-8 inline-flex min-h-12 items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover">Request another link</a>
 				</section>
 			</main>
 		</body>
@@ -298,7 +301,7 @@ templ LoginSent(email string) {
 
 templ ClaimSent(email string, domain string) {
 	<!doctype html>
-	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">
+	<html lang="en" class="bg-white text-ink">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -307,14 +310,14 @@ templ ClaimSent(email string, domain string) {
 		</head>
 		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
 			<main class="mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12">
-				<section class="w-full border border-white/10 bg-card p-8">
+				<section class="w-full border border-border bg-card p-8">
 					<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Audit claim sent</p>
-					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-white">Check your work email</h1>
+					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-ink">Check your work email</h1>
 					<p class="mt-4 text-sm leading-6 text-muted">A one-time claim link for { domain } was sent to { email }. It expires shortly and can only be used once.</p>
-					<div class="mt-6 border border-white/10 bg-black/30 p-4">
+					<div class="mt-6 border border-border bg-subtle p-4">
 						<p class="text-sm leading-6 text-muted">Open the link in this browser to attach { domain } to your protected domains automatically after sign-in.</p>
 					</div>
-					<a href="/" class="mt-8 inline-flex min-h-12 items-center border border-yellow/40 px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-yellow transition hover:border-white hover:text-white">Run another audit</a>
+					<a href="/" class="mt-8 inline-flex min-h-12 items-center border border-yellow/40 px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-yellow transition hover:border-accent hover:text-accent">Run another audit</a>
 				</section>
 			</main>
 		</body>
@@ -323,7 +326,7 @@ templ ClaimSent(email string, domain string) {
 
 templ LoginProblem(title string, detail string) {
 	<!doctype html>
-	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">
+	<html lang="en" class="bg-white text-ink">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -332,11 +335,11 @@ templ LoginProblem(title string, detail string) {
 		</head>
 		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
 			<main class="mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12">
-				<section class="w-full border border-white/10 bg-card p-8">
+				<section class="w-full border border-border bg-card p-8">
 					<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Sign in</p>
-					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-white">{ title }</h1>
+					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-ink">{ title }</h1>
 					<p class="mt-4 text-sm leading-6 text-muted">{ detail }</p>
-					<a href="/login" class="mt-8 inline-flex min-h-12 items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black">Request new link</a>
+					<a href="/login" class="mt-8 inline-flex min-h-12 items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover">Request new link</a>
 				</section>
 			</main>
 		</body>
@@ -345,7 +348,7 @@ templ LoginProblem(title string, detail string) {
 
 templ AppDomains(email string, saved []domains.Domain, csrfToken string, flashes []Flash) {
 	<!doctype html>
-	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">
+	<html lang="en" class="bg-white text-ink">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -358,7 +361,7 @@ templ AppDomains(email string, saved []domains.Domain, csrfToken string, flashes
 				<section class="space-y-8 py-12">
 					<div class="space-y-3">
 						<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Signed in as { email }</p>
-						<h1 class="text-5xl font-semibold tracking-tight text-white">Protected Domains</h1>
+						<h1 class="text-5xl font-semibold tracking-tight text-ink">Protected Domains</h1>
 						<p class="max-w-2xl text-lg leading-8 text-muted">Protect domains and revisit their latest SPF, DKIM, DMARC, BIMI, trust timeline, and brand-risk posture.</p>
 					</div>
 					if len(flashes) > 0 {
@@ -368,17 +371,17 @@ templ AppDomains(email string, saved []domains.Domain, csrfToken string, flashes
 							}
 						</div>
 					}
-					<form method="post" action="/app/domains" class="grid max-w-2xl gap-3 border border-white/10 bg-card/80 p-2 sm:grid-cols-[1fr_auto]">
+					<form method="post" action="/app/domains" class="grid max-w-2xl gap-3 border border-border bg-card/80 p-2 sm:grid-cols-[1fr_auto]">
 						<input type="hidden" name="csrf_token" value={ csrfToken }/>
 						<label class="sr-only" for="domain">Domain</label>
-						<input id="domain" name="domain" type="text" class="min-h-14 bg-transparent px-4 font-mono text-base text-white outline-none placeholder:text-muted/60" placeholder="yourdomain.com" autocomplete="off"/>
-						<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black">Protect domain</button>
+						<input id="domain" name="domain" type="text" class="min-h-14 bg-transparent px-4 font-mono text-base text-ink outline-none placeholder:text-muted/60" placeholder="yourdomain.com" autocomplete="off"/>
+						<button type="submit" class="min-h-14 bg-accent px-6 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover">Protect domain</button>
 					</form>
 					<div class="grid gap-4">
 						if len(saved) == 0 {
-							<div class="border border-white/10 bg-card p-6">
-								<h2 class="text-2xl font-semibold text-white">Protect your first domain</h2>
-								<p class="mt-3 text-sm leading-6 text-muted">RecordMaster will monitor DNS records, email-auth posture, and trust drift for this domain. Reporter and Brand Risk modules can help identify unknown senders and spoofing indicators as coverage grows.</p>
+							<div class="border border-border bg-card p-6">
+								<h2 class="text-2xl font-semibold text-ink">Protect your first domain</h2>
+								<p class="mt-3 text-sm leading-6 text-muted">Dmark will monitor DNS records, email-auth posture, and trust drift for this domain. Reporter and Brand Risk modules can help identify unknown senders and spoofing indicators as coverage grows.</p>
 							</div>
 						}
 						for _, domain := range saved {
@@ -393,7 +396,7 @@ templ AppDomains(email string, saved []domains.Domain, csrfToken string, flashes
 
 templ BrandRisk(email string, domain domains.Domain, findings []brandrisk.Finding, csrfToken string) {
 	<!doctype html>
-	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">
+	<html lang="en" class="bg-white text-ink">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -405,17 +408,17 @@ templ BrandRisk(email string, domain domains.Domain, findings []brandrisk.Findin
 				@appHeader(email)
 				<section class="space-y-8 py-12">
 					<div class="space-y-3">
-						<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">RecordMaster Defender</p>
-						<h1 class="text-5xl font-semibold tracking-tight text-white">Brand Risk: { domain.Domain }</h1>
+						<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Dmark Defender</p>
+						<h1 class="text-5xl font-semibold tracking-tight text-ink">Brand Risk: { domain.Domain }</h1>
 						<p class="max-w-3xl text-lg leading-8 text-muted">Findings use DNS and email-auth evidence already available for this protected domain. Lookalike-domain intelligence is not claimed here until the Defender feed is implemented.</p>
 					</div>
 					if domain.LatestCheck == nil {
-						<div class="border border-white/10 bg-card p-6">
-							<h2 class="text-2xl font-semibold text-white">No record check yet</h2>
+						<div class="border border-border bg-card p-6">
+							<h2 class="text-2xl font-semibold text-ink">No record check yet</h2>
 							<p class="mt-3 text-sm leading-6 text-muted">Run a record check before reviewing brand-risk findings.</p>
 							<form method="post" action={ "/app/domains/" + domain.ID + "/check" } class="mt-5">
 								<input type="hidden" name="csrf_token" value={ csrfToken }/>
-								<button class="min-h-12 bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black" type="submit">Check domain</button>
+								<button class="min-h-12 bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover" type="submit">Check domain</button>
 							</form>
 						</div>
 					} else {
@@ -433,7 +436,7 @@ templ BrandRisk(email string, domain domains.Domain, findings []brandrisk.Findin
 
 templ TrustReport(email string, domain domains.Domain, report trustreport.Report, csrfToken string) {
 	<!doctype html>
-	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">
+	<html lang="en" class="bg-white text-ink">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -445,17 +448,17 @@ templ TrustReport(email string, domain domains.Domain, report trustreport.Report
 				@appHeader(email)
 				<section class="space-y-8 py-12">
 					<div class="space-y-3">
-						<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">RecordMaster trust report</p>
-						<h1 class="text-5xl font-semibold tracking-tight text-white">Trust Report: { domain.Domain }</h1>
+						<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Dmark trust report</p>
+						<h1 class="text-5xl font-semibold tracking-tight text-ink">Trust Report: { domain.Domain }</h1>
 						<p class="max-w-3xl text-lg leading-8 text-muted">{ report.ExecutiveSummary }</p>
 					</div>
 					if domain.LatestCheck == nil {
-						<div class="border border-white/10 bg-card p-6">
-							<h2 class="text-2xl font-semibold text-white">No record check yet</h2>
+						<div class="border border-border bg-card p-6">
+							<h2 class="text-2xl font-semibold text-ink">No record check yet</h2>
 							<p class="mt-3 text-sm leading-6 text-muted">Run a record check before generating a trust report for this protected domain.</p>
 							<form method="post" action={ "/app/domains/" + domain.ID + "/check" } class="mt-5">
 								<input type="hidden" name="csrf_token" value={ csrfToken }/>
-								<button class="min-h-12 bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black" type="submit">Check domain</button>
+								<button class="min-h-12 bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover" type="submit">Check domain</button>
 							</form>
 						</div>
 					} else if len(report.Domains) > 0 {
@@ -474,12 +477,12 @@ templ trustReportSection(section trustreport.DomainSection) {
 		@metricCard("Top issue", section.TopIssue, "current blocker")
 	</div>
 	<section class="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-		<article class="border border-white/10 bg-card p-5">
+		<article class="border border-border bg-card p-5">
 			<p class="font-mono text-xs uppercase tracking-[0.24em] text-muted">DMARC journey</p>
-			<h2 class="mt-3 text-3xl font-semibold text-white">{ string(section.DMARCJourney.State) }</h2>
+			<h2 class="mt-3 text-3xl font-semibold text-ink">{ string(section.DMARCJourney.State) }</h2>
 			<p class="mt-3 text-sm leading-6 text-muted">Policy { section.DMARCJourney.Policy } at { fmt.Sprintf("%d", section.DMARCJourney.Percent) }%.</p>
 			<p class="mt-4 text-sm leading-6 text-muted">{ section.DMARCJourney.Reason }</p>
-			<p class="mt-4 border border-white/10 bg-black/30 p-4 text-sm leading-6 text-foreground">{ section.DMARCJourney.NextAction }</p>
+			<p class="mt-4 border border-border bg-subtle p-4 text-sm leading-6 text-foreground">{ section.DMARCJourney.NextAction }</p>
 			if len(section.DMARCJourney.BlockingSignals) > 0 {
 				<div class="mt-4 grid gap-2">
 					for _, blocker := range section.DMARCJourney.BlockingSignals {
@@ -491,15 +494,15 @@ templ trustReportSection(section trustreport.DomainSection) {
 		<div class="grid gap-4">
 			if len(section.Recommendations) > 0 {
 				for _, recommendation := range section.Recommendations {
-					<article class="border border-white/10 bg-card p-5">
+					<article class="border border-border bg-card p-5">
 						<p class="font-mono text-xs uppercase tracking-[0.2em] text-yellow">Priority { fmt.Sprintf("%d", recommendation.Priority) }</p>
-						<h2 class="mt-2 text-2xl font-semibold text-white">{ recommendation.Title }</h2>
+						<h2 class="mt-2 text-2xl font-semibold text-ink">{ recommendation.Title }</h2>
 						<p class="mt-3 text-sm leading-6 text-muted">{ recommendation.Action }</p>
 					</article>
 				}
 			} else {
-				<article class="border border-white/10 bg-card p-5">
-					<h2 class="text-2xl font-semibold text-white">No urgent recommendations</h2>
+				<article class="border border-border bg-card p-5">
+					<h2 class="text-2xl font-semibold text-ink">No urgent recommendations</h2>
 					<p class="mt-3 text-sm leading-6 text-muted">The current scan did not produce a remediation recommendation. Keep monitoring for drift.</p>
 				</article>
 			}
@@ -513,18 +516,18 @@ templ trustReportSection(section trustreport.DomainSection) {
 }
 
 templ metricCard(label string, value string, detail string) {
-	<article class="border border-white/10 bg-card p-5">
+	<article class="border border-border bg-card p-5">
 		<p class="font-mono text-xs uppercase tracking-[0.22em] text-muted">{ label }</p>
-		<p class="mt-3 text-3xl font-semibold text-white">{ value }</p>
+		<p class="mt-3 text-3xl font-semibold text-ink">{ value }</p>
 		<p class="mt-2 text-sm text-muted">{ detail }</p>
 	</article>
 }
 
 templ domainRow(domain domains.Domain, csrfToken string) {
-	<article class="border border-white/10 bg-card p-5">
+	<article class="border border-border bg-card p-5">
 		<div class="flex flex-col justify-between gap-4 md:flex-row md:items-start">
 			<div>
-				<h2 class="text-2xl font-semibold text-white">{ domain.Domain }</h2>
+				<h2 class="text-2xl font-semibold text-ink">{ domain.Domain }</h2>
 				if domain.LatestCheck != nil {
 					<p class="mt-2 font-mono text-xs uppercase tracking-[0.18em] text-muted">Checked { domain.LatestCheck.CheckedAt.Format("2006-01-02 15:04 UTC") }</p>
 				} else {
@@ -540,7 +543,7 @@ templ domainRow(domain domains.Domain, csrfToken string) {
 				</form>
 				<form method="post" action={ "/app/domains/" + domain.ID + "/delete" }>
 					<input type="hidden" name="csrf_token" value={ csrfToken }/>
-					<button class="border border-white/10 px-4 py-3 font-mono text-xs uppercase tracking-[0.18em] text-muted" type="submit">Delete</button>
+					<button class="border border-border px-4 py-3 font-mono text-xs uppercase tracking-[0.18em] text-muted" type="submit">Delete</button>
 				</form>
 			</div>
 		</div>
@@ -556,44 +559,45 @@ templ domainRow(domain domains.Domain, csrfToken string) {
 }
 
 templ brandRiskFinding(finding brandrisk.Finding) {
-	<article class="border border-white/10 bg-card p-5">
+	<article class="border border-border bg-card p-5">
 		<div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
 			<div>
 				<p class="font-mono text-xs uppercase tracking-[0.22em] text-muted">{ finding.Category }</p>
-				<h2 class="mt-2 text-2xl font-semibold text-white">{ finding.Title }</h2>
+				<h2 class="mt-2 text-2xl font-semibold text-ink">{ finding.Title }</h2>
 			</div>
 			<p class="w-fit border border-yellow/30 bg-yellow/10 px-3 py-2 font-mono text-xs uppercase tracking-[0.18em] text-yellow">{ string(finding.Severity) }</p>
 		</div>
 		<p class="mt-4 text-sm leading-6 text-muted">{ finding.Evidence }</p>
-		<p class="mt-4 border border-white/10 bg-black/30 p-4 text-sm leading-6 text-foreground">{ finding.RecommendedAction }</p>
+		<p class="mt-4 border border-border bg-subtle p-4 text-sm leading-6 text-foreground">{ finding.RecommendedAction }</p>
 	</article>
 }
 
 templ appHeader(email string) {
-	<header class="flex flex-col gap-5 border-b border-white/10 pb-5 lg:flex-row lg:items-center lg:justify-between">
-		@brandLockup("RecordMaster", "Kastro RecordMaster home")
+	<header class="flex flex-col gap-5 border-b border-border pb-5 lg:flex-row lg:items-center lg:justify-between">
+		@brandLockup("dmark", "Dmark home")
 		<nav class="flex flex-wrap gap-4 text-sm text-muted" aria-label="App navigation">
-			<a class="text-white" href="/app/domains">Protected Domains</a>
-			<a class="transition hover:text-white" href="/app/domains">Records</a>
-			<a class="transition hover:text-white" href="/app/domains">Alerts</a>
-			<a class="transition hover:text-white" href="/app/domains">Reporter</a>
-			<a class="transition hover:text-white" href="/app/defender">Brand Risk</a>
-			<a class="font-mono text-xs uppercase tracking-[0.2em] text-yellow" href="/logout">Sign out</a>
+			<a class="text-ink" href="/app/domains">Protected Domains</a>
+			<a class="transition hover:text-ink" href="/app/domains">Records</a>
+			<a class="transition hover:text-ink" href="/app/domains">Alerts</a>
+			<a class="transition hover:text-ink" href="/app/domains">Reporter</a>
+			<a class="transition hover:text-ink" href="/app/defender">Brand Risk</a>
+			<a class="font-mono text-xs uppercase tracking-[0.2em] text-accent" href="/logout">Sign out</a>
 		</nav>
 	</header>
 }
 
 templ brandLockup(label string, ariaLabel string) {
-	<a href="/" class="flex items-center gap-3" aria-label={ ariaLabel }>
-		<span class="grid h-9 w-9 place-items-center border border-yellow/40 bg-yellow/10 font-mono text-base font-semibold text-yellow">✶</span>
-		<span class="text-lg font-semibold tracking-tight">{ label }</span>
+	<a href="/" class="inline-flex items-center" aria-label={ ariaLabel } data-label={ label }>
+		<span class="text-xl font-bold tracking-tight text-ink">
+			dmar<span class="bg-[linear-gradient(35deg,#0F172A_0_58%,#10B981_58%_100%)] bg-clip-text text-transparent">k</span>
+		</span>
 	</a>
 }
 
 templ checkCard(name string, status string, detail string, statusClass string, borderClass string) {
 	<div class={ "border bg-white/[0.02] p-4 " + borderClass }>
 		<div class="flex items-center justify-between gap-3">
-			<p class="font-mono text-sm font-semibold text-white">{ name }</p>
+			<p class="font-mono text-sm font-semibold text-ink">{ name }</p>
 			<p class={ "font-mono text-xs uppercase tracking-[0.2em] " + statusClass }>{ status }</p>
 		</div>
 		<p class="mt-3 text-sm text-muted">{ detail }</p>
@@ -601,14 +605,32 @@ templ checkCard(name string, status string, detail string, statusClass string, b
 }
 
 templ featureCard(name string, detail string) {
-	<article class="border border-white/10 bg-white/[0.02] p-5">
-		<p class="font-mono text-sm font-semibold text-yellow">{ name }</p>
-		<p class="mt-4 text-sm leading-6 text-muted">{ detail }</p>
+	<article class="rounded-xl border border-border bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+		<div class="grid h-10 w-10 place-items-center rounded-lg border border-accent/20 bg-accent/10 text-accent" aria-hidden="true">
+			if name == "Analyze" {
+				<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<circle cx="11" cy="11" r="7"></circle>
+					<path d="m21 21-4.3-4.3"></path>
+				</svg>
+			} else if name == "Demonstrate" {
+				<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3v8Z"></path>
+					<path d="m9 12 2 2 4-4"></path>
+				</svg>
+			} else {
+				<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M3 12h6l2 3 4-8 2 5h4"></path>
+					<path d="M3 20h18"></path>
+				</svg>
+			}
+		</div>
+		<p class="mt-5 text-base font-semibold text-ink">{ name }</p>
+		<p class="mt-3 text-sm leading-6 text-muted">{ detail }</p>
 	</article>
 }
 
 templ roadmapCard(phase string, detail string) {
-	<article class="border border-white/10 bg-card p-6">
+	<article class="rounded-xl border border-border bg-card p-6">
 		<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">{ phase }</p>
 		<p class="mt-4 text-base leading-7 text-muted">{ detail }</p>
 	</article>

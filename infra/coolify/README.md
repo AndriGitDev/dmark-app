@@ -1,17 +1,17 @@
-# Kastro RecordMaster Coolify Deployment
+# Dmark Coolify Deployment
 
 The production compose file deploys an `app` service running `meil serve` and a private Postgres `db` service with a persistent Docker volume. The binary also includes `meil worker` for River-backed scan and enrichment jobs; deploy it as a separate worker process when the target environment needs background scan/enrichment jobs.
 
 ## Hostnames
 
-Use `recordmaster.kastro.is` as the canonical public domain. Keep `meil.kastro.is` as the legacy hostname during the transition.
+Use `dmark.is` as the canonical public domain. Keep `recordmaster.kastro.is` as the legacy hostname during the transition.
 
 Coolify settings:
 
 1. Create a new application from the GitHub repository `AndriGitDev/meil`.
 2. Select Docker Compose deployment.
 3. Use `infra/coolify/docker-compose.yml` as the compose file.
-4. Set the application domain to `https://recordmaster.kastro.is`.
+4. Set the application domain to `https://dmark.is`.
 5. Add `https://meil.kastro.is` as a legacy hostname or proxy alias while existing links are still active.
 6. Set the exposed port to `8080` if Coolify asks for it.
 7. Set the health check path to `/healthz` if Coolify asks for it.
@@ -36,7 +36,7 @@ Optional environment variables:
 
 ```env
 LETTERMINT_TOKEN=
-LETTERMINT_FROM=Kastro RecordMaster <login@kastro.is>
+LETTERMINT_FROM=Dmark <login@dmark.is>
 BILLING_WEBHOOK_SECRET=
 ```
 
@@ -44,4 +44,4 @@ BILLING_WEBHOOK_SECRET=
 
 DNS:
 
-Point `recordmaster.kastro.is` and `meil.kastro.is` at the Coolify proxy according to the target server's normal Coolify DNS setup. Coolify should terminate TLS and proxy to the container on port `8080`. The app redirects requests for `meil.kastro.is` to `recordmaster.kastro.is`.
+Point `dmark.is` and `recordmaster.kastro.is` at the Coolify proxy according to the target server's normal Coolify DNS setup. Coolify should terminate TLS and proxy to the container on port `8080`. The app redirects requests for `recordmaster.kastro.is` to `dmark.is`.

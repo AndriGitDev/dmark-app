@@ -1,25 +1,26 @@
 package brand
 
 const (
-	CompanyName     = "Kastro"
-	ProductName     = "RecordMaster"
-	FullProductName = "Kastro RecordMaster"
+	CompanyName     = "Dmark"
+	ProductName     = "Dmark"
+	FullProductName = "Dmark"
 	LegacyProduct   = "Meil"
 
-	ProductTagline     = "Brand-name risk defense for domains, DNS, and email authentication."
-	HeroHeadline       = "Defend your brand name from DNS drift, spoofing, and domain impersonation."
-	HeroSubheading     = "RecordMaster watches the public records and sender signals that decide whether the internet should trust your domain."
-	ProductDescription = "Kastro RecordMaster is brand-name risk defense for domain owners. It monitors DNS records, SPF, DKIM, DMARC, BIMI, sender evidence, and spoofing indicators so teams can catch trust failures before customers do."
+	ProductTagline     = "Interactive DMARC, SPF, and DKIM diagnostics for teams that need trusted email."
+	HeroHeadline       = "See if your domain can be spoofed right now."
+	HeroSubheading     = "Stop guessing about your email deliverability. Dmark analyzes your DNS records and safely demonstrates how vulnerable your brand is to impersonation."
+	ProductDescription = "Dmark is an interactive DMARC, SPF, and DKIM diagnostic tool and remediation platform for teams that need trusted email delivery."
 
-	PrimaryDomain = "recordmaster.kastro.is"
-	LegacyDomain  = "meil.kastro.is"
-	PrimaryURL    = "https://recordmaster.kastro.is"
+	PrimaryDomain = "dmark.is"
+	LegacyDomain  = "recordmaster.kastro.is"
+	PrimaryURL    = "https://dmark.is"
 	LegacyURL     = "https://meil.kastro.is"
+	BookingURL    = "https://calendly.com/dmark/implementation-call"
 )
 
 const (
-	ModuleChecker  = "RecordMaster Checker"
-	ModuleMonitor  = "RecordMaster Monitor"
-	ModuleReporter = "RecordMaster Reporter"
-	ModuleDefender = "RecordMaster Defender"
+	ModuleChecker  = "Dmark Diagnostic"
+	ModuleMonitor  = "Dmark Monitor"
+	ModuleReporter = "Dmark Reporter"
+	ModuleDefender = "Dmark Defender"
 )

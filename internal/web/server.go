@@ -441,7 +441,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		w.Header().Set("Content-Disposition", `attachment; filename="recordmaster-protected-domains.csv"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="dmark-protected-domains.csv"`)
 		if err := domains.WriteCSV(w, saved); err != nil {
 			// Headers are already committed, so fall back to the connection error path.
 			return
@@ -1337,7 +1337,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 				return
 			}
 			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-			w.Header().Set("Content-Disposition", `attachment; filename="recordmaster-protected-domains.csv"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="dmark-protected-domains.csv"`)
 			_, _ = io.WriteString(w, export.String())
 		})
 		r.Get("/privacy/export", func(w http.ResponseWriter, r *http.Request) {
@@ -1502,9 +1502,9 @@ func legacyHostRedirect(next http.Handler) http.Handler {
 
 func writeStaticPage(w http.ResponseWriter, title string, lead string, items []string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%s - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto max-w-3xl px-5 py-12\"><a href=\"/\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-yellow\">RecordMaster</a><h1 class=\"mt-6 text-5xl font-semibold text-white\">%s</h1><p class=\"mt-4 text-muted\">%s</p><ul class=\"mt-8 grid gap-3\">", title, brand.FullProductName, title, lead)
+	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%s - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto max-w-3xl px-5 py-12\"><a href=\"/\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-accent\">Dmark</a><h1 class=\"mt-6 text-5xl font-semibold tracking-tight text-ink\">%s</h1><p class=\"mt-4 text-muted\">%s</p><ul class=\"mt-8 grid gap-3\">", title, brand.FullProductName, title, lead)
 	for _, item := range items {
-		_, _ = fmt.Fprintf(w, "<li class=\"border border-white/10 bg-card p-4 text-sm text-muted\">%s</li>", item)
+		_, _ = fmt.Fprintf(w, "<li class=\"rounded-lg border border-border bg-card p-4 text-sm text-muted\">%s</li>", item)
 	}
 	_, _ = fmt.Fprint(w, "</ul></main></body></html>")
 }
@@ -1518,7 +1518,7 @@ func renderError(w http.ResponseWriter, status int, title string, detail string)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%s - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12\"><section class=\"w-full border border-white/10 bg-card p-8\"><a href=\"/\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-yellow\">RecordMaster</a><p class=\"mt-6 font-mono text-xs uppercase tracking-[0.24em] text-muted\">%d</p><h1 class=\"mt-3 text-4xl font-semibold text-white\">%s</h1><p class=\"mt-4 text-sm leading-6 text-muted\">%s</p><a href=\"/\" class=\"mt-8 inline-flex min-h-12 items-center bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black\">Return home</a></section></main></body></html>",
+	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%s - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12\"><section class=\"w-full rounded-xl border border-border bg-card p-8\"><a href=\"/\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-accent\">Dmark</a><p class=\"mt-6 font-mono text-xs uppercase tracking-[0.24em] text-muted\">%d</p><h1 class=\"mt-3 text-4xl font-semibold tracking-tight text-ink\">%s</h1><p class=\"mt-4 text-sm leading-6 text-muted\">%s</p><a href=\"/\" class=\"mt-8 inline-flex min-h-12 items-center rounded-lg bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover\">Return home</a></section></main></body></html>",
 		html.EscapeString(title),
 		brand.FullProductName,
 		status,
@@ -1529,7 +1529,7 @@ func renderError(w http.ResponseWriter, status int, title string, detail string)
 
 func writeLogoutConfirmationPage(w http.ResponseWriter, csrfToken string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Sign out - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12\"><section class=\"w-full border border-white/10 bg-card p-8\"><a href=\"/app/domains\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-yellow\">RecordMaster</a><h1 class=\"mt-6 text-4xl font-semibold text-white\">Sign out?</h1><p class=\"mt-4 text-sm leading-6 text-muted\">End this RecordMaster session on the current browser.</p><form method=\"post\" action=\"/logout\" class=\"mt-8 flex flex-wrap gap-3\"><input type=\"hidden\" name=\"csrf_token\" value=\"%s\"><button type=\"submit\" class=\"min-h-12 bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white hover:text-black\">Sign out</button><a href=\"/app/domains\" class=\"inline-flex min-h-12 items-center border border-white/10 px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-muted transition hover:text-white\">Stay signed in</a></form></section></main></body></html>",
+	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Sign out - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12\"><section class=\"w-full rounded-xl border border-border bg-card p-8\"><a href=\"/app/domains\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-accent\">Dmark</a><h1 class=\"mt-6 text-4xl font-semibold tracking-tight text-ink\">Sign out?</h1><p class=\"mt-4 text-sm leading-6 text-muted\">End this Dmark session on the current browser.</p><form method=\"post\" action=\"/logout\" class=\"mt-8 flex flex-wrap gap-3\"><input type=\"hidden\" name=\"csrf_token\" value=\"%s\"><button type=\"submit\" class=\"min-h-12 rounded-lg bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover\">Sign out</button><a href=\"/app/domains\" class=\"inline-flex min-h-12 items-center rounded-lg border border-border px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-muted transition hover:text-ink\">Stay signed in</a></form></section></main></body></html>",
 		brand.FullProductName,
 		html.EscapeString(csrfToken),
 	)

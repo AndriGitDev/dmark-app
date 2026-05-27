@@ -1,4 +1,4 @@
-# Kastro RecordMaster GA Readiness
+# Dmark GA Readiness
 
 This tracker records the current release posture for general availability prep. It should be updated whenever a release gate is run or a GA blocker is accepted, fixed, or moved out of scope.
 

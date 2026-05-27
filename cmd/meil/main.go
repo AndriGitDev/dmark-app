@@ -47,7 +47,7 @@ func main() {
 func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "meil",
-		Short: "Kastro RecordMaster brand-name risk defense",
+		Short: "Dmark DMARC diagnostics and remediation",
 	}
 
 	root.AddCommand(newServeCommand())
