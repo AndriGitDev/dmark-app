@@ -28,7 +28,7 @@ make build
 
 ## Coolify
 
-The canonical deployment target is `https://dmark.is`. The legacy hostname `https://recordmaster.kastro.is` should remain available as a redirect during the transition. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.
+The current deployment target is `https://dmark.kastro.is` until `dmark.is` is purchased. The legacy hostname `https://recordmaster.kastro.is` should remain available as a redirect during the transition. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.
 
 ## Planning
 

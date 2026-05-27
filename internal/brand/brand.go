@@ -11,9 +11,9 @@ const (
 	HeroSubheading     = "Stop guessing about your email deliverability. Dmark analyzes your DNS records and safely demonstrates how vulnerable your brand is to impersonation."
 	ProductDescription = "Dmark is an interactive DMARC, SPF, and DKIM diagnostic tool and remediation platform for teams that need trusted email delivery."
 
-	PrimaryDomain = "dmark.is"
+	PrimaryDomain = "dmark.kastro.is"
 	LegacyDomain  = "recordmaster.kastro.is"
-	PrimaryURL    = "https://dmark.is"
+	PrimaryURL    = "https://dmark.kastro.is"
 	LegacyURL     = "https://meil.kastro.is"
 	BookingURL    = "https://calendly.com/dmark/implementation-call"
 )
