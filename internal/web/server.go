@@ -33,15 +33,18 @@ import (
 	"github.com/AndriGitDev/meil/internal/billing"
 	"github.com/AndriGitDev/meil/internal/brand"
 	"github.com/AndriGitDev/meil/internal/brandrisk"
+	"github.com/AndriGitDev/meil/internal/dmarcjourney"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
 	"github.com/AndriGitDev/meil/internal/notifier"
 	"github.com/AndriGitDev/meil/internal/privacy"
 	"github.com/AndriGitDev/meil/internal/reporter"
+	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/statuspage"
 	"github.com/AndriGitDev/meil/internal/teams"
+	"github.com/AndriGitDev/meil/internal/trustreport"
 	"github.com/AndriGitDev/meil/internal/web/views"
 	"github.com/AndriGitDev/meil/internal/webhooks"
 )
@@ -215,22 +218,49 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			renderError(w, http.StatusBadRequest, "Invalid form", "Check the submitted fields and try again.")
 			return
 		}
-		email, token, err := deps.Auth.StartLogin(r.Context(), r.PostForm.Get("email"))
+		email, err := startLoginAndSendEmail(r.Context(), deps, r.PostForm.Get("email"), "Sign in to "+brand.FullProductName, "Sign in to "+brand.FullProductName)
 		if err != nil {
-			renderError(w, http.StatusBadRequest, "Login failed", err.Error())
-			return
-		}
-		link := deps.PublicBaseURL + "/auth/callback?token=" + token
-		if err := deps.Sender.Send(r.Context(), notifier.Email{
-			To:      email,
-			Subject: "Sign in to " + brand.FullProductName,
-			Text:    fmt.Sprintf("Sign in to %s: %s", brand.FullProductName, link),
-			HTML:    fmt.Sprintf(`<p>Sign in to %s:</p><p><a href="%s">Open your magic link</a></p>`, brand.FullProductName, link),
-		}); err != nil {
+			if strings.Contains(err.Error(), "invalid email address") {
+				renderError(w, http.StatusBadRequest, "Login failed", err.Error())
+				return
+			}
 			renderError(w, http.StatusBadGateway, "Email delivery failed", "The login email could not be sent. Try again shortly.")
 			return
 		}
 		templ.Handler(views.LoginSent(email)).ServeHTTP(w, r)
+	})
+	r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager), loginLimiter.middleware).Post("/claim-audit", func(w http.ResponseWriter, r *http.Request) {
+		if deps.Auth == nil || deps.Sender == nil {
+			renderError(w, http.StatusServiceUnavailable, "Audit claim unavailable", "Email login is not configured for this environment.")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
+		if err := r.ParseForm(); err != nil {
+			renderError(w, http.StatusBadRequest, "Invalid form", "Check the submitted fields and try again.")
+			return
+		}
+		domainName, err := scanner.NormalizeDomain(r.PostForm.Get("domain"))
+		if err != nil {
+			renderError(w, http.StatusBadRequest, "Audit claim failed", err.Error())
+			return
+		}
+		email, err := auth.NormalizeEmail(r.PostForm.Get("email"))
+		if err != nil {
+			renderError(w, http.StatusBadRequest, "Audit claim failed", err.Error())
+			return
+		}
+		audit := salesaudit.Assess(scanner.Result{Domain: domainName}, salesaudit.Options{RequestedEmail: email})
+		if audit.BlockedReason != "" {
+			renderError(w, http.StatusBadRequest, "Audit claim blocked", audit.BlockedReason)
+			return
+		}
+		sentEmail, err := startLoginAndSendEmail(r.Context(), deps, email, "Claim your "+brand.FullProductName+" audit", "Claim the "+brand.FullProductName+" audit for "+domainName)
+		if err != nil {
+			renderError(w, http.StatusBadGateway, "Email delivery failed", "The audit claim email could not be sent. Try again shortly.")
+			return
+		}
+		deps.SessionManager.Put(r.Context(), claimDomainSessionKey, domainName)
+		templ.Handler(views.LoginSent(sentEmail)).ServeHTTP(w, r)
 	})
 	r.Get("/auth/callback", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Auth == nil {
@@ -259,6 +289,17 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		}
 		deps.SessionManager.Put(r.Context(), "user_id", login.UserID)
 		deps.SessionManager.Put(r.Context(), "user_email", login.Email)
+		if claimDomain := popClaimDomain(deps.SessionManager, r); claimDomain != "" {
+			if deps.Domains != nil {
+				if err := deps.Domains.AddDomain(r.Context(), login.UserID, claimDomain); err != nil {
+					pushFlash(deps.SessionManager, r, ErrorFlash("Signed in, but the claimed domain could not be protected. Add it manually from this page."))
+				} else {
+					pushFlash(deps.SessionManager, r, DomainAddedFlash(claimDomain))
+				}
+			} else {
+				pushFlash(deps.SessionManager, r, NewFlash(FlashInfo, "Signed in. Add "+claimDomain+" to protect it."))
+			}
+		}
 		http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
 	})
 	r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/logout", func(w http.ResponseWriter, r *http.Request) {
@@ -288,7 +329,8 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			renderError(w, http.StatusBadRequest, "Unable to complete check", err.Error())
 			return
 		}
-		templ.Handler(views.CheckResult(result)).ServeHTTP(w, r)
+		audit := salesaudit.Assess(result, salesaudit.Options{})
+		templ.Handler(views.CheckResult(result, audit, csrfToken(deps.SessionManager, r))).ServeHTTP(w, r)
 	})
 	r.Post("/billing/webhook", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Billing == nil || strings.TrimSpace(deps.BillingWebhookSecret) == "" {
@@ -1236,6 +1278,19 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 				"Lookalike-domain monitoring remains planned until the Defender feed is implemented.",
 			})
 		})
+		r.Get("/domains/{id}/trust-report", func(w http.ResponseWriter, r *http.Request) {
+			if deps.Domains == nil {
+				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
+				return
+			}
+			saved, err := deps.Domains.GetDomain(r.Context(), currentUserID(deps.SessionManager, r), chi.URLParam(r, "id"))
+			if err != nil {
+				renderError(w, http.StatusNotFound, "Domain not found", "The protected domain could not be found for this account.")
+				return
+			}
+			report := buildTrustReport(currentUserEmail(deps.SessionManager, r), saved)
+			templ.Handler(views.TrustReport(currentUserEmail(deps.SessionManager, r), saved, report, csrfToken(deps.SessionManager, r))).ServeHTTP(w, r)
+		})
 		r.Get("/domains/{id}/brand-risk", func(w http.ResponseWriter, r *http.Request) {
 			if deps.Domains == nil {
 				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
@@ -1535,9 +1590,59 @@ func currentUserEmail(sessionManager *scs.SessionManager, r *http.Request) strin
 }
 
 const (
-	csrfSessionKey  = "csrf_token"
-	flashSessionKey = "flash_message"
+	csrfSessionKey        = "csrf_token"
+	flashSessionKey       = "flash_message"
+	claimDomainSessionKey = "claim_domain"
 )
+
+func startLoginAndSendEmail(ctx context.Context, deps Deps, emailInput string, subject string, intro string) (string, error) {
+	email, token, err := deps.Auth.StartLogin(ctx, emailInput)
+	if err != nil {
+		return "", err
+	}
+	link := deps.PublicBaseURL + "/auth/callback?token=" + url.QueryEscape(token)
+	if err := deps.Sender.Send(ctx, notifier.Email{
+		To:      email,
+		Subject: subject,
+		Text:    intro + ": " + link,
+		HTML:    fmt.Sprintf(`<p>%s:</p><p><a href="%s">Open your magic link</a></p>`, html.EscapeString(intro), html.EscapeString(link)),
+	}); err != nil {
+		return "", err
+	}
+	return email, nil
+}
+
+func popClaimDomain(sessionManager *scs.SessionManager, r *http.Request) string {
+	domain := sessionManager.GetString(r.Context(), claimDomainSessionKey)
+	if domain == "" {
+		return ""
+	}
+	sessionManager.Remove(r.Context(), claimDomainSessionKey)
+	return domain
+}
+
+func buildTrustReport(email string, domain domains.Domain) trustreport.Report {
+	input := trustreport.Input{
+		GeneratedAt: time.Now().UTC(),
+		Customer:    email,
+		Domains:     []trustreport.DomainInput{{Domain: domain.Domain}},
+	}
+	if domain.LatestCheck != nil {
+		scan := scanner.Result{
+			Domain:    domain.Domain,
+			CheckedAt: domain.LatestCheck.CheckedAt,
+			SPF:       domain.LatestCheck.SPF,
+			DKIM:      domain.LatestCheck.DKIM,
+			DMARC:     domain.LatestCheck.DMARC,
+			BIMI:      domain.LatestCheck.BIMI,
+		}
+		input.Domains[0].Scan = scan
+		input.Domains[0].DMARCEvidence = dmarcjourney.Evidence{
+			ReporterConfigured: strings.Contains(strings.ToLower(domain.LatestCheck.DMARC.Record), "rua="),
+		}
+	}
+	return trustreport.Build(input)
+}
 
 func csrfToken(sessionManager *scs.SessionManager, r *http.Request) string {
 	token := sessionManager.GetString(r.Context(), csrfSessionKey)

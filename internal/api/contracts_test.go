@@ -18,7 +18,7 @@ func TestNewScanResponse(t *testing.T) {
 		Duration:  12 * time.Millisecond,
 		SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok", SourceName: "example.com", LookupDuration: time.Millisecond},
 		DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
-		DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass, Message: "DMARC ok"},
+		DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none"},
 		BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
 	})
 
@@ -27,6 +27,9 @@ func TestNewScanResponse(t *testing.T) {
 	}
 	if response.Summary.Score == 0 || response.Checks[0].LookupDurationMS != 1 {
 		t.Fatalf("summary/check metadata missing: %+v", response)
+	}
+	if response.Audit.Grade != "C" || response.Audit.Risk == "" || response.Audit.CTA == "" {
+		t.Fatalf("audit metadata missing: %+v", response.Audit)
 	}
 	if _, err := json.Marshal(response); err != nil {
 		t.Fatalf("Marshal returned error: %v", err)

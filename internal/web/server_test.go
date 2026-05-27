@@ -986,7 +986,113 @@ func TestCheckDomainRendersScannerResult(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"example.com", "SPF", "pass", "DMARC", "warn", "v=spf1 -all", "Protect this domain"} {
+	for _, want := range []string{"example.com", "SPF", "pass", "DMARC", "warn", "v=spf1 -all", "Audit grade", "C", "high risk", `action="/claim-audit"`, `name="csrf_token"`, "Claim audit", "Review sender evidence and enforcement steps"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestClaimAuditSendsMagicLinkAndProtectsDomainAfterCallback(t *testing.T) {
+	t.Parallel()
+
+	authStore := newWebAuthStore()
+	sender := &webEmailSender{}
+	domainStore := &webDomainStore{}
+	router := NewRouterWithDeps(Deps{
+		Auth:   auth.NewService(authStore, time.Minute),
+		Sender: sender,
+		Domains: domains.NewService(domainStore, fakeScanner{result: scanner.Result{
+			Domain: "example.com",
+			SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass},
+			DKIM:   scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass},
+			DMARC:  scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Record: "v=DMARC1; p=none"},
+			BIMI:   scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing},
+		}}),
+	})
+	csrfToken, cookie := loginCSRFToken(t, router)
+	form := url.Values{"csrf_token": {csrfToken}, "domain": {"example.com"}, "email": {"person@example.com"}}
+	req := httptest.NewRequest(http.MethodPost, "/claim-audit", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("claim status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("len(sent emails) = %d, want 1", len(sender.sent))
+	}
+	cookie = latestCookie(cookie, rec)
+	token := magicLinkToken(t, sender.sent[0].Text)
+	req = httptest.NewRequest(http.MethodGet, "/auth/callback?token="+url.QueryEscape(token), nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("callback status = %d, want %d; body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
+	}
+	if location := rec.Header().Get("Location"); location != "/app/domains" {
+		t.Fatalf("Location = %q, want /app/domains", location)
+	}
+	if len(domainStore.domains) != 1 || domainStore.domains[0].Domain != "example.com" {
+		t.Fatalf("protected domains = %+v, want example.com", domainStore.domains)
+	}
+}
+
+func TestClaimAuditRejectsMismatchedWorkEmail(t *testing.T) {
+	t.Parallel()
+
+	router := NewRouterWithDeps(Deps{
+		Auth:   auth.NewService(newWebAuthStore(), time.Minute),
+		Sender: &webEmailSender{},
+	})
+	csrfToken, cookie := loginCSRFToken(t, router)
+	form := url.Values{"csrf_token": {csrfToken}, "domain": {"example.com"}, "email": {"person@other.com"}}
+	req := httptest.NewRequest(http.MethodPost, "/claim-audit", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "work email domain must match") {
+		t.Fatalf("body missing ownership error: %s", rec.Body.String())
+	}
+}
+
+func TestTrustReportRendersForProtectedDomain(t *testing.T) {
+	t.Parallel()
+
+	router, cookie := authenticatedRouter(t, &webDomainStore{domains: []domains.Domain{{
+		ID:     "domain-1",
+		Domain: "example.com",
+		LatestCheck: &domains.Check{
+			CheckedAt: time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC),
+			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
+			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
+			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none; rua=mailto:dmarc@example.com"},
+			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
+		},
+	}}})
+	req := httptest.NewRequest(http.MethodGet, "/app/domains/domain-1/trust-report", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"Trust Report: example.com", "DMARC journey", "observing", "Keep p=none reporting enabled", "DKIM needs attention"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
@@ -1206,7 +1312,7 @@ func TestAPIScanReturnsJSON(t *testing.T) {
 		t.Fatalf("Content-Type = %q, want application/json", contentType)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{`"domain":"example.com"`, `"summary"`, `"checks"`, `"SPF"`} {
+	for _, want := range []string{`"domain":"example.com"`, `"summary"`, `"audit"`, `"grade"`, `"cta"`, `"checks"`, `"SPF"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
@@ -2421,6 +2527,22 @@ func latestCookie(fallback *http.Cookie, rec *httptest.ResponseRecorder) *http.C
 		return cookies[0]
 	}
 	return fallback
+}
+
+func magicLinkToken(t *testing.T, body string) string {
+	t.Helper()
+
+	const marker = "token="
+	start := strings.Index(body, marker)
+	if start < 0 {
+		t.Fatalf("magic link token not found in body: %s", body)
+	}
+	start += len(marker)
+	end := strings.IndexAny(body[start:], " \n\r\t")
+	if end < 0 {
+		return body[start:]
+	}
+	return body[start : start+end]
 }
 
 func hiddenInputValue(body string, name string) string {

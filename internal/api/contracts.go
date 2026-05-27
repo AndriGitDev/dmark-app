@@ -9,6 +9,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/reporter"
+	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/statuspage"
 	"github.com/AndriGitDev/meil/internal/teams"
@@ -20,6 +21,7 @@ type ScanResponse struct {
 	CheckedAt  time.Time       `json:"checked_at"`
 	DurationMS int64           `json:"duration_ms"`
 	Summary    SummaryResponse `json:"summary"`
+	Audit      AuditResponse   `json:"audit"`
 	Checks     []CheckResponse `json:"checks"`
 }
 
@@ -41,8 +43,19 @@ type CheckResponse struct {
 	Selectors        []scanner.SelectorResult `json:"selectors,omitempty"`
 }
 
+type AuditResponse struct {
+	Grade         string               `json:"grade"`
+	Risk          salesaudit.RiskLevel `json:"risk"`
+	Safe          bool                 `json:"safe"`
+	ProofEligible bool                 `json:"proof_eligible"`
+	Message       string               `json:"message"`
+	CTA           string               `json:"cta"`
+	BlockedReason string               `json:"blocked_reason,omitempty"`
+}
+
 func NewScanResponse(result scanner.Result) ScanResponse {
 	summary := scanner.Summarize(result)
+	audit := salesaudit.Assess(result, salesaudit.Options{})
 	return ScanResponse{
 		Domain:     result.Domain,
 		CheckedAt:  result.CheckedAt.UTC(),
@@ -52,6 +65,15 @@ func NewScanResponse(result scanner.Result) ScanResponse {
 			Status:      summary.Status,
 			TopIssue:    summary.TopIssue,
 			Remediation: summary.Remediation,
+		},
+		Audit: AuditResponse{
+			Grade:         audit.Grade,
+			Risk:          audit.Risk,
+			Safe:          audit.Safe,
+			ProofEligible: audit.ProofEligible,
+			Message:       audit.Message,
+			CTA:           audit.CTA,
+			BlockedReason: audit.BlockedReason,
 		},
 		Checks: []CheckResponse{
 			newCheckResponse(result.SPF),
