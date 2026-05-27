@@ -30,13 +30,7 @@ POSTGRES_PASSWORD=replace-with-a-long-url-safe-password
 
 Use an alphanumeric or URL-encoded Postgres password because the compose file embeds it in `DATABASE_URL`.
 
-After the first deploy, run Postgres migrations from the Coolify terminal for the app container:
-
-```sh
-/meil migrate postgres up
-```
-
-Run the same command after deploys that add new Postgres migrations.
+The app runs Postgres and River migrations automatically when `meil serve` starts. No manual terminal step is required after deploy.
 
 Optional environment variables:
 

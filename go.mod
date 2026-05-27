@@ -15,7 +15,7 @@ require (
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.20.0
 	github.com/spf13/cobra v1.10.2
 	go.opentelemetry.io/otel v1.35.0
-	golang.org/x/net v0.54.0
+	golang.org/x/net v0.55.0
 )
 
 require (

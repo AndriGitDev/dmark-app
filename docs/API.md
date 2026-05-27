@@ -74,6 +74,28 @@ Public terminology maps these endpoints to Record checks, Protected domains, Fin
 
 Status component and incident operations require `admin:manage`. Components accept status values such as `operational`, `degraded`, and `outage`; incidents keep an operator-facing status string and can be closed through the resolve endpoint.
 
+## Product State Contracts
+
+DMARC enforcement journeys should use these stable state strings when exposed through reports, exports, or future API responses:
+
+- `not_started`
+- `observing`
+- `ready_for_quarantine`
+- `quarantine`
+- `ready_for_reject`
+- `reject`
+
+Monthly trust reports should summarize protected-domain posture, DMARC journey state, Reporter sender risk, Brand Risk findings, and prioritized next actions. They should not include raw secrets, API keys, login tokens, webhook secrets, or raw DMARC XML.
+
+Sales-audit and reality-check surfaces should use these stable risk strings:
+
+- `low`
+- `medium`
+- `high`
+- `critical`
+
+Sales-audit responses should include a grade, buyer-facing message, CTA, proof eligibility, and evidence signals. Proof eligibility does not mean a proof email can be sent directly; any future proof dispatch must require verified ownership, rate limits, blocklist checks, explicit consent, and audit logging.
+
 ## Webhook Signatures
 
 Webhook payloads are JSON and signed with HMAC-SHA256 using the endpoint secret. The signature header value uses the same format as the internal verifier:

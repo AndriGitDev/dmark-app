@@ -25,6 +25,10 @@ Required gates:
 4. Fresh Postgres and ClickHouse migration checks through `make qa-services`
 5. Browser/manual QA gates from `docs/QA_TEST_PLAN.md`
 
-## Known Local Blocker
+## Current GA Prep Status
 
-The current environment can run `make qa-code` with the temporary local Go 1.25.10 toolchain and cached CLI tools. It cannot complete `make qa-services` because Docker socket access is denied, localhost Postgres rejects the documented `meil:meil` credentials, and ClickHouse is not reachable on `localhost:8123`.
+The current local environment can run the full automated gate after installing Go, QA tooling, Docker CLI, Docker Compose, and Colima, using writable temp directories for Go and golangci-lint caches. The latest local pass covers unit tests, race tests, vet, lint, `govulncheck`, fuzz smoke tests, generated-file idempotence, templ checks, build, Docker image build, Postgres migrations, River migrations, and ClickHouse migrations.
+
+Browser QA, manual accessibility checks, load checks, backup/restore drills, rollback drills, and live-provider checks remain GA blockers until completed or explicitly scoped out.
+
+The active GA readiness tracker lives in `docs/GA_READINESS.md`.

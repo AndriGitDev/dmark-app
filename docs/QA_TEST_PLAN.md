@@ -15,15 +15,16 @@ Existing tests cover:
 - Static rendered-view accessibility contracts for labels, named links, form buttons, document metadata, live regions, and letter spacing.
 - Auth callback/session behavior, hardened session cookie attributes, CSRF rejection, authenticated domain import/export, and alert ack/mute handlers.
 - CLI scan argument validation, formatted output, JSON output, ingest command validation, and worker job listing.
-- Drift classification, alert lifecycle rules, job retry/dead-letter helpers, DMARC ingestion with sanitized provider/gateway fixtures, reporter summaries, attribution, risk, recommendations, billing, teams, entitlements, API-key helpers, webhooks, privacy, admin, status, and operations policy logic.
-- Dependency vulnerability scanning is wired through `govulncheck`; the local scan passes after upgrading the project toolchain target to Go 1.25.10 and `github.com/jackc/pgx/v5` to v5.9.0.
+- Drift classification, alert lifecycle rules, job retry/dead-letter helpers, DMARC ingestion with sanitized provider/gateway fixtures, reporter summaries, attribution, risk, recommendations, DMARC enforcement journey states, monthly trust report models, billing, teams, entitlements, API-key helpers, webhooks, privacy, admin, status, and operations policy logic.
+- Defender lookalike candidate generation for typo and Icelandic-character homoglyph variants.
+- Sales-audit grading, risk labels, proof eligibility, and proof blocklist behavior.
+- Dependency vulnerability scanning is wired through `govulncheck`; the local scan passes after upgrading the project toolchain target to Go 1.25.10, `github.com/jackc/pgx/v5` to v5.9.0, and `golang.org/x/net` to v0.55.0.
 
 Known gaps:
 
 - Database-backed integration tests now cover fresh migrations, auth token states, domain uniqueness/isolation, latest-check selection, and delete cascades when `MEIL_DB_INTEGRATION=1` and `DATABASE_URL` are set.
 - No browser-level tests for the public checker or saved-domain dashboard; static rendered-view accessibility contracts are covered.
-- Local unit, race, vet, lint, build, templ, sqlc, and Tailwind gates have successful evidence from the temporary local toolchain used during implementation.
-- Service-backed gates still need operator access: localhost Postgres rejected the documented `meil:meil` credentials, ClickHouse is not reachable locally, and Docker socket access is denied in this environment.
+- Local unit, race, vet, lint, build, templ, sqlc, Tailwind, Docker build, Postgres migration, River migration, and ClickHouse migration gates have successful evidence from the current local toolchain and Colima-backed services.
 - No live-provider billing, email, enrichment, geolocation, or DMARC mailbox tests; current coverage uses deterministic service-level tests and attribution fixtures.
 
 ## Stage 0: Static And Repository Hygiene

@@ -530,6 +530,13 @@ func newServeCommand() *cobra.Command {
 			if err := cfg.Validate(); err != nil {
 				return fmt.Errorf("validating config: %w", err)
 			}
+			logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+			logger.Info("running startup migrations")
+			if err := runPostgresMigration(cmd.Context(), cfg, "up", io.Discard); err != nil {
+				return fmt.Errorf("running startup migrations: %w", err)
+			}
+			logger.Info("startup migrations complete")
+
 			pool, err := pgxpool.New(cmd.Context(), cfg.DatabaseURL)
 			if err != nil {
 				return fmt.Errorf("connecting to database: %w", err)
@@ -541,7 +548,6 @@ func newServeCommand() *cobra.Command {
 			sessionManager := scs.New()
 			sessionManager.Lifetime = 24 * time.Hour
 
-			logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 			server := &http.Server{
 				Addr: cfg.HTTPAddr,
 				Handler: web.NewRouterWithDeps(web.Deps{

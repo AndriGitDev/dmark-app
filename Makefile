@@ -1,10 +1,12 @@
+DOCKER_COMPOSE ?= docker compose
+
 .PHONY: dev up down migrate migrate-clickhouse generate test lint security fuzz-smoke build templ-check generate-check qa-code qa-services qa load-checker load-api load-reporter load-scan-job
 
 up:
-	docker compose -f infra/coolify/docker-compose.dev.yml up -d
+	$(DOCKER_COMPOSE) -f infra/coolify/docker-compose.dev.yml up -d
 
 down:
-	docker compose -f infra/coolify/docker-compose.dev.yml down
+	$(DOCKER_COMPOSE) -f infra/coolify/docker-compose.dev.yml down
 
 migrate:
 	go run ./cmd/meil migrate up

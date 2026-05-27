@@ -34,6 +34,9 @@ The canonical deployment target is `https://recordmaster.kastro.is`. The legacy 
 
 - Long-term product and engineering roadmap: `docs/ROADMAP.md`
 - Roadmap implementation audit: `docs/ROADMAP_AUDIT.md`
+- GA readiness tracker: `docs/GA_READINESS.md`
+- Competitive Icelandic DMARC SaaS roadmap: `docs/COMPETITIVE_ROADMAP.md`
+- Checkmate sales-audit integration notes: `docs/CHECKMATE_INTEGRATION.md`
 - Staged QA and release test plan: `docs/QA_TEST_PLAN.md`
 - Operational release and incident process: `docs/OPERATIONS.md`
 - DNS setup and report forwarding guidance: `docs/DNS_GUIDE.md`

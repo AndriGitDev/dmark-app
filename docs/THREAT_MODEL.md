@@ -42,12 +42,15 @@ Threats:
 - DNS scan amplification.
 - Large request bodies or malformed domains consuming resources.
 - Resolver timeouts causing web handler exhaustion.
+- Sales-audit or reality-check flows creating pressure to send abuse-prone proof emails.
 
 Controls:
 
 - Public check requests are body-limited, domain-length guarded, rate-limited per client address, and persistence-free by default.
 - Scanner results carry resolver error classes and lookup timing for monitoring.
 - DKIM selector probes use bounded concurrency.
+- Sales-audit grading is safe to run in-process, but proof dispatch must remain behind verified ownership, strict rate limits, domain blocklists, explicit consent, and audit logging.
+- Proof emails, if enabled, must be sent only to the verified inbox for the audited domain and from an isolated mail service, not from the main web process.
 
 ## Brand-Name Risk
 
@@ -66,7 +69,7 @@ Controls:
 
 - Current Brand Risk findings are limited to evidence already present in DNS, email-auth checks, drift history, and Reporter data.
 - Every finding must carry evidence and a recommended action.
-- Unsupported lookalike-domain detection must remain clearly marked as planned until the feed exists.
+- Lookalike-domain candidates must be evidence-gated before alerting; candidate generation alone is not a finding.
 - Future external intelligence feeds need rate limits, privacy review, and abuse controls before production use.
 
 ## DMARC Report Ingestion

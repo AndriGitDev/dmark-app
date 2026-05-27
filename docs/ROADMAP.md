@@ -21,6 +21,8 @@ The repository already contains these working surfaces:
 
 The repository now includes package boundaries and implementation slices for drift detection, jobs, ingestion, attribution, ClickHouse storage, and web middleware.
 
+The competitive 90-day SaaS roadmap lives in `docs/COMPETITIVE_ROADMAP.md`. That roadmap positions RecordMaster as the Icelandic Dmarcian/EasyDMARC alternative for SMB and midmarket companies, with concierge DMARC enforcement, monthly trust reports, and `.is` Defender coverage as the first local beat points.
+
 ## Product Principles
 
 - Public checks must remain useful without signup.
