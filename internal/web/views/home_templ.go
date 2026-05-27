@@ -1216,7 +1216,7 @@ func trustReportSection(section trustreport.DomainSection) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = metricCard("Domains to review", fmt.Sprintf("%d", section.UnknownSenderCount), "unknown senders").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = metricCard("Unknown senders", fmt.Sprintf("%d", section.UnknownSenderCount), "from reporter evidence").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

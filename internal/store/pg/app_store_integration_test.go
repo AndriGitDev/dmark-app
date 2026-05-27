@@ -145,6 +145,13 @@ func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
 	if domains[0].LatestCheck == nil || domains[0].LatestCheck.SPF.Status != scanner.StatusPass {
 		t.Fatalf("latest check = %+v, want SPF pass", domains[0].LatestCheck)
 	}
+	domainWithCheck, err := store.GetDomain(ctx, user.ID, domain.ID)
+	if err != nil {
+		t.Fatalf("get domain: %v", err)
+	}
+	if domainWithCheck.LatestCheck == nil || domainWithCheck.LatestCheck.SPF.Status != scanner.StatusPass {
+		t.Fatalf("get domain latest check = %+v, want SPF pass", domainWithCheck.LatestCheck)
+	}
 
 	if err := store.DeleteDomain(ctx, otherUser.ID, domain.ID); err != nil {
 		t.Fatalf("cross-user delete domain: %v", err)

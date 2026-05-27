@@ -1357,6 +1357,102 @@ LIMIT 200
 	return reporter.EvaluateHealth(reporter.HealthCheck{Now: time.Now().UTC(), Receipts: receipts}), nil
 }
 
+func (s *AppStore) ListUserReporterSenders(ctx context.Context, userID string, domainID string, limit int) ([]reporter.InventoryEntry, error) {
+	userUUID, domainUUID, err := userDomainUUIDs(userID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.queries.db.Query(ctx, `
+SELECT
+    a.source_ip::text,
+    COALESCE(sa.provider, '') AS provider,
+    COALESCE(sa.confidence, 'none') AS confidence,
+    sum(a.count)::integer AS volume,
+    sum(CASE WHEN a.dkim_aligned_result = 'pass' OR a.spf_aligned_result = 'pass' THEN 0 ELSE a.count END)::integer AS failed_count,
+    min(r.begin_at),
+    max(r.end_at),
+    COALESCE(sa.expected, false) AS expected,
+    COALESCE(sa.ignored, false) AS ignored,
+    COALESCE(sa.suspicious, false) AS suspicious
+FROM dmarc_aggregate_rows a
+JOIN dmarc_reports r ON r.id = a.report_id
+JOIN domains d ON d.id = r.domain_id
+LEFT JOIN sender_attributions sa ON sa.domain_id = d.id AND sa.source_ip = a.source_ip
+WHERE d.user_id = $1 AND d.id = $2
+GROUP BY a.source_ip, sa.provider, sa.confidence, sa.expected, sa.ignored, sa.suspicious
+ORDER BY volume DESC, a.source_ip
+LIMIT $3
+`, userUUID, domainUUID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := []reporter.InventoryEntry{}
+	for rows.Next() {
+		var entry reporter.InventoryEntry
+		var confidence string
+		var failed int
+		if err := rows.Scan(
+			&entry.SourceIP,
+			&entry.Provider,
+			&confidence,
+			&entry.Volume,
+			&failed,
+			&entry.FirstSeen,
+			&entry.LastSeen,
+			&entry.Expected,
+			&entry.Ignored,
+			&entry.Suspicious,
+		); err != nil {
+			return nil, err
+		}
+		entry.Confidence = attribution.Confidence(confidence)
+		if entry.Volume > 0 {
+			entry.FailureRate = float64(failed) / float64(entry.Volume)
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+func (s *AppStore) GetUserReporterHealth(ctx context.Context, userID string, domainID string) (reporter.HealthResult, error) {
+	userUUID, domainUUID, err := userDomainUUIDs(userID, domainID)
+	if err != nil {
+		return reporter.HealthResult{}, err
+	}
+	rows, err := s.queries.db.Query(ctx, `
+SELECT r.org_name, r.created_at AS received_at, false AS failed, ''
+FROM dmarc_reports r
+JOIN domains d ON d.id = r.domain_id
+WHERE d.user_id = $1 AND d.id = $2
+UNION ALL
+SELECT 'ingestion', f.created_at AS received_at, true AS failed, f.reason
+FROM dmarc_ingestion_failures f
+JOIN domains d ON d.id = f.domain_id
+WHERE d.user_id = $1 AND d.id = $2
+ORDER BY received_at DESC
+LIMIT 200
+`, userUUID, domainUUID)
+	if err != nil {
+		return reporter.HealthResult{}, err
+	}
+	defer rows.Close()
+
+	receipts := []reporter.ReportReceipt{}
+	for rows.Next() {
+		var receipt reporter.ReportReceipt
+		if err := rows.Scan(&receipt.OrgName, &receipt.ReceivedAt, &receipt.Failed, &receipt.Error); err != nil {
+			return reporter.HealthResult{}, err
+		}
+		receipts = append(receipts, receipt)
+	}
+	if err := rows.Err(); err != nil {
+		return reporter.HealthResult{}, err
+	}
+	return reporter.EvaluateHealth(reporter.HealthCheck{Now: time.Now().UTC(), Receipts: receipts}), nil
+}
+
 func (s *AppStore) ListOrganizationWebhookEndpoints(ctx context.Context, organizationID string) ([]webhooks.Endpoint, error) {
 	organizationUUID, err := uuidFromString(organizationID)
 	if err != nil {
@@ -1474,6 +1570,18 @@ func organizationDomainUUIDs(organizationID string, domainID string) (pgtype.UUI
 	return organizationUUID, domainUUID, nil
 }
 
+func userDomainUUIDs(userID string, domainID string) (pgtype.UUID, pgtype.UUID, error) {
+	userUUID, err := uuidFromString(userID)
+	if err != nil {
+		return pgtype.UUID{}, pgtype.UUID{}, err
+	}
+	domainUUID, err := uuidFromString(domainID)
+	if err != nil {
+		return pgtype.UUID{}, pgtype.UUID{}, err
+	}
+	return userUUID, domainUUID, nil
+}
+
 func (s *AppStore) GetDomain(ctx context.Context, userID string, domainID string) (domains.Domain, error) {
 	userUUID, err := uuidFromString(userID)
 	if err != nil {
@@ -1483,11 +1591,74 @@ func (s *AppStore) GetDomain(ctx context.Context, userID string, domainID string
 	if err != nil {
 		return domains.Domain{}, err
 	}
-	saved, err := s.queries.GetDomainForUser(ctx, GetDomainForUserParams{ID: domainUUID, UserID: userUUID})
+	var saved domains.Domain
+	var checkID pgtype.UUID
+	var spfStatus, spfMessage, spfRecord string
+	var dkimStatus, dkimMessage, dkimRecord string
+	var dmarcStatus, dmarcMessage, dmarcRecord string
+	var bimiStatus, bimiMessage, bimiRecord string
+	var createdAt pgtype.Timestamptz
+	var checkedAt pgtype.Timestamptz
+	err = s.queries.db.QueryRow(ctx, `
+SELECT
+    d.domain,
+    d.created_at,
+    c.id AS check_id,
+    COALESCE(c.spf_status, '') AS spf_status,
+    COALESCE(c.spf_message, '') AS spf_message,
+    COALESCE(c.spf_record, '') AS spf_record,
+    COALESCE(c.dkim_status, '') AS dkim_status,
+    COALESCE(c.dkim_message, '') AS dkim_message,
+    COALESCE(c.dkim_record, '') AS dkim_record,
+    COALESCE(c.dmarc_status, '') AS dmarc_status,
+    COALESCE(c.dmarc_message, '') AS dmarc_message,
+    COALESCE(c.dmarc_record, '') AS dmarc_record,
+    COALESCE(c.bimi_status, '') AS bimi_status,
+    COALESCE(c.bimi_message, '') AS bimi_message,
+    COALESCE(c.bimi_record, '') AS bimi_record,
+    c.created_at AS checked_at
+FROM domains d
+LEFT JOIN LATERAL (
+    SELECT id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, created_at
+    FROM domain_checks dc
+    WHERE dc.domain_id = d.id
+    ORDER BY dc.created_at DESC
+    LIMIT 1
+) c ON true
+WHERE d.id = $1 AND d.user_id = $2
+`, domainUUID, userUUID).Scan(
+		&saved.Domain,
+		&createdAt,
+		&checkID,
+		&spfStatus,
+		&spfMessage,
+		&spfRecord,
+		&dkimStatus,
+		&dkimMessage,
+		&dkimRecord,
+		&dmarcStatus,
+		&dmarcMessage,
+		&dmarcRecord,
+		&bimiStatus,
+		&bimiMessage,
+		&bimiRecord,
+		&checkedAt,
+	)
 	if err != nil {
 		return domains.Domain{}, err
 	}
-	return domainFromParts(saved.ID, saved.Domain, saved.CreatedAt), nil
+	saved.ID = domainID
+	saved.CreatedAt = createdAt.Time
+	if checkID.Valid {
+		saved.LatestCheck = &domains.Check{
+			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
+			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
+			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
+			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
+			CheckedAt: checkedAt.Time,
+		}
+	}
+	return saved, nil
 }
 
 func (s *AppStore) DeleteDomain(ctx context.Context, userID string, domainID string) error {

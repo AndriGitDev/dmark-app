@@ -445,7 +445,7 @@ templ TrustReport(email string, domain domains.Domain, report trustreport.Report
 templ trustReportSection(section trustreport.DomainSection) {
 	<div class="grid gap-4 md:grid-cols-3">
 		@metricCard("Posture score", fmt.Sprintf("%d", section.PostureScore), string(section.PostureStatus))
-		@metricCard("Domains to review", fmt.Sprintf("%d", section.UnknownSenderCount), "unknown senders")
+		@metricCard("Unknown senders", fmt.Sprintf("%d", section.UnknownSenderCount), "from reporter evidence")
 		@metricCard("Top issue", section.TopIssue, "current blocker")
 	</div>
 	<section class="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">

@@ -158,6 +158,18 @@ func (s *webDomainStore) GetOrganizationReporterHealth(ctx context.Context, orga
 	return s.reportHealth, nil
 }
 
+func (s *webDomainStore) ListUserReporterSenders(ctx context.Context, userID string, domainID string, limit int) ([]reporter.InventoryEntry, error) {
+	entries := append([]reporter.InventoryEntry(nil), s.reportSenders...)
+	if limit > 0 && len(entries) > limit {
+		entries = entries[:limit]
+	}
+	return entries, nil
+}
+
+func (s *webDomainStore) GetUserReporterHealth(ctx context.Context, userID string, domainID string) (reporter.HealthResult, error) {
+	return s.reportHealth, nil
+}
+
 func (s *webDomainStore) ListOrganizationWebhookEndpoints(ctx context.Context, organizationID string) ([]webhooks.Endpoint, error) {
 	return append([]webhooks.Endpoint(nil), s.webhookEndpoints...), nil
 }
@@ -1093,6 +1105,57 @@ func TestTrustReportRendersForProtectedDomain(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{"Trust Report: example.com", "DMARC journey", "observing", "Keep p=none reporting enabled", "DKIM needs attention"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestTrustReportUsesUserReporterEvidence(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{
+		domains: []domains.Domain{{
+			ID:     "domain-1",
+			Domain: "example.com",
+			LatestCheck: &domains.Check{
+				CheckedAt: time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC),
+				SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
+				DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass, Message: "DKIM ok"},
+				DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none"},
+				BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusPass, Message: "BIMI ok"},
+			},
+		}},
+		reportSenders: []reporter.InventoryEntry{{
+			SourceIP:    "192.0.2.10",
+			Provider:    "Google",
+			Confidence:  attribution.ConfidenceHigh,
+			FirstSeen:   time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+			LastSeen:    time.Date(2026, 5, 12, 0, 0, 0, 0, time.UTC),
+			Volume:      500,
+			FailureRate: 0,
+			Expected:    true,
+		}},
+		reportHealth: reporter.HealthResult{
+			LastReportAt: time.Date(2026, 5, 12, 12, 0, 0, 0, time.UTC),
+			ReporterOrgs: []string{
+				"Google",
+			},
+			Status: "healthy",
+		},
+	}
+	router, cookie := authenticatedRouterWithDeps(t, store, Deps{UserReporter: store})
+	req := httptest.NewRequest(http.MethodGet, "/app/domains/domain-1/trust-report", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"Trust Report: example.com", "ready_for_quarantine", "Reporter evidence is sufficient", "Unknown senders", "from reporter evidence"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}

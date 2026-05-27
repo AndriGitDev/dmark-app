@@ -84,6 +84,11 @@ type OrganizationReporterStore interface {
 	GetOrganizationReporterHealth(ctx context.Context, organizationID string, domainID string) (reporter.HealthResult, error)
 }
 
+type UserReporterStore interface {
+	ListUserReporterSenders(ctx context.Context, userID string, domainID string, limit int) ([]reporter.InventoryEntry, error)
+	GetUserReporterHealth(ctx context.Context, userID string, domainID string) (reporter.HealthResult, error)
+}
+
 type OrganizationWebhookStore interface {
 	ListOrganizationWebhookEndpoints(ctx context.Context, organizationID string) ([]webhooks.Endpoint, error)
 	CreateOrganizationWebhookEndpoint(ctx context.Context, organizationID string, rawURL string, eventTypes []string) (webhooks.Endpoint, string, error)
@@ -145,6 +150,7 @@ type Deps struct {
 	APIDomainHistory       OrganizationDomainHistoryStore
 	APIDomainDrift         OrganizationDomainDriftStore
 	APIReporter            OrganizationReporterStore
+	UserReporter           UserReporterStore
 	APIWebhooks            OrganizationWebhookStore
 	Billing                BillingWebhookStore
 	BillingCancellation    BillingCancellationStore
@@ -1288,7 +1294,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 				renderError(w, http.StatusNotFound, "Domain not found", "The protected domain could not be found for this account.")
 				return
 			}
-			report := buildTrustReport(currentUserEmail(deps.SessionManager, r), saved)
+			report := buildTrustReport(r.Context(), currentUserEmail(deps.SessionManager, r), currentUserID(deps.SessionManager, r), saved, deps.UserReporter)
 			templ.Handler(views.TrustReport(currentUserEmail(deps.SessionManager, r), saved, report, csrfToken(deps.SessionManager, r))).ServeHTTP(w, r)
 		})
 		r.Get("/domains/{id}/brand-risk", func(w http.ResponseWriter, r *http.Request) {
@@ -1621,7 +1627,7 @@ func popClaimDomain(sessionManager *scs.SessionManager, r *http.Request) string 
 	return domain
 }
 
-func buildTrustReport(email string, domain domains.Domain) trustreport.Report {
+func buildTrustReport(ctx context.Context, email string, userID string, domain domains.Domain, reporterStore UserReporterStore) trustreport.Report {
 	input := trustreport.Input{
 		GeneratedAt: time.Now().UTC(),
 		Customer:    email,
@@ -1641,7 +1647,50 @@ func buildTrustReport(email string, domain domains.Domain) trustreport.Report {
 			ReporterConfigured: strings.Contains(strings.ToLower(domain.LatestCheck.DMARC.Record), "rua="),
 		}
 	}
+	if reporterStore != nil {
+		if senders, err := reporterStore.ListUserReporterSenders(ctx, userID, domain.ID, 50); err == nil {
+			input.Domains[0].SenderInventory = senders
+			mergeSenderEvidence(&input.Domains[0].DMARCEvidence, senders)
+		}
+		if health, err := reporterStore.GetUserReporterHealth(ctx, userID, domain.ID); err == nil {
+			mergeReporterHealth(&input.Domains[0].DMARCEvidence, health)
+		}
+	}
 	return trustreport.Build(input)
+}
+
+func mergeReporterHealth(evidence *dmarcjourney.Evidence, health reporter.HealthResult) {
+	if !health.LastReportAt.IsZero() || len(health.ReporterOrgs) > 0 {
+		evidence.ReporterConfigured = true
+	}
+}
+
+func mergeSenderEvidence(evidence *dmarcjourney.Evidence, senders []reporter.InventoryEntry) {
+	var firstSeen time.Time
+	var lastSeen time.Time
+	for _, sender := range senders {
+		evidence.TotalMessages += sender.Volume
+		evidence.FailedMessages += int(float64(sender.Volume) * sender.FailureRate)
+		if reporter.InventoryRisk(reporter.ToSenderInventoryItem(sender)) == "review" && sender.Provider == "" {
+			evidence.UnknownSenderMessages += sender.Volume
+		}
+		if !sender.FirstSeen.IsZero() && (firstSeen.IsZero() || sender.FirstSeen.Before(firstSeen)) {
+			firstSeen = sender.FirstSeen
+		}
+		if sender.LastSeen.After(lastSeen) {
+			lastSeen = sender.LastSeen
+		}
+	}
+	evidence.AlignedMessages = evidence.TotalMessages - evidence.FailedMessages
+	if evidence.AlignedMessages < 0 {
+		evidence.AlignedMessages = 0
+	}
+	if !firstSeen.IsZero() && !lastSeen.IsZero() {
+		evidence.DaysObserved = int(lastSeen.Sub(firstSeen).Hours()/24) + 1
+		if evidence.DaysObserved < 1 {
+			evidence.DaysObserved = 1
+		}
+	}
 }
 
 func csrfToken(sessionManager *scs.SessionManager, r *http.Request) string {
