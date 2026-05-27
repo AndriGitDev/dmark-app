@@ -9,7 +9,7 @@ It starts with public DNS, SPF, DKIM, DMARC, and BIMI posture checks. It then gr
 The repository already contains these working surfaces:
 
 - Single Go binary with `serve`, `scan`, `migrate`, `worker`, and `ingest` command boundaries.
-- Public marketing/checker route at `/` and POST `/check`.
+- App-first root route at `/` that sends visitors into sign-in or the protected-domain dashboard, with POST `/check` retained for scanner flows.
 - Scanner package for SPF, DMARC, BIMI, and common DKIM selector probing.
 - Passwordless auth service with hashed single-use login tokens.
 - Lettermint-backed magic-link email sender.

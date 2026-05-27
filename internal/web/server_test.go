@@ -492,7 +492,7 @@ func (a *webAPIKeyAuth) AuthenticateAPIKey(ctx context.Context, key string) (api
 	return a.principal, nil
 }
 
-func TestHomeRenders(t *testing.T) {
+func TestRootRedirectsToLogin(t *testing.T) {
 	t.Parallel()
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -500,14 +500,11 @@ func TestHomeRenders(t *testing.T) {
 
 	NewRouter().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
-	if !strings.Contains(rec.Body.String(), "See if your domain can be spoofed right now.") {
-		t.Fatalf("body does not contain Dmark hero: %q", rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), `/assets/css/marketing-20260512.css`) {
-		t.Fatalf("body does not contain fingerprinted stylesheet: %q", rec.Body.String())
+	if location := rec.Header().Get("Location"); location != "/login" {
+		t.Fatalf("Location = %q, want /login", location)
 	}
 }
 

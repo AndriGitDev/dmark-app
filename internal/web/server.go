@@ -1466,7 +1466,13 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			"Current subprocessors: Lettermint and operator-managed infrastructure.",
 		})
 	})
-	r.Get("/", templ.Handler(views.Home()).ServeHTTP)
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		if currentUserID(deps.SessionManager, r) != "" {
+			http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	})
 	return r
 }
 

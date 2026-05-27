@@ -21,7 +21,6 @@ func TestRenderedViewsKeepStaticAccessibilityContracts(t *testing.T) {
 	t.Parallel()
 
 	pages := map[string]string{
-		"home":    renderView(t, Home()),
 		"login":   renderView(t, Login("csrf-token")),
 		"domains": renderView(t, AppDomains("user@example.com", sampleDomains(), "csrf-token", []Flash{{Kind: "success", Message: "Protected example.com."}})),
 	}
