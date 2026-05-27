@@ -266,7 +266,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			return
 		}
 		deps.SessionManager.Put(r.Context(), claimDomainSessionKey, domainName)
-		templ.Handler(views.LoginSent(sentEmail)).ServeHTTP(w, r)
+		templ.Handler(views.ClaimSent(sentEmail, domainName)).ServeHTTP(w, r)
 	})
 	r.Get("/auth/callback", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Auth == nil {

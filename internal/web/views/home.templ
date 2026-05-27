@@ -296,6 +296,31 @@ templ LoginSent(email string) {
 	</html>
 }
 
+templ ClaimSent(email string, domain string) {
+	<!doctype html>
+	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Claim audit - { brand.FullProductName }</title>
+			<link rel="stylesheet" href="/assets/css/marketing-20260512.css"/>
+		</head>
+		<body class="min-h-screen bg-background font-sans text-foreground antialiased">
+			<main class="mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12">
+				<section class="w-full border border-white/10 bg-card p-8">
+					<p class="font-mono text-xs uppercase tracking-[0.24em] text-accent">Audit claim sent</p>
+					<h1 class="mt-6 text-4xl font-semibold tracking-tight text-white">Check your work email</h1>
+					<p class="mt-4 text-sm leading-6 text-muted">A one-time claim link for { domain } was sent to { email }. It expires shortly and can only be used once.</p>
+					<div class="mt-6 border border-white/10 bg-black/30 p-4">
+						<p class="text-sm leading-6 text-muted">Open the link in this browser to attach { domain } to your protected domains automatically after sign-in.</p>
+					</div>
+					<a href="/" class="mt-8 inline-flex min-h-12 items-center border border-yellow/40 px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-yellow transition hover:border-white hover:text-white">Run another audit</a>
+				</section>
+			</main>
+		</body>
+	</html>
+}
+
 templ LoginProblem(title string, detail string) {
 	<!doctype html>
 	<html lang="en" class="bg-[#090909] text-[#f2f2f2]">

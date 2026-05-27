@@ -1034,6 +1034,11 @@ func TestClaimAuditSendsMagicLinkAndProtectsDomainAfterCallback(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("claim status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
 	}
+	for _, want := range []string{"Audit claim sent", "example.com", "person@example.com", "Open the link in this browser"} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("claim body missing %q: %s", want, rec.Body.String())
+		}
+	}
 	if len(sender.sent) != 1 {
 		t.Fatalf("len(sent emails) = %d, want 1", len(sender.sent))
 	}
