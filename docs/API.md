@@ -66,9 +66,11 @@ GET /api/v1/status/incidents
 POST /api/v1/status/incidents
 POST /api/v1/status/incidents/{id}/resolve
 POST /billing/webhook
+POST /check
+POST /claim-audit
 ```
 
-Responses include stable IDs, timestamps in RFC3339, and machine-readable status strings that match internal scanner, drift, report-health, and risk models.
+API responses include stable IDs, timestamps in RFC3339, and machine-readable status strings that match internal scanner, drift, report-health, and risk models. `/check` and `/claim-audit` are public HTML form endpoints, not authenticated JSON API endpoints.
 
 Public terminology maps these endpoints to Record checks, Protected domains, Findings, Alerts, Reporter reports, Sender inventory, and Brand risk findings. Endpoint paths keep `/domains` for compatibility while the UI presents them as Protected domains.
 
@@ -94,7 +96,7 @@ Sales-audit and reality-check surfaces should use these stable risk strings:
 - `high`
 - `critical`
 
-Sales-audit responses should include a grade, buyer-facing message, CTA, proof eligibility, and evidence signals. Proof eligibility does not mean a proof email can be sent directly; any future proof dispatch must require verified ownership, rate limits, blocklist checks, explicit consent, and audit logging.
+Sales-audit responses should include a grade, buyer-facing message, CTA, proof eligibility, and evidence signals. Public audit claims should require a matching work-email domain, send the existing passwordless magic link, persist a durable claim record, and attach the claimed domain to protected domains after callback when the same browser session is available. Proof eligibility does not mean a proof email can be sent directly; any future proof dispatch must require verified ownership, rate limits, blocklist checks, explicit consent, and audit logging.
 
 ## Webhook Signatures
 

@@ -66,8 +66,8 @@ RecordMaster should not try to match every enterprise checkbox before GA. The fi
 
 - Keep `make qa` green.
 - Finish browser QA, manual accessibility, load checks, backup/restore drill, rollback drill, Lettermint live test, and DMARC mailbox test.
-- Add the DMARC enforcement journey model and expose it in report/UI copy.
-- Add sales-audit grading and a "claim this audit" CTA to the public checker.
+- DMARC enforcement journey model is implemented and exposed in authenticated trust reports, with reporter sender evidence wired into the readiness calculation when available.
+- Sales-audit grading, "claim this audit" CTA, claim-sent UX, and durable claim persistence are implemented locally.
 - Create Icelandic sales assets: landing copy, audit report template, DMARC enforcement checklist, and demo script.
 
 ### Days 16-30: Audit Funnel

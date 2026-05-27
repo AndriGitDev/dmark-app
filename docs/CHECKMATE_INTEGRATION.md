@@ -39,7 +39,8 @@ Phase 1, safe GA funnel:
 1. Public checker runs the existing scanner.
 2. `internal/salesaudit` converts the scan to a sales grade, risk level, and CTA.
 3. Vulnerable domains get a "claim this audit" prompt.
-4. Claimed audits create a concierge onboarding task or lead record.
+4. Claimed audits send a passwordless magic link and persist a `sales_audit_claims` lead record.
+5. Verified claim callbacks attach the claimed domain to protected domains when the browser session is still available.
 
 Phase 2, controlled proof:
 
@@ -58,7 +59,7 @@ Phase 3, automated sales loop:
 
 ## First Implementation Slice
 
-The first reusable implementation is `internal/salesaudit`. It produces:
+The first reusable implementation is in place locally. `internal/salesaudit` produces:
 
 - Domain.
 - Grade.
@@ -69,4 +70,4 @@ The first reusable implementation is `internal/salesaudit`. It produces:
 - CTA.
 - Evidence signals.
 
-This lets the web UI and future lead-capture endpoints use Checkmate-style sales language without taking on spoof-dispatch risk yet.
+The public checker renders that grade/risk/CTA, `/claim-audit` validates a matching work email, sends the existing magic link, stores the claim in `sales_audit_claims`, and then adds the domain to protected domains after callback when the same browser session is present. This gives the sales funnel durable follow-up data without taking on spoof-dispatch risk yet.

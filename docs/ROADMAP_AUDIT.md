@@ -9,7 +9,7 @@ This audit maps `docs/ROADMAP.md` to concrete repository artifacts. It is intent
 - Completion status: code and service-backed QA gates pass against the local dev Postgres and ClickHouse stack.
 - Latest service-gate evidence:
   - `make qa-code` passes: unit tests, race tests, vet, golangci-lint, `govulncheck`, fuzz smoke runs, generated-file idempotence, and build.
-  - `make qa-services` passes after starting `infra/coolify/docker-compose.dev.yml`: Docker image build, Postgres migrations through `00003_brand_risk_foundations.sql`, River migrations, and ClickHouse migrations.
+  - `make qa-services` passes after starting `infra/coolify/docker-compose.dev.yml`: Docker image build, Postgres migrations through `00004_sales_audit_claims.sql`, River migrations, and ClickHouse migrations.
 
 ## Phase 1: Checker Reliability And UX
 

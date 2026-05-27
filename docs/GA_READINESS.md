@@ -2,15 +2,15 @@
 
 This tracker records the current release posture for general availability prep. It should be updated whenever a release gate is run or a GA blocker is accepted, fixed, or moved out of scope.
 
-Last local verification: 2026-05-23.
+Last local verification: 2026-05-27.
 
 ## Current Status
 
-- Repository state: clean `main` before GA prep; current prep changes update `golang.org/x/net` to clear a reachable `govulncheck` finding in IDNA domain normalization.
+- Repository state: local `main` has GA follow-up commits pending push after `7cc927b`; `.DS_Store` remains untracked and should not be committed.
 - Code-level readiness: passing locally after installing Go and required QA tools.
 - Service-level readiness: passing locally after installing Docker CLI, Docker Compose, and Colima, then starting the dev Postgres, Mailpit, and ClickHouse services.
 - Product posture: broad implementation exists for Checker, saved domains, drift alerts, Reporter ingestion, attribution, billing/team foundations, API/webhooks, admin/privacy/abuse/status, observability definitions, and Coolify deployment.
-- Competitive posture: `docs/COMPETITIVE_ROADMAP.md` defines the Icelandic Dmarcian/EasyDMARC alternative strategy, including concierge DMARC enforcement, monthly trust reports, `.is` Defender coverage, and the Checkmate-style sales-audit funnel documented in `docs/CHECKMATE_INTEGRATION.md`.
+- Competitive posture: `docs/COMPETITIVE_ROADMAP.md` defines the Icelandic Dmarcian/EasyDMARC alternative strategy, including concierge DMARC enforcement, monthly trust reports, `.is` Defender coverage, and the Checkmate-style sales-audit funnel documented in `docs/CHECKMATE_INTEGRATION.md`. Local implementation now includes public sales-audit grading, claim-audit magic-link UX, durable claim persistence, and reporter-backed trust-report evidence.
 - GA posture: not ready to declare GA until browser/manual QA, production operations drills, load checks, backup/restore and rollback drills, and live-provider checks are completed or explicitly scoped out.
 
 ## Verified Automated Gates
@@ -29,9 +29,11 @@ Run from `/Users/andri/Documents/GitHub/meil` with Go caches pointed at writable
 - `go build -o bin/meil ./cmd/meil`: pass.
 - `make qa-services`: pass against fresh local dev Postgres and ClickHouse services.
 - `docker build -f infra/coolify/Dockerfile .`: pass.
-- Fresh Postgres migrations: pass through `00003_brand_risk_foundations.sql` plus River migrations.
+- Fresh Postgres migrations: pass through `00004_sales_audit_claims.sql` plus River migrations.
+- 2026-05-27 Postgres migration check: `go run ./cmd/meil migrate up` applied `00004_sales_audit_claims.sql`; `go run ./cmd/meil migrate status` shows versions 1-4 applied plus River migrations 1-6.
 - Fresh ClickHouse migrations: pass.
 - Competitive primitives: focused tests pass for `internal/dmarcjourney`, `internal/brandrisk`, `internal/trustreport`, and `internal/salesaudit`.
+- 2026-05-27 follow-up verification: `go test ./...`, `go build -o /private/tmp/meil-build-check ./cmd/meil`, `git diff --check`, and `MEIL_DB_INTEGRATION=1 go test ./internal/store/pg -count=1` pass.
 
 ## Remaining GA Gates
 
@@ -50,7 +52,7 @@ Priority order:
 
 1. Keep dependency/security gates green.
 2. Add browser-level regression coverage for the public and authenticated web surfaces.
-3. Surface DMARC journey status, monthly trust report sections, and sales-audit grading in the web product.
+3. Deploy and browser-smoke the local sales-audit, claim-audit, durable claim persistence, and reporter-backed trust-report changes.
 4. Decide whether proof-email dispatch is GA scope; keep it isolated until ownership verification, rate limits, blocklists, consent, and audit logging are implemented.
 5. Execute and document load, backup/restore, and rollback drills.
 6. Decide which live-provider integrations are GA scope and which remain beta/operator-managed.
