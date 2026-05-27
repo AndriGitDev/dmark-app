@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -163,6 +164,16 @@ func migrationTarget(args []string) (string, string, error) {
 	}
 }
 
+func migrationDir(dir string) string {
+	if _, err := os.Stat(dir); err == nil {
+		return dir
+	}
+	if filepath.IsAbs(dir) {
+		return dir
+	}
+	return filepath.Join(string(os.PathSeparator), dir)
+}
+
 func runPostgresMigration(ctx context.Context, cfg config.Config, direction string, out io.Writer) error {
 	db, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
@@ -172,10 +183,11 @@ func runPostgresMigration(ctx context.Context, cfg config.Config, direction stri
 	if err := goose.SetDialect("postgres"); err != nil {
 		return fmt.Errorf("setting migration dialect: %w", err)
 	}
+	postgresMigrations := migrationDir("migrations/postgres")
 
 	switch direction {
 	case "up":
-		if err := goose.Up(db, "migrations/postgres"); err != nil {
+		if err := goose.Up(db, postgresMigrations); err != nil {
 			return err
 		}
 		return runRiverMigration(ctx, cfg, rivermigrate.DirectionUp, out)
@@ -183,9 +195,9 @@ func runPostgresMigration(ctx context.Context, cfg config.Config, direction stri
 		if err := runRiverMigration(ctx, cfg, rivermigrate.DirectionDown, out); err != nil {
 			return err
 		}
-		return goose.Down(db, "migrations/postgres")
+		return goose.Down(db, postgresMigrations)
 	case "status":
-		if err := goose.Status(db, "migrations/postgres"); err != nil {
+		if err := goose.Status(db, postgresMigrations); err != nil {
 			return err
 		}
 		return printRiverMigrationStatus(ctx, cfg, out)
@@ -246,7 +258,7 @@ func runClickHouseMigration(ctx context.Context, cfg config.Config, direction st
 		Database: cfg.ClickHouseDatabase,
 		User:     cfg.ClickHouseUser,
 		Password: cfg.ClickHousePassword,
-		Dir:      "migrations/clickhouse",
+		Dir:      migrationDir("migrations/clickhouse"),
 	}
 	switch direction {
 	case "up":

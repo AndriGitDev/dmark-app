@@ -142,6 +142,16 @@ func TestMigrationTargetParsing(t *testing.T) {
 	}
 }
 
+func TestMigrationDirFallsBackToRootPath(t *testing.T) {
+	t.Parallel()
+
+	got := migrationDir("definitely-missing/migrations")
+	want := filepath.Join(string(os.PathSeparator), "definitely-missing/migrations")
+	if got != want {
+		t.Fatalf("migrationDir fallback = %q, want %q", got, want)
+	}
+}
+
 func TestPrintScanResultJSON(t *testing.T) {
 	t.Parallel()
 
