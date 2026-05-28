@@ -1,8 +1,8 @@
-# Dmark
+# Dmark Backend
 
-Dmark is an interactive DMARC, SPF, and DKIM diagnostic tool and remediation platform for teams that need trusted email delivery.
+Dmark is an interactive DMARC, SPF, and DKIM diagnostic and remediation platform for teams that need trusted email delivery. This repository contains the Go backend, app routes, worker, ingestion, scanner, API, and deployment assets.
 
-The free diagnostic flow provides public DNS and email-auth posture checks. Monitor adds protected domains, scheduled scans, drift alerts, and history. Reporter ingests DMARC aggregate reports and models who is sending mail as your domain. Defender expands the platform into brand-name and lookalike-domain risk monitoring.
+The frontend and marketing website live in the separate `dmark-web` repository. Keep visual marketing work there; keep domain logic, persistence, jobs, API contracts, ingestion, and operational work here.
 
 The repository is named `dmark-app` after the Dmark app split. The Go module, binary, CLI command, database names, and deployment service names intentionally remain `meil` for now.
 

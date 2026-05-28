@@ -1,10 +1,10 @@
-# Kastro RecordMaster Implementation Plan
+# Dmark Backend Implementation Plan
 
 This document records the current implementation posture. The long-form product roadmap lives in `docs/ROADMAP.md`; this file is the short release-oriented companion for the repository state.
 
 ## Current Scope
 
-Dmark is now beyond the original P0/P1 bootstrap. The repository is named `dmark-app`, and includes implementation slices for:
+Dmark is now split across two repositories: `dmark-app` is the Go backend/app service, and `dmark-web` owns the frontend and marketing website. This repository includes implementation slices for:
 
 1. Public SPF, DKIM, DMARC, and BIMI checking with shared web and CLI scanner semantics.
 2. Passwordless login, protected domains, CSRF-protected app routes, and domain CSV import/export.
