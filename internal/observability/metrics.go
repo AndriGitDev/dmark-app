@@ -21,11 +21,15 @@ func CoreMetrics() []Metric {
 		{Name: "meil_http_request_duration_seconds", Type: Histogram, Description: "HTTP request latency by route and method.", Labels: []string{"route", "method"}},
 		{Name: "meil_dns_lookup_duration_seconds", Type: Histogram, Description: "DNS TXT lookup latency by check type and resolver error class.", Labels: []string{"check", "error_class"}},
 		{Name: "meil_scan_jobs_queued", Type: Gauge, Description: "Queued scan jobs ready for workers.", Labels: []string{"status"}},
+		{Name: "meil_dashboard_rechecks_total", Type: Counter, Description: "Dashboard-triggered domain rechecks by result.", Labels: []string{"result"}},
+		{Name: "meil_dashboard_alert_actions_total", Type: Counter, Description: "Dashboard alert lifecycle actions by action.", Labels: []string{"action"}},
+		{Name: "meil_dashboard_api_failures_total", Type: Counter, Description: "Dashboard API failures by route and status.", Labels: []string{"route", "status"}},
 		{Name: "meil_scan_job_attempts_total", Type: Counter, Description: "Scan job attempts by result.", Labels: []string{"result"}},
 		{Name: "meil_drift_events_total", Type: Counter, Description: "Drift events by check, kind, and severity.", Labels: []string{"check", "kind", "severity"}},
 		{Name: "meil_notification_dispatch_total", Type: Counter, Description: "Notification dispatches by channel and result.", Labels: []string{"channel", "result"}},
 		{Name: "meil_dmarc_reports_ingested_total", Type: Counter, Description: "DMARC aggregate reports ingested by organization.", Labels: []string{"org_name"}},
 		{Name: "meil_dmarc_report_parse_failures_total", Type: Counter, Description: "DMARC aggregate report parser failures by reason.", Labels: []string{"reason"}},
 		{Name: "meil_clickhouse_query_duration_seconds", Type: Histogram, Description: "Reporter query latency by query type.", Labels: []string{"query"}},
+		{Name: "meil_reporter_freshness_seconds", Type: Gauge, Description: "Age of the latest Reporter aggregate evidence by domain.", Labels: []string{"domain_id"}},
 	}
 }

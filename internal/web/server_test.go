@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/AndriGitDev/meil/internal/admin"
+	"github.com/AndriGitDev/meil/internal/alerts"
 	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/attribution"
 	"github.com/AndriGitDev/meil/internal/billing"
@@ -35,23 +38,26 @@ func (s fakeScanner) Scan(ctx context.Context, domain string) (scanner.Result, e
 }
 
 type webDomainStore struct {
-	domains          []domains.Domain
-	history          []domains.HistoryEntry
-	driftEvents      []drift.Event
-	reportSources    []reporter.DashboardRow
-	reportSenders    []reporter.InventoryEntry
-	reportHealth     reporter.HealthResult
-	webhookEndpoints []webhooks.Endpoint
-	apiKeys          []apikeys.Key
-	invitations      []teams.Invitation
-	retention        privacy.RetentionRequest
-	auditClaims      []salesaudit.Claim
-	adminCases       []admin.Case
-	abuseDecisions   []admin.AbuseDecision
-	statusComponents []statuspage.Component
-	statusIncidents  []statuspage.Incident
-	deletedUserID    string
-	checkedDomain    string
+	domains           []domains.Domain
+	history           []domains.HistoryEntry
+	driftEvents       []drift.Event
+	reportSources     []reporter.DashboardRow
+	reportSenders     []reporter.InventoryEntry
+	reportHealth      reporter.HealthResult
+	dashboardAlerts   []alerts.DashboardAlert
+	dashboardSettings domains.DashboardSettings
+	queuedRecheck     domains.RecheckJob
+	webhookEndpoints  []webhooks.Endpoint
+	apiKeys           []apikeys.Key
+	invitations       []teams.Invitation
+	retention         privacy.RetentionRequest
+	auditClaims       []salesaudit.Claim
+	adminCases        []admin.Case
+	abuseDecisions    []admin.AbuseDecision
+	statusComponents  []statuspage.Component
+	statusIncidents   []statuspage.Incident
+	deletedUserID     string
+	checkedDomain     string
 }
 
 func (s *webDomainStore) CreateDomain(ctx context.Context, userID string, domain string) (domains.Domain, error) {
@@ -122,6 +128,67 @@ func (s *webDomainStore) ListOrganizationReporterSenders(ctx context.Context, or
 
 func (s *webDomainStore) GetOrganizationReporterHealth(ctx context.Context, organizationID string, domainID string) (reporter.HealthResult, error) {
 	return s.reportHealth, nil
+}
+
+func (s *webDomainStore) QueueOrganizationDomainRecheck(ctx context.Context, organizationID string, domainID string, at time.Time) (domains.RecheckJob, error) {
+	if s.queuedRecheck.ID == "" {
+		s.queuedRecheck = domains.RecheckJob{
+			ID:          "job-1",
+			DomainID:    domainID,
+			Status:      "queued",
+			QueuedAt:    at.UTC(),
+			NextAllowed: at.UTC().Add(5 * time.Minute),
+		}
+	}
+	return s.queuedRecheck, nil
+}
+
+func (s *webDomainStore) ListOrganizationDashboardAlerts(ctx context.Context, organizationID string, activeOnly bool, limit int) ([]alerts.DashboardAlert, error) {
+	result := []alerts.DashboardAlert{}
+	now := time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC)
+	for _, alert := range s.dashboardAlerts {
+		if activeOnly && (!alert.AcknowledgedAt.IsZero() || (!alert.MutedUntil.IsZero() && alert.MutedUntil.After(now))) {
+			continue
+		}
+		result = append(result, alert)
+	}
+	if limit > 0 && len(result) > limit {
+		result = result[:limit]
+	}
+	return result, nil
+}
+
+func (s *webDomainStore) AcknowledgeOrganizationDashboardAlert(ctx context.Context, organizationID string, alertID string, reason string) error {
+	for i := range s.dashboardAlerts {
+		if s.dashboardAlerts[i].ID == alertID {
+			s.dashboardAlerts[i].AcknowledgedAt = time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC)
+			return nil
+		}
+	}
+	return errors.New("alert not found")
+}
+
+func (s *webDomainStore) MuteOrganizationDashboardAlert(ctx context.Context, organizationID string, alertID string, until time.Time, reason string) error {
+	for i := range s.dashboardAlerts {
+		if s.dashboardAlerts[i].ID == alertID {
+			s.dashboardAlerts[i].MutedUntil = until
+			return nil
+		}
+	}
+	return errors.New("alert not found")
+}
+
+func (s *webDomainStore) GetOrganizationDashboardSettings(ctx context.Context, organizationID string) (domains.DashboardSettings, error) {
+	if s.dashboardSettings.RequireAlignmentBeforeReject == 0 {
+		return domains.DefaultDashboardSettings(), nil
+	}
+	return s.dashboardSettings, nil
+}
+
+func (s *webDomainStore) SaveOrganizationDashboardSettings(ctx context.Context, organizationID string, settings domains.DashboardSettings) (domains.DashboardSettings, error) {
+	settings.UpdatedAt = time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC)
+	s.dashboardSettings = settings
+	return settings, nil
 }
 
 func (s *webDomainStore) ListUserReporterSenders(ctx context.Context, userID string, domainID string, limit int) ([]reporter.InventoryEntry, error) {
@@ -422,6 +489,25 @@ func (a *webAPIKeyAuth) AuthenticateAPIKey(ctx context.Context, key string) (api
 		return apikeys.Principal{}, a.err
 	}
 	return a.principal, nil
+}
+
+type webLookalikeResolver struct {
+	hosts map[string][]string
+	mx    map[string][]*net.MX
+}
+
+func (r webLookalikeResolver) LookupHost(ctx context.Context, host string) ([]string, error) {
+	if values := r.hosts[host]; len(values) > 0 {
+		return values, nil
+	}
+	return nil, errors.New("not found")
+}
+
+func (r webLookalikeResolver) LookupMX(ctx context.Context, name string) ([]*net.MX, error) {
+	if values := r.mx[name]; len(values) > 0 {
+		return values, nil
+	}
+	return nil, errors.New("not found")
 }
 
 func TestBrowserRoutesAreHandedOff(t *testing.T) {
@@ -815,6 +901,205 @@ func TestAPIDomainsReturnsOrganizationDomains(t *testing.T) {
 	if body := rec.Body.String(); !strings.Contains(body, `"domains"`) || !strings.Contains(body, `"example.com"`) {
 		t.Fatalf("body missing domains response: %s", body)
 	}
+}
+
+func TestDashboardDomainsListsFrontendContract(t *testing.T) {
+	t.Parallel()
+
+	checkedAt := time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC)
+	store := &webDomainStore{
+		domains: []domains.Domain{{
+			ID:        "domain-1",
+			Domain:    "example.com",
+			CreatedAt: checkedAt.Add(-24 * time.Hour),
+			LatestCheck: &domains.Check{
+				CheckedAt: checkedAt,
+				SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Record: "v=spf1 include:_spf.example.net -all"},
+				DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass},
+				DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass, Record: "v=DMARC1; p=reject; rua=mailto:dmarc@example.com"},
+				BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing},
+			},
+		}},
+		reportSenders: []reporter.InventoryEntry{{
+			SourceIP:    "203.0.113.10",
+			Volume:      20,
+			FailureRate: 0.1,
+		}},
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:     &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead, apikeys.ScopeReporterRead}}},
+		APIDomains:  store,
+		APIReporter: store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body struct {
+		Domains []struct {
+			ID                 string  `json:"id"`
+			Status             string  `json:"status"`
+			DMARCPolicy        string  `json:"dmarc_policy"`
+			SPFLookupCount     int     `json:"spf_lookup_count"`
+			AlignmentRate      float64 `json:"alignment_rate"`
+			UnknownSenderCount int     `json:"unknown_sender_count"`
+		} `json:"domains"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if len(body.Domains) != 1 || body.Domains[0].ID != "domain-1" {
+		t.Fatalf("unexpected domains: %+v", body.Domains)
+	}
+	if body.Domains[0].Status != "monitoring" || body.Domains[0].DMARCPolicy != "reject" || body.Domains[0].SPFLookupCount != 1 {
+		t.Fatalf("dashboard mapping mismatch: %+v", body.Domains[0])
+	}
+	if body.Domains[0].AlignmentRate != 90 || body.Domains[0].UnknownSenderCount != 1 {
+		t.Fatalf("reporter metrics mismatch: %+v", body.Domains[0])
+	}
+}
+
+func TestDashboardDomainMissingReturnsJSON404(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIDomainChecker: store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/missing", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	if contentType := rec.Header().Get("Content-Type"); !strings.Contains(contentType, "application/json") {
+		t.Fatalf("Content-Type = %q, want JSON", contentType)
+	}
+}
+
+func TestDashboardRecheckQueuesJob(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:           &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
+		APIDomainChecker:  store,
+		APIDomainRechecks: store,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/dashboard/domains/domain-1/recheck", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"job_id":"job-1"`) || !strings.Contains(rec.Body.String(), `"status":"queued"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestDashboardBrandRiskReturnsEmailAuthAndLookalikeEvidence(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{domains: []domains.Domain{{
+		ID:     "domain-1",
+		Domain: "example.com",
+		LatestCheck: &domains.Check{
+			CheckedAt: time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC),
+			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
+			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
+			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none"},
+			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
+		},
+	}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIDomainChecker: store,
+		BrandRiskResolver: webLookalikeResolver{
+			hosts: map[string][]string{"exmple.com": {"192.0.2.10"}},
+			mx:    map[string][]*net.MX{"exampl.com": {{Host: "mail.example.", Pref: 10}}},
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/brand-risk?tld=com&limit=25", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body struct {
+		Findings []struct {
+			Type     string `json:"type"`
+			Severity string `json:"severity"`
+		} `json:"findings"`
+		Lookalikes []struct {
+			Domain            string `json:"domain"`
+			Severity          string `json:"severity"`
+			HasAddressRecords bool   `json:"has_address_records"`
+			HasMXRecords      bool   `json:"has_mx_records"`
+		} `json:"lookalikes"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if len(body.Findings) == 0 || body.Findings[0].Type != "dmarc_policy_relaxed" {
+		t.Fatalf("email-auth findings missing: %+v", body.Findings)
+	}
+	if !hasLookalikeResponse(body.Lookalikes, "exmple.com", "Medium", true, false) {
+		t.Fatalf("lookalikes missing address evidence: %+v", body.Lookalikes)
+	}
+	if !hasLookalikeResponse(body.Lookalikes, "exampl.com", "High", false, true) {
+		t.Fatalf("lookalikes missing MX evidence: %+v", body.Lookalikes)
+	}
+}
+
+func TestDashboardSettingsRejectsInvalidThreshold(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:              &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
+		APIDashboardSettings: store,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/dashboard/settings", strings.NewReader(`{"require_alignment_before_reject":101}`))
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "require_alignment_before_reject") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func hasLookalikeResponse(rows []struct {
+	Domain            string `json:"domain"`
+	Severity          string `json:"severity"`
+	HasAddressRecords bool   `json:"has_address_records"`
+	HasMXRecords      bool   `json:"has_mx_records"`
+}, domain string, severity string, hasAddress bool, hasMX bool) bool {
+	for _, row := range rows {
+		if row.Domain == domain && row.Severity == severity && row.HasAddressRecords == hasAddress && row.HasMXRecords == hasMX {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAPIDomainsExportReturnsCSV(t *testing.T) {

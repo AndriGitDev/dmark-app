@@ -4,6 +4,7 @@ package web
 import (
 	"context"
 	"crypto/rand"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,8 @@ import (
 	"github.com/AndriGitDev/meil/internal/auth"
 	"github.com/AndriGitDev/meil/internal/billing"
 	"github.com/AndriGitDev/meil/internal/brand"
+	"github.com/AndriGitDev/meil/internal/brandrisk"
+	"github.com/AndriGitDev/meil/internal/dmarcjourney"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
@@ -60,6 +63,10 @@ type OrganizationDomainChecker interface {
 	CreateCheck(ctx context.Context, domainID string, result scanner.Result) error
 }
 
+type OrganizationDomainRecheckQueue interface {
+	QueueOrganizationDomainRecheck(ctx context.Context, organizationID string, domainID string, at time.Time) (domains.RecheckJob, error)
+}
+
 type OrganizationDomainHistoryStore interface {
 	ListOrganizationDomainHistory(ctx context.Context, organizationID string, domainID string, limit int) ([]domains.HistoryEntry, error)
 }
@@ -77,6 +84,17 @@ type OrganizationReporterStore interface {
 type UserReporterStore interface {
 	ListUserReporterSenders(ctx context.Context, userID string, domainID string, limit int) ([]reporter.InventoryEntry, error)
 	GetUserReporterHealth(ctx context.Context, userID string, domainID string) (reporter.HealthResult, error)
+}
+
+type OrganizationDashboardAlertStore interface {
+	ListOrganizationDashboardAlerts(ctx context.Context, organizationID string, activeOnly bool, limit int) ([]alerts.DashboardAlert, error)
+	AcknowledgeOrganizationDashboardAlert(ctx context.Context, organizationID string, alertID string, reason string) error
+	MuteOrganizationDashboardAlert(ctx context.Context, organizationID string, alertID string, until time.Time, reason string) error
+}
+
+type OrganizationDashboardSettingsStore interface {
+	GetOrganizationDashboardSettings(ctx context.Context, organizationID string) (domains.DashboardSettings, error)
+	SaveOrganizationDashboardSettings(ctx context.Context, organizationID string, settings domains.DashboardSettings) (domains.DashboardSettings, error)
 }
 
 type AuditClaimStore interface {
@@ -141,9 +159,13 @@ type Deps struct {
 	APIDomains             OrganizationDomainLister
 	APIDomainCreator       OrganizationDomainCreator
 	APIDomainChecker       OrganizationDomainChecker
+	APIDomainRechecks      OrganizationDomainRecheckQueue
 	APIDomainHistory       OrganizationDomainHistoryStore
 	APIDomainDrift         OrganizationDomainDriftStore
 	APIReporter            OrganizationReporterStore
+	APIDashboardAlerts     OrganizationDashboardAlertStore
+	APIDashboardSettings   OrganizationDashboardSettingsStore
+	BrandRiskResolver      brandrisk.LookalikeResolver
 	UserReporter           UserReporterStore
 	AuditClaims            AuditClaimStore
 	APIWebhooks            OrganizationWebhookStore
@@ -361,6 +383,338 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, apicontracts.NewScanResponse(result))
+	})
+	r.Get("/api/v1/dashboard", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		items, err := dashboardDomainResponses(r.Context(), deps, principal.OrganizationID, apikeys.Allows(principal, apikeys.ScopeReporterRead))
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		alertCount := 0
+		if deps.APIDashboardAlerts != nil {
+			if activeAlerts, err := deps.APIDashboardAlerts.ListOrganizationDashboardAlerts(r.Context(), principal.OrganizationID, true, 200); err == nil {
+				alertCount = len(activeAlerts)
+			}
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardResponse(items, alertCount, time.Now().UTC()))
+	})
+	r.Get("/api/v1/dashboard/domains", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		items, err := dashboardDomainResponses(r.Context(), deps, principal.OrganizationID, apikeys.Allows(principal, apikeys.ScopeReporterRead))
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string][]apicontracts.DashboardDomainResponse{"domains": items})
+	})
+	r.Get("/api/v1/dashboard/domains/{id}", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDomainChecker == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "domain API is not configured")
+			return
+		}
+		domain, err := deps.APIDomainChecker.GetOrganizationDomain(r.Context(), principal.OrganizationID, chi.URLParam(r, "id"))
+		if err != nil {
+			writeAPIError(w, http.StatusNotFound, "domain was not found")
+			return
+		}
+		var senders []reporter.InventoryEntry
+		if apikeys.Allows(principal, apikeys.ScopeReporterRead) {
+			senders = dashboardReporterSenders(r.Context(), deps.APIReporter, principal.OrganizationID, domain.ID, 200)
+		}
+		history := []apicontracts.HistoryResponse{}
+		if deps.APIDomainHistory != nil {
+			entries, err := deps.APIDomainHistory.ListOrganizationDomainHistory(r.Context(), principal.OrganizationID, domain.ID, 25)
+			if err == nil {
+				for _, entry := range entries {
+					history = append(history, apicontracts.NewHistoryResponse(entry))
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, apicontracts.DashboardDomainDetailResponse{
+			Domain:  apicontracts.NewDashboardDomainResponse(domain, senders),
+			History: history,
+		})
+	})
+	r.Post("/api/v1/dashboard/domains/{id}/recheck", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDomainChecker == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "domain API is not configured")
+			return
+		}
+		domain, err := deps.APIDomainChecker.GetOrganizationDomain(r.Context(), principal.OrganizationID, chi.URLParam(r, "id"))
+		if err != nil {
+			writeAPIError(w, http.StatusNotFound, "domain was not found")
+			return
+		}
+		now := time.Now().UTC()
+		if deps.APIDomainRechecks != nil {
+			job, err := deps.APIDomainRechecks.QueueOrganizationDomainRecheck(r.Context(), principal.OrganizationID, domain.ID, now)
+			if err != nil {
+				writeAPIError(w, http.StatusTooManyRequests, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusAccepted, apicontracts.DashboardRecheckResponse{
+				JobID:       job.ID,
+				DomainID:    job.DomainID,
+				Status:      job.Status,
+				QueuedAt:    job.QueuedAt.UTC(),
+				NextAllowed: job.NextAllowed.UTC(),
+			})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		defer cancel()
+		result, err := deps.Scanner.Scan(ctx, domain.Domain)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := deps.APIDomainChecker.CreateCheck(r.Context(), domain.ID, result); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "saving check failed")
+			return
+		}
+		writeJSON(w, http.StatusAccepted, apicontracts.DashboardRecheckResponse{
+			DomainID: domain.ID,
+			Status:   "completed",
+			QueuedAt: now,
+		})
+	})
+	r.Get("/api/v1/dashboard/domains/{id}/change-plan", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDomainChecker == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "domain API is not configured")
+			return
+		}
+		domain, err := deps.APIDomainChecker.GetOrganizationDomain(r.Context(), principal.OrganizationID, chi.URLParam(r, "id"))
+		if err != nil {
+			writeAPIError(w, http.StatusNotFound, "domain was not found")
+			return
+		}
+		evidence := dmarcjourney.Evidence{}
+		if apikeys.Allows(principal, apikeys.ScopeReporterRead) {
+			evidence = dashboardDMARCEvidence(r.Context(), deps.APIReporter, principal.OrganizationID, domain.ID)
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardChangePlanResponse(domain, evidence, time.Now().UTC()))
+	})
+	r.Get("/api/v1/dashboard/domains/{id}/brand-risk", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDomainChecker == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "domain API is not configured")
+			return
+		}
+		domain, err := deps.APIDomainChecker.GetOrganizationDomain(r.Context(), principal.OrganizationID, chi.URLParam(r, "id"))
+		if err != nil {
+			writeAPIError(w, http.StatusNotFound, "domain was not found")
+			return
+		}
+		options, err := dashboardLookalikeOptions(r)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		lookalikes := brandrisk.EvaluateLookalikeCandidates(ctx, deps.BrandRiskResolver, domain.Domain, options)
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardBrandRiskResponse(domain, lookalikes, time.Now().UTC()))
+	})
+	r.Get("/api/v1/dashboard/domains/{id}/reporter", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeReporterRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDomainChecker == nil || deps.APIReporter == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "Reporter API is not configured")
+			return
+		}
+		domain, err := deps.APIDomainChecker.GetOrganizationDomain(r.Context(), principal.OrganizationID, chi.URLParam(r, "id"))
+		if err != nil {
+			writeAPIError(w, http.StatusNotFound, "domain was not found")
+			return
+		}
+		senders := dashboardReporterSenders(r.Context(), deps.APIReporter, principal.OrganizationID, domain.ID, 200)
+		health, _ := deps.APIReporter.GetOrganizationReporterHealth(r.Context(), principal.OrganizationID, domain.ID)
+		unknownOnly := strings.EqualFold(r.URL.Query().Get("filter"), "unknown")
+		response := apicontracts.NewDashboardReporterResponse(domain, senders, health, unknownOnly)
+		if strings.EqualFold(r.URL.Query().Get("format"), "csv") {
+			writeDashboardReporterCSV(w, response)
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
+	})
+	r.Get("/api/v1/dashboard/alerts", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDashboardAlerts == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "dashboard alerts are not configured")
+			return
+		}
+		limit, err := apiLimit(r.URL.Query().Get("limit"), 100, 500)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		activeOnly := !strings.EqualFold(r.URL.Query().Get("active"), "false")
+		alerts, err := deps.APIDashboardAlerts.ListOrganizationDashboardAlerts(r.Context(), principal.OrganizationID, activeOnly, limit)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "loading dashboard alerts failed")
+			return
+		}
+		response := make([]apicontracts.DashboardAlertResponse, 0, len(alerts))
+		for _, alert := range alerts {
+			response = append(response, apicontracts.NewDashboardAlertResponse(alert))
+		}
+		writeJSON(w, http.StatusOK, map[string][]apicontracts.DashboardAlertResponse{"alerts": response})
+	})
+	r.Post("/api/v1/dashboard/alerts/{id}/ack", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDashboardAlerts == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "dashboard alerts are not configured")
+			return
+		}
+		reason, err := dashboardReason(r)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := deps.APIDashboardAlerts.AcknowledgeOrganizationDashboardAlert(r.Context(), principal.OrganizationID, chi.URLParam(r, "id"), reason); err != nil {
+			writeAPIError(w, http.StatusNotFound, "alert was not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, apicontracts.DashboardAlertActionResponse{ID: chi.URLParam(r, "id"), Status: "acknowledged", AppliedAt: time.Now().UTC()})
+	})
+	r.Post("/api/v1/dashboard/alerts/{id}/mute", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDashboardAlerts == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "dashboard alerts are not configured")
+			return
+		}
+		reason, until, err := dashboardMuteRequest(r)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := deps.APIDashboardAlerts.MuteOrganizationDashboardAlert(r.Context(), principal.OrganizationID, chi.URLParam(r, "id"), until, reason); err != nil {
+			writeAPIError(w, http.StatusNotFound, "alert was not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, apicontracts.DashboardAlertActionResponse{ID: chi.URLParam(r, "id"), Status: "muted", AppliedAt: time.Now().UTC()})
+	})
+	r.Get("/api/v1/dashboard/settings", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDashboardSettings == nil {
+			writeJSON(w, http.StatusOK, apicontracts.NewDashboardSettingsResponse(domains.DefaultDashboardSettings()))
+			return
+		}
+		settings, err := deps.APIDashboardSettings.GetOrganizationDashboardSettings(r.Context(), principal.OrganizationID)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "loading dashboard settings failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSettingsResponse(settings))
+	})
+	r.Post("/api/v1/dashboard/settings", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDashboardSettings == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "dashboard settings are not configured")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
+		var payload struct {
+			RequireAlignmentBeforeReject        int      `json:"require_alignment_before_reject"`
+			PauseAutomationOnUnknownSenderSpike bool     `json:"pause_automation_on_unknown_senders_spike"`
+			AutoGenerateMonthlyExecutiveReports bool     `json:"auto_generate_monthly_executive_reports"`
+			NotificationChannels                []string `json:"notification_channels"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		settings, err := domains.NormalizeDashboardSettings(domains.DashboardSettings{
+			RequireAlignmentBeforeReject:        payload.RequireAlignmentBeforeReject,
+			PauseAutomationOnUnknownSenderSpike: payload.PauseAutomationOnUnknownSenderSpike,
+			AutoGenerateMonthlyExecutiveReports: payload.AutoGenerateMonthlyExecutiveReports,
+			NotificationChannels:                payload.NotificationChannels,
+		})
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		settings, err = deps.APIDashboardSettings.SaveOrganizationDashboardSettings(r.Context(), principal.OrganizationID, settings)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "saving dashboard settings failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSettingsResponse(settings))
 	})
 	r.Get("/api/v1/domains", func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
@@ -1357,6 +1711,162 @@ func apiLimit(raw string, fallback int, max int) (int, error) {
 		return max, nil
 	}
 	return value, nil
+}
+
+func requireOrganizationAPI(w http.ResponseWriter, principal apikeys.Principal) bool {
+	if strings.TrimSpace(principal.OrganizationID) == "" {
+		writeAPIError(w, http.StatusForbidden, "API key is not attached to an organization")
+		return false
+	}
+	return true
+}
+
+func dashboardDomainResponses(ctx context.Context, deps Deps, organizationID string, includeReporter bool) ([]apicontracts.DashboardDomainResponse, error) {
+	if deps.APIDomains == nil {
+		return nil, fmt.Errorf("domain API is not configured")
+	}
+	saved, err := deps.APIDomains.ListOrganizationDomains(ctx, organizationID)
+	if err != nil {
+		return nil, fmt.Errorf("loading dashboard domains failed")
+	}
+	response := make([]apicontracts.DashboardDomainResponse, 0, len(saved))
+	for _, domain := range saved {
+		var senders []reporter.InventoryEntry
+		if includeReporter {
+			senders = dashboardReporterSenders(ctx, deps.APIReporter, organizationID, domain.ID, 200)
+		}
+		response = append(response, apicontracts.NewDashboardDomainResponse(domain, senders))
+	}
+	return response, nil
+}
+
+func dashboardReporterSenders(ctx context.Context, store OrganizationReporterStore, organizationID string, domainID string, limit int) []reporter.InventoryEntry {
+	if store == nil {
+		return nil
+	}
+	senders, err := store.ListOrganizationReporterSenders(ctx, organizationID, domainID, limit)
+	if err != nil {
+		return nil
+	}
+	return senders
+}
+
+func dashboardDMARCEvidence(ctx context.Context, store OrganizationReporterStore, organizationID string, domainID string) dmarcjourney.Evidence {
+	evidence := dmarcjourney.Evidence{}
+	senders := dashboardReporterSenders(ctx, store, organizationID, domainID, 500)
+	mergeSenderEvidence(&evidence, senders)
+	if store != nil {
+		if health, err := store.GetOrganizationReporterHealth(ctx, organizationID, domainID); err == nil {
+			mergeReporterHealth(&evidence, health)
+		}
+	}
+	return evidence
+}
+
+func dashboardLookalikeOptions(r *http.Request) (brandrisk.CandidateOptions, error) {
+	limit, err := apiLimit(r.URL.Query().Get("limit"), 25, 100)
+	if err != nil {
+		return brandrisk.CandidateOptions{}, err
+	}
+	tld := strings.TrimSpace(r.URL.Query().Get("tld"))
+	if tld == "" {
+		tld = "is"
+	}
+	return brandrisk.CandidateOptions{
+		TLD:             tld,
+		MaxCount:        limit,
+		IncludeInactive: strings.EqualFold(r.URL.Query().Get("include_inactive"), "true"),
+	}, nil
+}
+
+func dashboardReason(r *http.Request) (string, error) {
+	var payload struct {
+		Reason string `json:"reason"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("invalid JSON body")
+	}
+	if len(payload.Reason) > 500 {
+		return "", fmt.Errorf("reason is too long")
+	}
+	return strings.TrimSpace(payload.Reason), nil
+}
+
+func dashboardMuteRequest(r *http.Request) (string, time.Time, error) {
+	var payload struct {
+		Reason   string    `json:"reason"`
+		Until    time.Time `json:"until"`
+		Duration string    `json:"duration"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
+		return "", time.Time{}, fmt.Errorf("invalid JSON body")
+	}
+	if len(payload.Reason) > 500 {
+		return "", time.Time{}, fmt.Errorf("reason is too long")
+	}
+	until := payload.Until
+	if until.IsZero() {
+		until = muteUntil(payload.Duration, time.Now().UTC())
+	}
+	if !until.After(time.Now().UTC()) {
+		return "", time.Time{}, fmt.Errorf("mute expiration must be in the future")
+	}
+	return strings.TrimSpace(payload.Reason), until.UTC(), nil
+}
+
+func writeDashboardReporterCSV(w http.ResponseWriter, response apicontracts.DashboardReporterResponse) {
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="dmark-reporter-senders.csv"`)
+	writer := csv.NewWriter(w)
+	_ = writer.Write([]string{"source_ip", "provider", "volume", "aligned_percentage", "classification", "trend", "risk", "first_seen", "last_seen"})
+	for _, sender := range response.SenderInventory {
+		_ = writer.Write([]string{
+			sender.SourceIP,
+			sender.Provider,
+			strconv.Itoa(sender.Volume),
+			fmt.Sprintf("%.2f", sender.AlignedPercentage),
+			sender.Classification,
+			sender.Trend,
+			sender.Risk,
+			sender.FirstSeen.UTC().Format(time.RFC3339),
+			sender.LastSeen.UTC().Format(time.RFC3339),
+		})
+	}
+	writer.Flush()
+}
+
+func mergeReporterHealth(evidence *dmarcjourney.Evidence, health reporter.HealthResult) {
+	if !health.LastReportAt.IsZero() || len(health.ReporterOrgs) > 0 {
+		evidence.ReporterConfigured = true
+	}
+}
+
+func mergeSenderEvidence(evidence *dmarcjourney.Evidence, senders []reporter.InventoryEntry) {
+	var firstSeen time.Time
+	var lastSeen time.Time
+	for _, sender := range senders {
+		evidence.TotalMessages += sender.Volume
+		evidence.FailedMessages += int(float64(sender.Volume) * sender.FailureRate)
+		if reporter.InventoryRisk(reporter.ToSenderInventoryItem(sender)) == "review" && sender.Provider == "" {
+			evidence.UnknownSenderMessages += sender.Volume
+		}
+		if !sender.FirstSeen.IsZero() && (firstSeen.IsZero() || sender.FirstSeen.Before(firstSeen)) {
+			firstSeen = sender.FirstSeen
+		}
+		if sender.LastSeen.After(lastSeen) {
+			lastSeen = sender.LastSeen
+		}
+	}
+	evidence.AlignedMessages = evidence.TotalMessages - evidence.FailedMessages
+	if evidence.AlignedMessages < 0 {
+		evidence.AlignedMessages = 0
+	}
+	if !firstSeen.IsZero() && !lastSeen.IsZero() {
+		evidence.DaysObserved = int(lastSeen.Sub(firstSeen).Hours()/24) + 1
+		if evidence.DaysObserved < 1 {
+			evidence.DaysObserved = 1
+		}
+	}
 }
 
 func muteUntil(duration string, now time.Time) time.Time {

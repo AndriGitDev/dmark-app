@@ -1,13 +1,19 @@
 package api
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/AndriGitDev/meil/internal/admin"
+	"github.com/AndriGitDev/meil/internal/alerts"
 	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/billing"
+	"github.com/AndriGitDev/meil/internal/brandrisk"
+	"github.com/AndriGitDev/meil/internal/dmarcjourney"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
+	"github.com/AndriGitDev/meil/internal/recommendations"
 	"github.com/AndriGitDev/meil/internal/reporter"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
@@ -23,6 +29,436 @@ type ScanResponse struct {
 	Summary    SummaryResponse `json:"summary"`
 	Audit      AuditResponse   `json:"audit"`
 	Checks     []CheckResponse `json:"checks"`
+}
+
+type DashboardResponse struct {
+	GeneratedAt          time.Time                 `json:"generated_at"`
+	ProtectedDomainCount int                       `json:"protected_domain_count"`
+	AverageScore         int                       `json:"average_score"`
+	AlertCount           int                       `json:"alert_count"`
+	UnknownSenderCount   int                       `json:"unknown_sender_count"`
+	Domains              []DashboardDomainResponse `json:"domains"`
+}
+
+type DashboardDomainResponse struct {
+	ID                 string    `json:"id"`
+	Domain             string    `json:"domain"`
+	CreatedAt          time.Time `json:"created_at"`
+	LastCheckedAt      time.Time `json:"last_checked_at,omitempty"`
+	Status             string    `json:"status"`
+	Score              int       `json:"score"`
+	DMARCPolicy        string    `json:"dmarc_policy"`
+	SPFLookupCount     int       `json:"spf_lookup_count"`
+	DKIMCoverage       string    `json:"dkim_coverage"`
+	AlignmentRate      float64   `json:"alignment_rate"`
+	UnknownSenderCount int       `json:"unknown_sender_count"`
+	NextAction         string    `json:"next_action"`
+}
+
+type DashboardDomainDetailResponse struct {
+	Domain  DashboardDomainResponse `json:"domain"`
+	History []HistoryResponse       `json:"history"`
+}
+
+func NewDashboardResponse(items []DashboardDomainResponse, alertCount int, generatedAt time.Time) DashboardResponse {
+	totalScore := 0
+	unknownSenderCount := 0
+	for _, item := range items {
+		totalScore += item.Score
+		unknownSenderCount += item.UnknownSenderCount
+	}
+	averageScore := 0
+	if len(items) > 0 {
+		averageScore = totalScore / len(items)
+	}
+	return DashboardResponse{
+		GeneratedAt:          generatedAt.UTC(),
+		ProtectedDomainCount: len(items),
+		AverageScore:         averageScore,
+		AlertCount:           alertCount,
+		UnknownSenderCount:   unknownSenderCount,
+		Domains:              items,
+	}
+}
+
+func NewDashboardDomainResponse(domain domains.Domain, senders []reporter.InventoryEntry) DashboardDomainResponse {
+	response := DashboardDomainResponse{
+		ID:           domain.ID,
+		Domain:       domain.Domain,
+		CreatedAt:    domain.CreatedAt.UTC(),
+		Status:       "monitoring",
+		DKIMCoverage: "unknown",
+		NextAction:   "Run a record check to establish the protected-domain baseline.",
+	}
+	if domain.LatestCheck == nil {
+		response.Status = "needs-work"
+		return response
+	}
+	check := *domain.LatestCheck
+	response.LastCheckedAt = check.CheckedAt.UTC()
+	result := scanner.Result{
+		Domain: domain.Domain,
+		SPF:    check.SPF,
+		DKIM:   check.DKIM,
+		DMARC:  check.DMARC,
+		BIMI:   check.BIMI,
+	}
+	summary := scanner.Summarize(result)
+	response.Score = summary.Score
+	response.NextAction = summary.Remediation
+	response.Status = dashboardStatus(summary, check.DMARC)
+	response.DMARCPolicy, _ = dmarcPolicy(check.DMARC.Record)
+	if response.DMARCPolicy == "" {
+		response.DMARCPolicy = "none"
+	}
+	response.SPFLookupCount = recommendations.SPFLookupCount(check.SPF.Record)
+	response.DKIMCoverage = "missing"
+	if check.DKIM.Status == scanner.StatusPass {
+		response.DKIMCoverage = "covered"
+	}
+	response.AlignmentRate, response.UnknownSenderCount = reporterMetrics(senders)
+	if response.UnknownSenderCount > 0 && response.Status == "protected" {
+		response.Status = "monitoring"
+		response.NextAction = "Review unknown Reporter senders before advancing enforcement."
+	}
+	return response
+}
+
+type DashboardRecheckResponse struct {
+	JobID       string    `json:"job_id"`
+	CheckID     string    `json:"check_id,omitempty"`
+	DomainID    string    `json:"domain_id"`
+	Status      string    `json:"status"`
+	QueuedAt    time.Time `json:"queued_at"`
+	NextAllowed time.Time `json:"next_allowed_at,omitempty"`
+}
+
+type DashboardChangePlanResponse struct {
+	DomainID     string               `json:"domain_id"`
+	Domain       string               `json:"domain"`
+	GeneratedAt  time.Time            `json:"generated_at"`
+	JourneyState dmarcjourney.State   `json:"journey_state"`
+	NextAction   string               `json:"next_action"`
+	Changes      []DashboardDNSChange `json:"changes"`
+}
+
+type DashboardDNSChange struct {
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Status       string `json:"status"`
+	RecordName   string `json:"record_name"`
+	RecordType   string `json:"record_type"`
+	RecordText   string `json:"record_text"`
+	Evidence     string `json:"evidence"`
+	Risk         string `json:"risk"`
+	RollbackNote string `json:"rollback_note"`
+}
+
+func NewDashboardChangePlanResponse(domain domains.Domain, evidence dmarcjourney.Evidence, generatedAt time.Time) DashboardChangePlanResponse {
+	result := scanner.Result{Domain: domain.Domain}
+	if domain.LatestCheck != nil {
+		result.SPF = domain.LatestCheck.SPF
+		result.DKIM = domain.LatestCheck.DKIM
+		result.DMARC = domain.LatestCheck.DMARC
+		result.BIMI = domain.LatestCheck.BIMI
+	}
+	journey := dmarcjourney.Evaluate(result.DMARC, evidence)
+	changes := recommendations.BuildChangePlan(result, evidence)
+	response := DashboardChangePlanResponse{
+		DomainID:     domain.ID,
+		Domain:       domain.Domain,
+		GeneratedAt:  generatedAt.UTC(),
+		JourneyState: journey.State,
+		NextAction:   journey.NextAction,
+		Changes:      make([]DashboardDNSChange, 0, len(changes)),
+	}
+	for _, change := range changes {
+		response.Changes = append(response.Changes, DashboardDNSChange{
+			ID:           change.ID,
+			Title:        change.Title,
+			Status:       string(change.Status),
+			RecordName:   change.RecordName,
+			RecordType:   change.RecordType,
+			RecordText:   change.RecordText,
+			Evidence:     change.Evidence,
+			Risk:         change.Risk,
+			RollbackNote: change.RollbackNote,
+		})
+	}
+	return response
+}
+
+type DashboardReporterResponse struct {
+	DomainID          string                    `json:"domain_id"`
+	Domain            string                    `json:"domain"`
+	ReportVolume      int                       `json:"report_volume"`
+	AlignedPercentage float64                   `json:"aligned_percentage"`
+	ReporterOrgCount  int                       `json:"reporter_org_count"`
+	Failures          int                       `json:"failures"`
+	RejectCandidates  int                       `json:"reject_candidates"`
+	SetupGuidance     string                    `json:"setup_guidance,omitempty"`
+	SenderInventory   []DashboardSenderResponse `json:"sender_inventory"`
+}
+
+type DashboardSenderResponse struct {
+	SourceIP          string    `json:"source_ip"`
+	Provider          string    `json:"provider"`
+	Volume            int       `json:"volume"`
+	AlignedPercentage float64   `json:"aligned_percentage"`
+	Classification    string    `json:"classification"`
+	Trend             string    `json:"trend"`
+	Risk              string    `json:"risk"`
+	FirstSeen         time.Time `json:"first_seen"`
+	LastSeen          time.Time `json:"last_seen"`
+}
+
+type DashboardBrandRiskResponse struct {
+	DomainID    string                         `json:"domain_id"`
+	Domain      string                         `json:"domain"`
+	GeneratedAt time.Time                      `json:"generated_at"`
+	Findings    []DashboardBrandRiskFinding    `json:"findings"`
+	Lookalikes  []DashboardLookalikeRiskSignal `json:"lookalikes"`
+}
+
+type DashboardBrandRiskFinding struct {
+	Category          string `json:"category"`
+	Type              string `json:"type"`
+	Title             string `json:"title"`
+	Severity          string `json:"severity"`
+	Evidence          string `json:"evidence"`
+	RecommendedAction string `json:"recommended_action"`
+}
+
+type DashboardLookalikeRiskSignal struct {
+	Domain            string `json:"domain"`
+	Kind              string `json:"kind"`
+	Reason            string `json:"reason"`
+	HasAddressRecords bool   `json:"has_address_records"`
+	HasMXRecords      bool   `json:"has_mx_records"`
+	Severity          string `json:"severity"`
+	Evidence          string `json:"evidence"`
+	RecommendedAction string `json:"recommended_action"`
+}
+
+func NewDashboardBrandRiskResponse(domain domains.Domain, lookalikes []brandrisk.LookalikeFinding, generatedAt time.Time) DashboardBrandRiskResponse {
+	response := DashboardBrandRiskResponse{
+		DomainID:    domain.ID,
+		Domain:      domain.Domain,
+		GeneratedAt: generatedAt.UTC(),
+		Findings:    []DashboardBrandRiskFinding{},
+		Lookalikes:  make([]DashboardLookalikeRiskSignal, 0, len(lookalikes)),
+	}
+	if domain.LatestCheck != nil {
+		scan := scanner.Result{
+			Domain:    domain.Domain,
+			CheckedAt: domain.LatestCheck.CheckedAt,
+			SPF:       domain.LatestCheck.SPF,
+			DKIM:      domain.LatestCheck.DKIM,
+			DMARC:     domain.LatestCheck.DMARC,
+			BIMI:      domain.LatestCheck.BIMI,
+		}
+		for _, finding := range brandrisk.FromScan(scan) {
+			response.Findings = append(response.Findings, DashboardBrandRiskFinding{
+				Category:          finding.Category,
+				Type:              finding.Type,
+				Title:             finding.Title,
+				Severity:          string(finding.Severity),
+				Evidence:          finding.Evidence,
+				RecommendedAction: finding.RecommendedAction,
+			})
+		}
+	}
+	for _, finding := range lookalikes {
+		response.Lookalikes = append(response.Lookalikes, DashboardLookalikeRiskSignal{
+			Domain:            finding.Domain,
+			Kind:              string(finding.Kind),
+			Reason:            finding.Reason,
+			HasAddressRecords: finding.HasAddressRecords,
+			HasMXRecords:      finding.HasMXRecords,
+			Severity:          string(finding.Severity),
+			Evidence:          finding.Evidence,
+			RecommendedAction: finding.RecommendedAction,
+		})
+	}
+	return response
+}
+
+func NewDashboardReporterResponse(domain domains.Domain, senders []reporter.InventoryEntry, health reporter.HealthResult, unknownOnly bool) DashboardReporterResponse {
+	response := DashboardReporterResponse{
+		DomainID:         domain.ID,
+		Domain:           domain.Domain,
+		ReporterOrgCount: len(health.ReporterOrgs),
+		Failures:         health.FailureCount,
+		SenderInventory:  []DashboardSenderResponse{},
+	}
+	aligned := 0
+	for _, entry := range senders {
+		risk := reporter.InventoryRisk(reporter.ToSenderInventoryItem(entry))
+		classification := senderClassification(entry, risk)
+		if unknownOnly && classification != "unknown" {
+			continue
+		}
+		failed := int(float64(entry.Volume) * entry.FailureRate)
+		if failed < 0 {
+			failed = 0
+		}
+		alignedVolume := entry.Volume - failed
+		if alignedVolume < 0 {
+			alignedVolume = 0
+		}
+		response.ReportVolume += entry.Volume
+		aligned += alignedVolume
+		if risk == "expected" && entry.FailureRate <= 0.02 {
+			response.RejectCandidates++
+		}
+		response.SenderInventory = append(response.SenderInventory, DashboardSenderResponse{
+			SourceIP:          entry.SourceIP,
+			Provider:          entry.Provider,
+			Volume:            entry.Volume,
+			AlignedPercentage: percent(alignedVolume, entry.Volume),
+			Classification:    classification,
+			Trend:             senderTrend(entry),
+			Risk:              risk,
+			FirstSeen:         entry.FirstSeen.UTC(),
+			LastSeen:          entry.LastSeen.UTC(),
+		})
+	}
+	response.AlignedPercentage = percent(aligned, response.ReportVolume)
+	if response.ReportVolume == 0 {
+		response.SetupGuidance = "Enable DMARC aggregate reporting with a rua mailbox to populate Reporter sender inventory."
+	}
+	return response
+}
+
+type DashboardAlertResponse struct {
+	ID           string    `json:"id"`
+	DomainID     string    `json:"domain_id"`
+	Domain       string    `json:"domain"`
+	CheckName    string    `json:"check_name"`
+	Kind         string    `json:"kind"`
+	Severity     string    `json:"severity"`
+	Message      string    `json:"message"`
+	Evidence     string    `json:"evidence"`
+	CreatedAt    time.Time `json:"created_at"`
+	MutedUntil   time.Time `json:"muted_until,omitempty"`
+	Acknowledged bool      `json:"acknowledged"`
+}
+
+func NewDashboardAlertResponse(state alerts.DashboardAlert) DashboardAlertResponse {
+	return DashboardAlertResponse{
+		ID:           state.ID,
+		DomainID:     state.DomainID,
+		Domain:       state.Domain,
+		CheckName:    state.Event.CheckName,
+		Kind:         string(state.Event.Kind),
+		Severity:     string(state.Event.Severity),
+		Message:      state.Event.Message,
+		Evidence:     state.Event.AfterRecord,
+		CreatedAt:    state.CreatedAt.UTC(),
+		MutedUntil:   state.MutedUntil.UTC(),
+		Acknowledged: !state.AcknowledgedAt.IsZero(),
+	}
+}
+
+type DashboardAlertActionResponse struct {
+	ID        string    `json:"id"`
+	Status    string    `json:"status"`
+	AppliedAt time.Time `json:"applied_at"`
+}
+
+type DashboardSettingsResponse struct {
+	RequireAlignmentBeforeReject        int       `json:"require_alignment_before_reject"`
+	PauseAutomationOnUnknownSenderSpike bool      `json:"pause_automation_on_unknown_senders_spike"`
+	AutoGenerateMonthlyExecutiveReports bool      `json:"auto_generate_monthly_executive_reports"`
+	NotificationChannels                []string  `json:"notification_channels"`
+	UpdatedAt                           time.Time `json:"updated_at,omitempty"`
+}
+
+func NewDashboardSettingsResponse(settings domains.DashboardSettings) DashboardSettingsResponse {
+	return DashboardSettingsResponse{
+		RequireAlignmentBeforeReject:        settings.RequireAlignmentBeforeReject,
+		PauseAutomationOnUnknownSenderSpike: settings.PauseAutomationOnUnknownSenderSpike,
+		AutoGenerateMonthlyExecutiveReports: settings.AutoGenerateMonthlyExecutiveReports,
+		NotificationChannels:                settings.NotificationChannels,
+		UpdatedAt:                           settings.UpdatedAt.UTC(),
+	}
+}
+
+func dashboardStatus(summary scanner.PostureSummary, dmarc scanner.CheckResult) string {
+	policy, _ := dmarcPolicy(dmarc.Record)
+	if summary.Score >= 90 && policy == "reject" {
+		return "protected"
+	}
+	if summary.Score < 70 || dmarc.Status == scanner.StatusMissing || policy == "none" || policy == "" {
+		return "needs-work"
+	}
+	return "monitoring"
+}
+
+func dmarcPolicy(record string) (string, int) {
+	policy := ""
+	pct := 100
+	for _, part := range strings.Split(record, ";") {
+		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "p":
+			policy = strings.ToLower(strings.TrimSpace(value))
+		case "pct":
+			if parsed, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && parsed >= 0 && parsed <= 100 {
+				pct = parsed
+			}
+		}
+	}
+	return policy, pct
+}
+
+func reporterMetrics(senders []reporter.InventoryEntry) (float64, int) {
+	total := 0
+	aligned := 0
+	unknown := 0
+	for _, entry := range senders {
+		total += entry.Volume
+		failed := int(float64(entry.Volume) * entry.FailureRate)
+		aligned += entry.Volume - failed
+		risk := reporter.InventoryRisk(reporter.ToSenderInventoryItem(entry))
+		if senderClassification(entry, risk) == "unknown" {
+			unknown++
+		}
+	}
+	return percent(aligned, total), unknown
+}
+
+func senderClassification(entry reporter.InventoryEntry, risk string) string {
+	if entry.Expected {
+		return "expected"
+	}
+	if entry.Ignored {
+		return "ignored"
+	}
+	if entry.Suspicious || risk == "high" || entry.Provider == "" {
+		return "unknown"
+	}
+	return "review"
+}
+
+func senderTrend(entry reporter.InventoryEntry) string {
+	if entry.FirstSeen.IsZero() || entry.LastSeen.IsZero() || entry.FirstSeen.Equal(entry.LastSeen) {
+		return "new"
+	}
+	if entry.LastSeen.Sub(entry.FirstSeen) > 14*24*time.Hour {
+		return "stable"
+	}
+	return "watch"
+}
+
+func percent(numerator int, denominator int) float64 {
+	if denominator <= 0 {
+		return 0
+	}
+	return float64(numerator) * 100 / float64(denominator)
 }
 
 type SummaryResponse struct {

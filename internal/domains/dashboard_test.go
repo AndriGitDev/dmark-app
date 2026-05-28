@@ -85,3 +85,22 @@ func TestBuildDashboardSortsActionableStatesFirst(t *testing.T) {
 		t.Fatalf("items = %+v, want failed item first", items)
 	}
 }
+
+func TestNormalizeDashboardSettings(t *testing.T) {
+	t.Parallel()
+
+	settings, err := NormalizeDashboardSettings(DashboardSettings{
+		RequireAlignmentBeforeReject:        95,
+		PauseAutomationOnUnknownSenderSpike: true,
+		NotificationChannels:                []string{"Email", "webhook", "email", "sms"},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeDashboardSettings returned error: %v", err)
+	}
+	if settings.RequireAlignmentBeforeReject != 95 || len(settings.NotificationChannels) != 2 {
+		t.Fatalf("unexpected settings: %+v", settings)
+	}
+	if _, err := NormalizeDashboardSettings(DashboardSettings{RequireAlignmentBeforeReject: 101}); err == nil {
+		t.Fatalf("NormalizeDashboardSettings accepted invalid threshold")
+	}
+}

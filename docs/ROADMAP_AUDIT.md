@@ -73,6 +73,7 @@ Evidence:
 - Provider rules, explainable attribution, deterministic review fixtures, and ambiguous-provider candidate detection: `internal/attribution/attribution.go`, `internal/attribution/fixtures.go`, `internal/attribution/attribution_test.go`.
 - Enrichment cache, refresh service, River refresh worker, and Postgres cache persistence: `internal/attribution/cache.go`, `internal/attribution/enrichment.go`, `internal/jobs/enrichment.go`, `internal/store/pg/app_store.go`.
 - Unknown sender, recommendations, alignment explanations, inventory over time, and risk scoring: `internal/reporter/*.go`, `internal/recommendations/recommendations.go`, `internal/risk/risk.go`.
+- Evidence-backed Defender lookalike candidates with bounded DNS/MX checks and a frontend-ready Brand Risk API: `internal/brandrisk/lookalike.go`, `internal/api/contracts.go`, `internal/web/server.go`.
 
 Verification gaps:
 

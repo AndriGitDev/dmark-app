@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AndriGitDev/meil/internal/brandrisk"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/scanner"
 )
@@ -57,5 +58,42 @@ func TestNewDomainResponse(t *testing.T) {
 	}
 	if response.LatestCheck.SPF.Status != scanner.StatusPass {
 		t.Fatalf("latest check not mapped: %+v", response.LatestCheck)
+	}
+}
+
+func TestNewDashboardBrandRiskResponse(t *testing.T) {
+	t.Parallel()
+
+	response := NewDashboardBrandRiskResponse(domains.Domain{
+		ID:     "domain-1",
+		Domain: "example.com",
+		LatestCheck: &domains.Check{
+			CheckedAt: time.Date(2026, 5, 16, 13, 0, 0, 0, time.UTC),
+			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
+			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
+			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none"},
+			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
+		},
+	}, []brandrisk.LookalikeFinding{{
+		Domain:            "exmple.com",
+		Kind:              brandrisk.CandidateTypo,
+		Reason:            "single-character deletion",
+		HasAddressRecords: true,
+		Severity:          brandrisk.SeverityMedium,
+		Evidence:          "DNS evidence: A/AAAA records are published.",
+		RecommendedAction: "Review ownership.",
+	}}, time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC))
+
+	if response.DomainID != "domain-1" || response.Domain != "example.com" {
+		t.Fatalf("domain mapping mismatch: %+v", response)
+	}
+	if len(response.Findings) == 0 || response.Findings[0].Type != "dmarc_policy_relaxed" {
+		t.Fatalf("scan findings missing: %+v", response.Findings)
+	}
+	if len(response.Lookalikes) != 1 || response.Lookalikes[0].Domain != "exmple.com" || response.Lookalikes[0].Severity != "Medium" {
+		t.Fatalf("lookalike mapping mismatch: %+v", response.Lookalikes)
+	}
+	if _, err := json.Marshal(response); err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
 	}
 }

@@ -39,9 +39,16 @@ LETTERMINT_TOKEN=
 LETTERMINT_FROM=Dmark <login@dmark.kastro.is>
 BILLING_WEBHOOK_SECRET=
 FRONTEND_ORIGINS=https://dmark.is,https://www.dmark.is
+PUBLIC_CHECKS_PER_MINUTE=12
+AUTH_TOKEN_TTL_MINUTES=15
+DMARC_MAX_REPORT_BYTES=10485760
 ```
 
 `FRONTEND_ORIGINS` enables CORS for browser calls from `dmark-web`. It must contain exact origins, not paths. `LETTERMINT_TOKEN` and `LETTERMINT_FROM` are reserved for backend email flows. The browser login surface now belongs in `dmark-web`.
+
+Dashboard API access for `dmark-web` should use server-side proxy routes with a backend API token stored only in Coolify environment variables for the frontend app. The token needs `domain:read`, `domain:write`, and `reporter:read` for the current dashboard read/recheck/Reporter/alert/settings flows. Do not expose that token to browser JavaScript.
+
+The backend does not require browser CORS for the recommended server-side proxy integration. If direct browser session auth is introduced later, add only explicit frontend origins and keep `/check` and public scan flows separately rate-limited.
 
 DNS:
 

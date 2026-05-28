@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/AndriGitDev/meil/internal/admin"
+	"github.com/AndriGitDev/meil/internal/alerts"
 	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/attribution"
 	"github.com/AndriGitDev/meil/internal/auth"
@@ -1049,18 +1051,396 @@ func (s *AppStore) GetOrganizationDomain(ctx context.Context, organizationID str
 		return domains.Domain{}, err
 	}
 	var saved domains.Domain
+	var checkID pgtype.UUID
+	var spfStatus, spfMessage, spfRecord string
+	var dkimStatus, dkimMessage, dkimRecord string
+	var dmarcStatus, dmarcMessage, dmarcRecord string
+	var bimiStatus, bimiMessage, bimiRecord string
 	var createdAt pgtype.Timestamptz
+	var checkedAt pgtype.Timestamptz
 	err = s.queries.db.QueryRow(ctx, `
-SELECT domain, created_at
-FROM domains
-WHERE organization_id = $1 AND id = $2
-`, organizationUUID, domainUUID).Scan(&saved.Domain, &createdAt)
+SELECT
+    d.domain,
+    d.created_at,
+    c.id AS check_id,
+    COALESCE(c.spf_status, '') AS spf_status,
+    COALESCE(c.spf_message, '') AS spf_message,
+    COALESCE(c.spf_record, '') AS spf_record,
+    COALESCE(c.dkim_status, '') AS dkim_status,
+    COALESCE(c.dkim_message, '') AS dkim_message,
+    COALESCE(c.dkim_record, '') AS dkim_record,
+    COALESCE(c.dmarc_status, '') AS dmarc_status,
+    COALESCE(c.dmarc_message, '') AS dmarc_message,
+    COALESCE(c.dmarc_record, '') AS dmarc_record,
+    COALESCE(c.bimi_status, '') AS bimi_status,
+    COALESCE(c.bimi_message, '') AS bimi_message,
+    COALESCE(c.bimi_record, '') AS bimi_record,
+    c.created_at AS checked_at
+FROM domains d
+LEFT JOIN LATERAL (
+    SELECT id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, created_at
+    FROM domain_checks dc
+    WHERE dc.domain_id = d.id
+    ORDER BY dc.created_at DESC
+    LIMIT 1
+) c ON true
+WHERE d.organization_id = $1 AND d.id = $2
+`, organizationUUID, domainUUID).Scan(
+		&saved.Domain,
+		&createdAt,
+		&checkID,
+		&spfStatus,
+		&spfMessage,
+		&spfRecord,
+		&dkimStatus,
+		&dkimMessage,
+		&dkimRecord,
+		&dmarcStatus,
+		&dmarcMessage,
+		&dmarcRecord,
+		&bimiStatus,
+		&bimiMessage,
+		&bimiRecord,
+		&checkedAt,
+	)
 	if err != nil {
 		return domains.Domain{}, err
 	}
 	saved.ID = domainID
 	saved.CreatedAt = createdAt.Time
+	if checkID.Valid {
+		saved.LatestCheck = &domains.Check{
+			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
+			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
+			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
+			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
+			CheckedAt: checkedAt.Time,
+		}
+	}
 	return saved, nil
+}
+
+func (s *AppStore) QueueOrganizationDomainRecheck(ctx context.Context, organizationID string, domainID string, at time.Time) (domains.RecheckJob, error) {
+	organizationUUID, domainUUID, err := organizationDomainUUIDs(organizationID, domainID)
+	if err != nil {
+		return domains.RecheckJob{}, err
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	slot := at.UTC().Truncate(5 * time.Minute)
+	idempotencyKey := "dashboard-recheck:" + organizationID + ":" + domainID + ":" + slot.Format(time.RFC3339)
+	var job domains.RecheckJob
+	var id pgtype.UUID
+	var createdAt pgtype.Timestamptz
+	var scheduledFor pgtype.Timestamptz
+	err = s.queries.db.QueryRow(ctx, `
+WITH scoped_domain AS (
+    SELECT id
+    FROM domains
+    WHERE organization_id = $1 AND id = $2
+),
+inserted AS (
+    INSERT INTO scan_jobs (domain_id, idempotency_key, scheduled_for, status)
+    SELECT id, $3, $4, 'queued'
+    FROM scoped_domain
+    ON CONFLICT (idempotency_key) DO UPDATE SET updated_at = scan_jobs.updated_at
+    RETURNING id, domain_id, status, created_at, scheduled_for
+)
+SELECT id, status, created_at, scheduled_for
+FROM inserted
+`, organizationUUID, domainUUID, idempotencyKey, at.UTC()).Scan(&id, &job.Status, &createdAt, &scheduledFor)
+	if err != nil {
+		return domains.RecheckJob{}, err
+	}
+	job.ID = uuidToString(id)
+	job.DomainID = domainID
+	job.QueuedAt = createdAt.Time
+	job.NextAllowed = slot.Add(5 * time.Minute)
+	if scheduledFor.Valid && job.QueuedAt.IsZero() {
+		job.QueuedAt = scheduledFor.Time
+	}
+	return job, nil
+}
+
+func (s *AppStore) ListOrganizationDashboardAlerts(ctx context.Context, organizationID string, activeOnly bool, limit int) ([]alerts.DashboardAlert, error) {
+	organizationUUID, err := uuidFromString(organizationID)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	args := []any{organizationUUID, limit}
+	activeClause := ""
+	if activeOnly {
+		activeClause = "AND e.acknowledged_at IS NULL AND (e.muted_until IS NULL OR e.muted_until <= now())"
+	}
+	rows, err := s.queries.db.Query(ctx, `
+SELECT
+    e.id,
+    d.id,
+    d.domain,
+    e.check_name,
+    e.kind,
+    e.severity,
+    e.message,
+    e.before_status,
+    e.after_status,
+    e.before_record,
+    e.after_record,
+    e.created_at,
+    e.muted_until,
+    e.acknowledged_at
+FROM drift_events e
+JOIN domains d ON d.id = e.domain_id
+WHERE d.organization_id = $1 `+activeClause+`
+ORDER BY e.created_at DESC
+LIMIT $2
+`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := []alerts.DashboardAlert{}
+	for rows.Next() {
+		var alert alerts.DashboardAlert
+		var alertID pgtype.UUID
+		var domainID pgtype.UUID
+		var kind string
+		var severity string
+		var beforeStatus string
+		var afterStatus string
+		var createdAt pgtype.Timestamptz
+		var mutedUntil pgtype.Timestamptz
+		var acknowledgedAt pgtype.Timestamptz
+		if err := rows.Scan(
+			&alertID,
+			&domainID,
+			&alert.Domain,
+			&alert.Event.CheckName,
+			&kind,
+			&severity,
+			&alert.Event.Message,
+			&beforeStatus,
+			&afterStatus,
+			&alert.Event.BeforeRecord,
+			&alert.Event.AfterRecord,
+			&createdAt,
+			&mutedUntil,
+			&acknowledgedAt,
+		); err != nil {
+			return nil, err
+		}
+		alert.ID = uuidToString(alertID)
+		alert.DomainID = uuidToString(domainID)
+		alert.Event.Kind = drift.Kind(kind)
+		alert.Event.Severity = drift.Severity(severity)
+		alert.Event.BeforeStatus = scanner.Status(beforeStatus)
+		alert.Event.AfterStatus = scanner.Status(afterStatus)
+		alert.CreatedAt = createdAt.Time
+		if mutedUntil.Valid {
+			alert.MutedUntil = mutedUntil.Time
+		}
+		if acknowledgedAt.Valid {
+			alert.AcknowledgedAt = acknowledgedAt.Time
+		}
+		result = append(result, alert)
+	}
+	return result, rows.Err()
+}
+
+func (s *AppStore) AcknowledgeOrganizationDashboardAlert(ctx context.Context, organizationID string, alertID string, reason string) error {
+	return s.updateOrganizationDashboardAlert(ctx, organizationID, alertID, "acknowledged", reason, time.Time{})
+}
+
+func (s *AppStore) MuteOrganizationDashboardAlert(ctx context.Context, organizationID string, alertID string, until time.Time, reason string) error {
+	return s.updateOrganizationDashboardAlert(ctx, organizationID, alertID, "muted", reason, until.UTC())
+}
+
+func (s *AppStore) updateOrganizationDashboardAlert(ctx context.Context, organizationID string, alertID string, action string, reason string, mutedUntil time.Time) error {
+	organizationUUID, err := uuidFromString(organizationID)
+	if err != nil {
+		return err
+	}
+	alertUUID, err := uuidFromString(alertID)
+	if err != nil {
+		return err
+	}
+	var domainID pgtype.UUID
+	var tag pgconn.CommandTag
+	if action == "acknowledged" {
+		tag, err = s.queries.db.Exec(ctx, `
+UPDATE drift_events e
+SET acknowledged_at = COALESCE(acknowledged_at, now())
+FROM domains d
+WHERE d.id = e.domain_id AND d.organization_id = $1 AND e.id = $2
+`, organizationUUID, alertUUID)
+	} else {
+		tag, err = s.queries.db.Exec(ctx, `
+UPDATE drift_events e
+SET muted_until = $3
+FROM domains d
+WHERE d.id = e.domain_id AND d.organization_id = $1 AND e.id = $2
+`, organizationUUID, alertUUID, mutedUntil)
+	}
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	_ = s.queries.db.QueryRow(ctx, `
+SELECT domain_id
+FROM drift_events
+WHERE id = $1
+`, alertUUID).Scan(&domainID)
+	metadata := map[string]string{"actor": "api_key", "reason": strings.TrimSpace(reason)}
+	if !mutedUntil.IsZero() {
+		metadata["muted_until"] = mutedUntil.UTC().Format(time.RFC3339)
+	}
+	return s.insertOrganizationAudit(ctx, organizationUUID, domainID, "dashboard.alert."+action, "alert", alertID, metadata)
+}
+
+func (s *AppStore) AcknowledgeEvent(ctx context.Context, userID string, eventID string, at time.Time) error {
+	userUUID, err := uuidFromString(userID)
+	if err != nil {
+		return err
+	}
+	eventUUID, err := uuidFromString(eventID)
+	if err != nil {
+		return err
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	tag, err := s.queries.db.Exec(ctx, `
+UPDATE drift_events e
+SET acknowledged_at = COALESCE(acknowledged_at, $3)
+FROM domains d
+WHERE d.id = e.domain_id AND d.user_id = $1 AND e.id = $2
+`, userUUID, eventUUID, at.UTC())
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (s *AppStore) MuteEvent(ctx context.Context, userID string, eventID string, until time.Time) error {
+	userUUID, err := uuidFromString(userID)
+	if err != nil {
+		return err
+	}
+	eventUUID, err := uuidFromString(eventID)
+	if err != nil {
+		return err
+	}
+	tag, err := s.queries.db.Exec(ctx, `
+UPDATE drift_events e
+SET muted_until = $3
+FROM domains d
+WHERE d.id = e.domain_id AND d.user_id = $1 AND e.id = $2
+`, userUUID, eventUUID, until.UTC())
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (s *AppStore) GetOrganizationDashboardSettings(ctx context.Context, organizationID string) (domains.DashboardSettings, error) {
+	organizationUUID, err := uuidFromString(organizationID)
+	if err != nil {
+		return domains.DashboardSettings{}, err
+	}
+	var settings domains.DashboardSettings
+	var updatedAt pgtype.Timestamptz
+	err = s.queries.db.QueryRow(ctx, `
+SELECT
+    require_alignment_before_reject,
+    pause_automation_on_unknown_sender_spike,
+    auto_generate_monthly_executive_reports,
+    notification_channels,
+    updated_at
+FROM organization_dashboard_settings
+WHERE organization_id = $1
+`, organizationUUID).Scan(
+		&settings.RequireAlignmentBeforeReject,
+		&settings.PauseAutomationOnUnknownSenderSpike,
+		&settings.AutoGenerateMonthlyExecutiveReports,
+		&settings.NotificationChannels,
+		&updatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domains.DefaultDashboardSettings(), nil
+	}
+	if err != nil {
+		return domains.DashboardSettings{}, err
+	}
+	settings.UpdatedAt = updatedAt.Time
+	return settings, nil
+}
+
+func (s *AppStore) SaveOrganizationDashboardSettings(ctx context.Context, organizationID string, settings domains.DashboardSettings) (domains.DashboardSettings, error) {
+	organizationUUID, err := uuidFromString(organizationID)
+	if err != nil {
+		return domains.DashboardSettings{}, err
+	}
+	settings, err = domains.NormalizeDashboardSettings(settings)
+	if err != nil {
+		return domains.DashboardSettings{}, err
+	}
+	var updatedAt pgtype.Timestamptz
+	err = s.queries.db.QueryRow(ctx, `
+INSERT INTO organization_dashboard_settings (
+    organization_id,
+    require_alignment_before_reject,
+    pause_automation_on_unknown_sender_spike,
+    auto_generate_monthly_executive_reports,
+    notification_channels
+) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (organization_id) DO UPDATE SET
+    require_alignment_before_reject = EXCLUDED.require_alignment_before_reject,
+    pause_automation_on_unknown_sender_spike = EXCLUDED.pause_automation_on_unknown_sender_spike,
+    auto_generate_monthly_executive_reports = EXCLUDED.auto_generate_monthly_executive_reports,
+    notification_channels = EXCLUDED.notification_channels,
+    updated_at = now()
+RETURNING updated_at
+`, organizationUUID, settings.RequireAlignmentBeforeReject, settings.PauseAutomationOnUnknownSenderSpike, settings.AutoGenerateMonthlyExecutiveReports, settings.NotificationChannels).Scan(&updatedAt)
+	if err != nil {
+		return domains.DashboardSettings{}, err
+	}
+	settings.UpdatedAt = updatedAt.Time
+	if err := s.insertOrganizationAudit(ctx, organizationUUID, pgtype.UUID{}, "dashboard.settings.updated", "dashboard_settings", organizationID, map[string]string{
+		"actor":                           "api_key",
+		"require_alignment_before_reject": fmt.Sprintf("%d", settings.RequireAlignmentBeforeReject),
+		"notification_channels":           strings.Join(settings.NotificationChannels, ","),
+	}); err != nil {
+		return domains.DashboardSettings{}, err
+	}
+	return settings, nil
+}
+
+func (s *AppStore) insertOrganizationAudit(ctx context.Context, organizationID pgtype.UUID, domainID pgtype.UUID, action string, targetType string, targetID string, metadata map[string]string) error {
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	domainValue := any(nil)
+	if domainID.Valid {
+		domainValue = domainID
+	}
+	_, err = s.queries.db.Exec(ctx, `
+INSERT INTO audit_log (organization_id, domain_id, action, target_type, target_id, metadata)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+`, organizationID, domainValue, action, targetType, targetID, string(metadataJSON))
+	return err
 }
 
 func (s *AppStore) ListOrganizationDomainHistory(ctx context.Context, organizationID string, domainID string, limit int) ([]domains.HistoryEntry, error) {

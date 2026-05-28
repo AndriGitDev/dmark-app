@@ -66,6 +66,16 @@ type TimelineItem struct {
 	AfterRecord  string
 }
 
+type DashboardAlert struct {
+	ID             string
+	DomainID       string
+	Domain         string
+	Event          drift.Event
+	CreatedAt      time.Time
+	MutedUntil     time.Time
+	AcknowledgedAt time.Time
+}
+
 func BuildTimeline(states []EventState, now time.Time) []TimelineItem {
 	items := make([]TimelineItem, 0, len(states))
 	for _, state := range states {

@@ -1,6 +1,8 @@
 package brandrisk
 
 import (
+	"context"
+	"net"
 	"sort"
 	"strings"
 
@@ -20,9 +22,26 @@ type LookalikeCandidate struct {
 	Reason string
 }
 
+type LookalikeResolver interface {
+	LookupHost(ctx context.Context, host string) ([]string, error)
+	LookupMX(ctx context.Context, name string) ([]*net.MX, error)
+}
+
+type LookalikeFinding struct {
+	Domain            string
+	Kind              CandidateKind
+	Reason            string
+	HasAddressRecords bool
+	HasMXRecords      bool
+	Severity          Severity
+	Evidence          string
+	RecommendedAction string
+}
+
 type CandidateOptions struct {
-	TLD      string
-	MaxCount int
+	TLD             string
+	MaxCount        int
+	IncludeInactive bool
 }
 
 func GenerateLookalikeCandidates(domain string, options CandidateOptions) []LookalikeCandidate {
@@ -87,6 +106,76 @@ func GenerateLookalikeCandidates(domain string, options CandidateOptions) []Look
 		candidates = candidates[:limit]
 	}
 	return candidates
+}
+
+func EvaluateLookalikeCandidates(ctx context.Context, resolver LookalikeResolver, domain string, options CandidateOptions) []LookalikeFinding {
+	if resolver == nil {
+		resolver = net.DefaultResolver
+	}
+	candidates := GenerateLookalikeCandidates(domain, options)
+	findings := make([]LookalikeFinding, 0, len(candidates))
+	for _, candidate := range candidates {
+		if ctx.Err() != nil {
+			break
+		}
+		queryDomain, err := scanner.NormalizeDomain(candidate.Domain)
+		if err != nil {
+			continue
+		}
+		addresses, _ := resolver.LookupHost(ctx, queryDomain)
+		mx, _ := resolver.LookupMX(ctx, queryDomain)
+		hasAddress := len(addresses) > 0
+		hasMX := len(mx) > 0
+		if !hasAddress && !hasMX && !options.IncludeInactive {
+			continue
+		}
+		findings = append(findings, LookalikeFinding{
+			Domain:            candidate.Domain,
+			Kind:              candidate.Kind,
+			Reason:            candidate.Reason,
+			HasAddressRecords: hasAddress,
+			HasMXRecords:      hasMX,
+			Severity:          lookalikeSeverity(hasAddress, hasMX),
+			Evidence:          lookalikeEvidence(hasAddress, hasMX),
+			RecommendedAction: lookalikeAction(hasAddress, hasMX),
+		})
+	}
+	return findings
+}
+
+func lookalikeSeverity(hasAddress bool, hasMX bool) Severity {
+	switch {
+	case hasMX:
+		return SeverityHigh
+	case hasAddress:
+		return SeverityMedium
+	default:
+		return SeverityInfo
+	}
+}
+
+func lookalikeEvidence(hasAddress bool, hasMX bool) string {
+	signals := []string{}
+	if hasAddress {
+		signals = append(signals, "A/AAAA records are published")
+	}
+	if hasMX {
+		signals = append(signals, "MX records are published")
+	}
+	if len(signals) == 0 {
+		return "No active DNS address or MX records were observed during the bounded Defender lookup."
+	}
+	return "DNS evidence: " + strings.Join(signals, "; ") + "."
+}
+
+func lookalikeAction(hasAddress bool, hasMX bool) string {
+	if hasMX {
+		return "Review ownership and mail-routing intent immediately; MX records make this lookalike suitable for email impersonation."
+	}
+	if hasAddress {
+		return "Review ownership and web content for impersonation risk, then acknowledge or monitor the candidate."
+	}
+	return "Keep the candidate in watch mode and only alert when DNS evidence appears."
 }
 
 func icelandicHomoglyphs() map[string][]string {

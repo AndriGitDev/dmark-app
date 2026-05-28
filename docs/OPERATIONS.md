@@ -25,6 +25,11 @@ The repository includes a small HTTP load utility for release and incident drill
 
 ```sh
 BASE_URL=https://dmark.example PATH=/healthz REQUESTS=200 CONCURRENCY=20 make load-api
+BASE_URL=https://dmark.example API_TOKEN=... REQUESTS=200 CONCURRENCY=20 make load-dashboard
+BASE_URL=https://dmark.example API_TOKEN=... DOMAIN_ID=... REQUESTS=200 CONCURRENCY=20 make load-dashboard-reporter
+BASE_URL=https://dmark.example API_TOKEN=... DOMAIN_ID=... REQUESTS=200 CONCURRENCY=20 make load-dashboard-brand-risk
+BASE_URL=https://dmark.example API_TOKEN=... REQUESTS=200 CONCURRENCY=20 make load-dashboard-alerts
+BASE_URL=https://dmark.example API_TOKEN=... REQUESTS=200 CONCURRENCY=20 make load-dashboard-settings
 BASE_URL=https://dmark.example API_TOKEN=... DOMAIN_ID=... REQUESTS=200 CONCURRENCY=20 make load-reporter
 BASE_URL=https://dmark.example API_TOKEN=... DOMAIN_ID=... REQUESTS=50 CONCURRENCY=5 make load-scan-job
 ```

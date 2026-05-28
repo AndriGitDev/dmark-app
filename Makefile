@@ -1,6 +1,6 @@
 DOCKER_COMPOSE ?= docker compose
 
-.PHONY: dev up down migrate migrate-clickhouse generate test lint security fuzz-smoke build generate-check qa-code qa-services qa load-api load-reporter load-scan-job
+.PHONY: dev up down migrate migrate-clickhouse generate test lint security fuzz-smoke build generate-check qa-code qa-services qa load-api load-dashboard load-dashboard-reporter load-dashboard-brand-risk load-dashboard-alerts load-dashboard-settings load-reporter load-scan-job
 
 up:
 	$(DOCKER_COMPOSE) -f infra/coolify/docker-compose.dev.yml up -d
@@ -37,6 +37,21 @@ fuzz-smoke:
 
 load-api:
 	go run ./scripts/load --scenario api-get --base-url $${BASE_URL:-http://127.0.0.1:8080} --path $${PATH:-/healthz} --requests $${REQUESTS:-50} --concurrency $${CONCURRENCY:-5}
+
+load-dashboard:
+	go run ./scripts/load --scenario api-get --base-url $${BASE_URL:-http://127.0.0.1:8080} --path $${PATH:-/api/v1/dashboard/domains} --api-token $${API_TOKEN} --expect-status $${EXPECT_STATUS:-200} --requests $${REQUESTS:-50} --concurrency $${CONCURRENCY:-5}
+
+load-dashboard-reporter:
+	go run ./scripts/load --scenario reporter-get --base-url $${BASE_URL:-http://127.0.0.1:8080} --path $${PATH:-/api/v1/dashboard/domains/$${DOMAIN_ID}/reporter} --api-token $${API_TOKEN} --expect-status $${EXPECT_STATUS:-200} --requests $${REQUESTS:-50} --concurrency $${CONCURRENCY:-5}
+
+load-dashboard-brand-risk:
+	go run ./scripts/load --scenario api-get --base-url $${BASE_URL:-http://127.0.0.1:8080} --path $${PATH:-/api/v1/dashboard/domains/$${DOMAIN_ID}/brand-risk} --api-token $${API_TOKEN} --expect-status $${EXPECT_STATUS:-200} --requests $${REQUESTS:-50} --concurrency $${CONCURRENCY:-5}
+
+load-dashboard-alerts:
+	go run ./scripts/load --scenario api-get --base-url $${BASE_URL:-http://127.0.0.1:8080} --path $${PATH:-/api/v1/dashboard/alerts} --api-token $${API_TOKEN} --expect-status $${EXPECT_STATUS:-200} --requests $${REQUESTS:-50} --concurrency $${CONCURRENCY:-5}
+
+load-dashboard-settings:
+	go run ./scripts/load --scenario api-get --base-url $${BASE_URL:-http://127.0.0.1:8080} --path $${PATH:-/api/v1/dashboard/settings} --api-token $${API_TOKEN} --expect-status $${EXPECT_STATUS:-200} --requests $${REQUESTS:-50} --concurrency $${CONCURRENCY:-5}
 
 load-reporter:
 	go run ./scripts/load --scenario reporter-get --base-url $${BASE_URL:-http://127.0.0.1:8080} --path $${PATH:-/api/v1/domains/$${DOMAIN_ID}/reporter/sources} --api-token $${API_TOKEN} --expect-status $${EXPECT_STATUS:-200} --requests $${REQUESTS:-50} --concurrency $${CONCURRENCY:-5}

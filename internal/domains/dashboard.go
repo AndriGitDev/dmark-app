@@ -2,6 +2,7 @@ package domains
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/AndriGitDev/meil/internal/scanner"
@@ -109,4 +110,68 @@ func dashboardStateRank(state ScanState) int {
 	default:
 		return 0
 	}
+}
+
+type DashboardSettings struct {
+	RequireAlignmentBeforeReject        int
+	PauseAutomationOnUnknownSenderSpike bool
+	AutoGenerateMonthlyExecutiveReports bool
+	NotificationChannels                []string
+	UpdatedAt                           time.Time
+}
+
+type RecheckJob struct {
+	ID          string
+	DomainID    string
+	Status      string
+	QueuedAt    time.Time
+	NextAllowed time.Time
+}
+
+func DefaultDashboardSettings() DashboardSettings {
+	return DashboardSettings{
+		RequireAlignmentBeforeReject:        95,
+		PauseAutomationOnUnknownSenderSpike: true,
+		NotificationChannels:                []string{"email"},
+	}
+}
+
+func NormalizeDashboardSettings(settings DashboardSettings) (DashboardSettings, error) {
+	defaults := DefaultDashboardSettings()
+	if settings.RequireAlignmentBeforeReject == 0 {
+		settings.RequireAlignmentBeforeReject = defaults.RequireAlignmentBeforeReject
+	}
+	if settings.RequireAlignmentBeforeReject < 1 || settings.RequireAlignmentBeforeReject > 100 {
+		return DashboardSettings{}, ErrInvalidDashboardSettings("require_alignment_before_reject must be between 1 and 100")
+	}
+	settings.NotificationChannels = normalizeDashboardChannels(settings.NotificationChannels)
+	if len(settings.NotificationChannels) == 0 {
+		settings.NotificationChannels = defaults.NotificationChannels
+	}
+	return settings, nil
+}
+
+type ErrInvalidDashboardSettings string
+
+func (err ErrInvalidDashboardSettings) Error() string {
+	return string(err)
+}
+
+func normalizeDashboardChannels(values []string) []string {
+	result := []string{}
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(strings.ToLower(value))
+		switch value {
+		case "email", "slack", "webhook":
+		default:
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
