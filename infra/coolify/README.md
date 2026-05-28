@@ -8,7 +8,7 @@ Use `dmark.kastro.is` as the current public domain until `dmark.is` is purchased
 
 Coolify settings:
 
-1. Create a new application from the GitHub repository `AndriGitDev/meil`.
+1. Create a new application from the GitHub repository `AndriGitDev/dmark-app`.
 2. Select Docker Compose deployment.
 3. Use `infra/coolify/docker-compose.yml` as the compose file.
 4. Set the application domain to `https://dmark.kastro.is`.

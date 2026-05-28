@@ -4,7 +4,7 @@ This document records the current implementation posture. The long-form product 
 
 ## Current Scope
 
-Kastro RecordMaster is now beyond the original P0/P1 bootstrap. The repository is still named `meil`, and includes implementation slices for:
+Dmark is now beyond the original P0/P1 bootstrap. The repository is named `dmark-app`, and includes implementation slices for:
 
 1. Public SPF, DKIM, DMARC, and BIMI checking with shared web and CLI scanner semantics.
 2. Passwordless login, protected domains, CSRF-protected app routes, and domain CSV import/export.

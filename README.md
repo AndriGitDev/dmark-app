@@ -4,7 +4,7 @@ Dmark is an interactive DMARC, SPF, and DKIM diagnostic tool and remediation pla
 
 The free diagnostic flow provides public DNS and email-auth posture checks. Monitor adds protected domains, scheduled scans, drift alerts, and history. Reporter ingests DMARC aggregate reports and models who is sending mail as your domain. Defender expands the platform into brand-name and lookalike-domain risk monitoring.
 
-The repository is still named `meil` during the transition from the original email-auth monitoring product. The Go module, binary, CLI command, database names, and deployment service names intentionally remain `meil` for now.
+The repository is named `dmark-app` after the Dmark app split. The Go module, binary, CLI command, database names, and deployment service names intentionally remain `meil` for now.
 
 ## Local Development
 
