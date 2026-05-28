@@ -1,6 +1,6 @@
-# Kastro RecordMaster Product Roadmap
+# Dmark Product Roadmap
 
-RecordMaster is Kastro's brand-name risk defense product for domain owners.
+Dmark is a DMARC, email-authentication, and brand-name risk defense product for domain owners.
 
 It starts with public DNS, SPF, DKIM, DMARC, and BIMI posture checks. It then grows into protected-domain monitoring, drift alerts, DMARC aggregate report ingestion, sender attribution, and brand-name risk defense for spoofing and impersonation risks.
 
@@ -17,11 +17,11 @@ The repository already contains these working surfaces:
 - Postgres schema for users, login tokens, domains, and domain check snapshots.
 - sqlc-generated Postgres query layer.
 - Coolify deployment assets and local Docker Compose development services.
-- Unit and handler tests for scanner, auth, domains, notifier, CLI scan output, API routes, and frontend route handoff.
+- Unit and handler tests for scanner, auth, domains, notifier, CLI scan output, API routes, and browser route handoff.
 
-The repository now includes package boundaries and implementation slices for drift detection, jobs, ingestion, attribution, ClickHouse storage, and web middleware.
+The repository now includes package boundaries and implementation slices for drift detection, jobs, ingestion, attribution, ClickHouse storage, and web middleware. It intentionally excludes the old in-repo frontend build; browser UI and marketing source live in `dmark-web`.
 
-The competitive 90-day SaaS roadmap lives in `docs/COMPETITIVE_ROADMAP.md`. That roadmap positions RecordMaster as the Icelandic Dmarcian/EasyDMARC alternative for SMB and midmarket companies, with concierge DMARC enforcement, monthly trust reports, and `.is` Defender coverage as the first local beat points.
+The competitive 90-day SaaS roadmap lives in `docs/COMPETITIVE_ROADMAP.md`. That roadmap positions Dmark as the Icelandic Dmarcian/EasyDMARC alternative for SMB and midmarket companies, with concierge DMARC enforcement, monthly trust reports, and `.is` Defender coverage as the first local beat points.
 
 ## Product Principles
 
@@ -183,7 +183,7 @@ Definition of Done:
 
 ## Phase 6: Paid Product, Teams, And Billing
 
-Goal: turn RecordMaster into a sustainable SaaS product with collaboration and plan boundaries.
+Goal: turn Dmark into a sustainable SaaS product with collaboration and plan boundaries.
 
 Features:
 
@@ -212,7 +212,7 @@ Definition of Done:
 
 ## Phase 7: Platform Hardening And Compliance
 
-Goal: make RecordMaster reliable, secure, and maintainable as customer data and background volume grow.
+Goal: make Dmark reliable, secure, and maintainable as customer data and background volume grow.
 
 Features:
 
@@ -240,13 +240,13 @@ Definition of Done:
 
 ## Cross-Phase Backlog
 
-- Design system for public, auth, and app surfaces.
-- Consistent empty/error/loading/success states.
+- Coordinate design-system work with `dmark-web`.
+- Keep backend JSON contracts stable for public, auth, and app surfaces.
 - Admin/support tooling.
 - User education content and DNS provider guides.
 - Import/export flows.
 - API and webhook documentation.
 - International domain name support after core ASCII behavior is solid.
-- Accessibility audits for keyboard, screen reader, color contrast, and focus states.
+- Accessibility audits for keyboard, screen reader, color contrast, and focus states in `dmark-web`.
 - Abuse prevention for unauthenticated DNS scans and login attempts.
 - Privacy review for raw DMARC report storage.

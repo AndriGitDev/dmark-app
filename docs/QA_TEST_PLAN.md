@@ -1,4 +1,4 @@
-# Kastro RecordMaster QA Test Plan
+# Dmark QA Test Plan
 
 This plan stages QA from the current Checker/Auth baseline through the long-term Reporter product. Each stage should be treated as a release gate: automated checks run in CI, and manual exploratory checks are completed before promoting to production.
 
@@ -11,8 +11,8 @@ Existing tests cover:
 - Passwordless auth token creation and single-use consumption.
 - Domain service add-and-scan behavior.
 - Lettermint request shape.
-- Frontend route shutdown coverage for `/`, `/login`, `/auth/callback`, `/check`, `/claim-audit`, `/app/*`, and `/assets/*`.
-- Backend `/healthz`, `/status`, `/security`, public frontend JSON, API, billing, webhook, admin, privacy, and status routes.
+- Browser route handoff coverage for `/`, `/login`, `/auth/callback`, `/check`, `/claim-audit`, `/app/*`, and `/assets/*`.
+- Backend `/healthz`, `/status`, `/security`, public JSON bridge, API, billing, webhook, admin, privacy, and status routes.
 - CLI scan argument validation, formatted output, JSON output, ingest command validation, and worker job listing.
 - Drift classification, alert lifecycle rules, job retry/dead-letter helpers, DMARC ingestion with sanitized provider/gateway fixtures, reporter summaries, attribution, risk, recommendations, DMARC enforcement journey states, monthly trust report models, billing, teams, entitlements, API-key helpers, webhooks, privacy, admin, status, and operations policy logic.
 - Defender lookalike candidate generation for typo and Icelandic-character homoglyph variants.
@@ -22,7 +22,7 @@ Existing tests cover:
 Known gaps:
 
 - Database-backed integration tests now cover fresh migrations, auth token states, domain uniqueness/isolation, latest-check selection, and delete cascades when `MEIL_DB_INTEGRATION=1` and `DATABASE_URL` are set.
-- Browser-level tests now belong in the separate `dmark-web` repository.
+- Browser-level tests and frontend build checks now belong in the separate `dmark-web` repository.
 - Local unit, race, vet, lint, build, sqlc, Docker build, Postgres migration, River migration, and ClickHouse migration gates have successful evidence from the current local toolchain and Colima-backed services.
 - No live-provider billing, email, enrichment, geolocation, or DMARC mailbox tests; current coverage uses deterministic service-level tests and attribution fixtures.
 
@@ -77,7 +77,7 @@ Handler and CLI tests:
 - GET `/api/v1/scan` returns `400` for missing or invalid domains.
 - GET/POST `/api/public/scan` returns stable JSON without an API key and enforces public rate limits.
 - POST `/api/public/audit-claims` validates matching work-email domains before persisting a sales-audit claim.
-- Frontend routes return JSON `404` because browser surfaces are served by `dmark-web`.
+- Browser routes return JSON `404` because browser surfaces are served by `dmark-web`.
 - `meil scan <domain>` prints the same statuses as scanner results.
 - Future `meil scan --json <domain>` returns stable JSON suitable for scripts.
 
@@ -120,10 +120,10 @@ Database integration tests:
 
 Coverage artifact: `internal/store/pg/app_store_integration_test.go`, enabled in CI with `MEIL_DB_INTEGRATION=1`.
 
-Frontend route boundary tests:
+Browser route boundary tests:
 
 - GET/POST `/login`, `/logout`, `/auth/callback`, `/check`, `/claim-audit`, `/app/*`, and `/assets/*` return JSON `404` with a `dmark-web` handoff message.
-- Browser login, dashboard, public checker, and static asset tests live with the Next.js frontend.
+- Browser login, dashboard, public checker, frontend build, and static asset tests live in `dmark-web`.
 
 Manual exploratory checks:
 

@@ -1,6 +1,6 @@
 # Checkmate Integration
 
-Checkmate is a strong automated sales wedge for RecordMaster because it turns abstract DMARC risk into a concrete buyer moment:
+Checkmate is a strong automated sales wedge for Dmark because it turns abstract DMARC risk into a concrete buyer moment:
 
 1. Enter a work email or domain.
 2. Show a simple grade and evidence.
@@ -8,7 +8,7 @@ Checkmate is a strong automated sales wedge for RecordMaster because it turns ab
 4. Optionally send a harmless proof email from `security@customer-domain`.
 5. Convert the prospect into a monitored-domain setup.
 
-RecordMaster should absorb the funnel and scoring model, but it should not copy the spoofing capability directly into the main app process.
+Dmark should absorb the funnel and scoring model, but it should not copy the spoofing capability directly into the main app process.
 
 ## What To Reuse Now
 
@@ -32,7 +32,7 @@ The spoofed proof email is useful, but it is also abuse-sensitive. It should rem
 - Dedicated mail host, isolated network, and operator-owned HELO hostname.
 - No arbitrary recipient support; send only to the verified inbox.
 
-## RecordMaster-Native Flow
+## Dmark-Native Flow
 
 Phase 1, safe GA funnel:
 
@@ -45,10 +45,10 @@ Phase 1, safe GA funnel:
 Phase 2, controlled proof:
 
 1. User enters a work email.
-2. RecordMaster sends a magic link through the existing notifier path.
+2. Dmark sends a magic link through the existing notifier path.
 3. User confirms the link.
 4. A separate proof service sends one educational demonstration email if the domain is eligible.
-5. RecordMaster stores an audit event and offers protected-domain setup.
+5. Dmark stores an audit event and offers protected-domain setup.
 
 Phase 3, automated sales loop:
 

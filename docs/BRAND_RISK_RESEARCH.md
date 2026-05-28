@@ -1,6 +1,6 @@
 # Brand Risk Research
 
-This spike evaluates how RecordMaster Defender should detect domain impersonation beyond the current DNS and email-auth findings.
+This spike evaluates how Dmark Defender should detect domain impersonation beyond the current DNS and email-auth findings.
 
 ## Decision Matrix
 

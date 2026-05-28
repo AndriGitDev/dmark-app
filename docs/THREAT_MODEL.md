@@ -11,11 +11,11 @@ This threat model covers the current roadmap surfaces: auth foundations, API sca
 
 ## Trust Boundaries
 
-- Browser frontend to backend API routes.
+- `dmark-web` browser frontend to backend JSON routes.
 - Public API clients to API-key authenticated routes.
 - External mailbox providers to DMARC report ingestion.
 - Billing provider to billing webhook receiver.
-- RecordMaster to outbound email, Slack, and webhook delivery providers.
+- Dmark to outbound email, Slack, and webhook delivery providers.
 - Application workers to Postgres and ClickHouse.
 
 ## Auth And Sessions
@@ -122,4 +122,4 @@ Controls:
 - Live DNS and IP enrichment depend on external network behavior and may be incomplete or stale.
 - DMARC aggregate reports are not proof of all outbound mail; they depend on receiver reporting coverage.
 - Provider attribution is probabilistic unless multiple strong signals agree.
-- Full browser, database, worker, and container QA still must pass before production use.
+- `dmark-web` browser QA plus backend database, worker, and container QA still must pass before production use.

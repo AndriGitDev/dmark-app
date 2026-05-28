@@ -424,7 +424,7 @@ func (a *webAPIKeyAuth) AuthenticateAPIKey(ctx context.Context, key string) (api
 	return a.principal, nil
 }
 
-func TestFrontendRoutesAreDisabled(t *testing.T) {
+func TestBrowserRoutesAreHandedOff(t *testing.T) {
 	t.Parallel()
 
 	router := NewRouter()
@@ -441,7 +441,7 @@ func TestFrontendRoutesAreDisabled(t *testing.T) {
 		{http.MethodPost, "/check"},
 		{http.MethodPost, "/claim-audit"},
 		{http.MethodGet, "/app/domains"},
-		{http.MethodGet, "/assets/css/marketing-20260512.css"},
+		{http.MethodGet, "/assets/logo.svg"},
 	} {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, nil)

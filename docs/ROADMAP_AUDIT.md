@@ -6,7 +6,7 @@ This audit maps `docs/ROADMAP.md` to concrete repository artifacts. It is intent
 
 - Implementation breadth: Phase 1 through Phase 7 now have code and documentation artifacts.
 - Local verification: `make qa-code` passes using a temporary local Go 1.25.10 toolchain and covers unit tests, race tests, vet, lint, `govulncheck`, short fuzz smoke runs, generated-file idempotence for sqlc, and build.
-- Repository boundary: browser-facing checker/auth/app views moved to `dmark-web`; this repository is backend/API only.
+- Repository boundary: browser-facing checker/auth/app views and frontend build files moved to `dmark-web`; this repository is backend/API only.
 - Completion status: code and service-backed QA gates pass against the local dev Postgres and ClickHouse stack.
 - Latest service-gate evidence:
   - `make qa-code` passes: unit tests, race tests, vet, golangci-lint, `govulncheck`, fuzz smoke runs, generated-file idempotence, and build.
@@ -19,18 +19,18 @@ Evidence:
 - Scanner parsing, metadata, selector probing, and summaries: `internal/scanner/scanner.go`, `internal/scanner/summary.go`, `internal/scanner/*_test.go`.
 - International domain normalization via IDNA/punycode: `internal/scanner/scanner.go`, `internal/scanner/scanner_test.go`.
 - Shared API/CLI scanner surface and JSON output: `internal/web/server.go`, `cmd/meil/main.go`, `cmd/meil/main_test.go`.
-- Frontend route handoff controls: `internal/web/server.go`, `internal/web/server_test.go`.
+- Browser route handoff controls: `internal/web/server.go`, `internal/web/server_test.go`.
 
 Verification gaps:
 
 - Scanner, web, and CLI tests pass with the temporary local Go toolchain used during implementation.
-- Browser/mobile layout and full accessibility audits still require a real browser pass.
+- Browser/mobile layout and full accessibility audits are owned by `dmark-web`.
 
 ## Phase 2: Saved Domains Completion
 
 Evidence:
 
-- Auth/domain foundations, request IDs, API import/export, and frontend route handoff: `internal/web/server.go`, `internal/web/server_test.go`.
+- Auth/domain foundations, request IDs, API import/export, and browser route handoff: `internal/web/server.go`, `internal/web/server_test.go`.
 - Domain settings, ownership verification, history, dashboard states, weekly summaries, CSV import/export: `internal/domains/*.go`.
 - River-backed scan/enrichment workers, retry policy, idempotency keys, and scheduler: `internal/jobs/scan.go`, `internal/jobs/enrichment.go`, `internal/scheduler/scheduler.go`, `cmd/meil/main.go`.
 - Postgres schema foundations plus migration/store integration coverage for auth token states, domain uniqueness, latest checks, and cascades: `migrations/postgres/00002_roadmap_foundations.sql`, `internal/store/pg/app_store_integration_test.go`.
@@ -38,7 +38,7 @@ Evidence:
 Verification gaps:
 
 - Database-backed integration tests are implemented but could not pass against the local default DSN because Postgres rejected the documented `meil:meil` credentials.
-- Flash-message rendering is covered by handler tests, but still needs a browser-visible pass for layout and focus behavior.
+- Browser-visible auth, dashboard, and focus behavior is owned by `dmark-web`.
 
 ## Phase 3: Drift Detection And Alerts
 
@@ -96,7 +96,7 @@ Verification gaps:
 
 Evidence:
 
-- Status and incident model, JSON status/security endpoints, status component/incident admin API, and frontend route handoff controls: `internal/statuspage/status.go`, `internal/web/server.go`, `internal/store/pg/app_store.go`.
+- Status and incident model, JSON status/security endpoints, status component/incident admin API, and browser route handoff controls: `internal/statuspage/status.go`, `internal/web/server.go`, `internal/store/pg/app_store.go`.
 - Data retention, organization retention settings API, admin/support case API, abuse decision API, operations drills, and HTTP load-check tooling for API/Reporter/scan-job endpoints: `internal/retention/retention.go`, `internal/privacy/privacy.go`, `internal/web/server.go`, `internal/store/pg/app_store.go`, `internal/admin/admin.go`, `internal/abuse/abuse.go`, `internal/ops/drills.go`, `scripts/load/main.go`, `Makefile`.
 - CI gates, Makefile QA targets, River/app migration path, and operational docs: `.github/workflows/ci.yml`, `Makefile`, `cmd/meil/main.go`, `docs/QA_TEST_PLAN.md`, `docs/OPERATIONS.md`, `docs/SECURITY.md`, `docs/THREAT_MODEL.md`, `docs/DNS_GUIDE.md`, `docs/API.md`.
 - Config validation and secret inventory: `internal/config/config.go`, `internal/config/secrets.go`, `.env.example`.
@@ -106,7 +106,7 @@ Evidence:
 
 Verification gaps:
 
-- Browser accessibility, load testing against a running app, backup/restore drills, fresh service migrations, and container build gates still need an operator-provisioned QA environment. Docker socket access is denied here, and privileged Docker startup requires interactive sudo authentication.
+- Backend load testing against a running app, backup/restore drills, fresh service migrations, and container build gates still need an operator-provisioned QA environment. Browser accessibility belongs in `dmark-web`. Docker socket access may require operator-provisioned service access depending on the environment.
 
 ## Required QA Gate Before Completion
 

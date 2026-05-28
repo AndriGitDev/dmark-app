@@ -2,16 +2,16 @@
 
 This tracker records the current release posture for general availability prep. It should be updated whenever a release gate is run or a GA blocker is accepted, fixed, or moved out of scope.
 
-Last local verification: 2026-05-27.
+Last full local verification: 2026-05-27. Frontend cleanup spot-check: 2026-05-28.
 
 ## Current Status
 
-- Repository state: local `main` has GA follow-up commits pending push after `7cc927b`; `.DS_Store` remains untracked and should not be committed.
+- Repository state: local `main` is backend-only after removing the stale in-repo frontend build files; `.DS_Store` remains untracked and should not be committed.
 - Code-level readiness: passing locally after installing Go and required QA tools.
 - Service-level readiness: passing locally after installing Docker CLI, Docker Compose, and Colima, then starting the dev Postgres, Mailpit, and ClickHouse services.
-- Product posture: broad backend implementation exists for scanning, saved-domain APIs, drift alerts, Reporter ingestion, attribution, billing/team foundations, API/webhooks, admin/privacy/abuse/status, observability definitions, and Coolify deployment. Browser-facing surfaces now live in `dmark-web`.
+- Product posture: broad backend implementation exists for scanning, saved-domain APIs, drift alerts, Reporter ingestion, attribution, billing/team foundations, API/webhooks, admin/privacy/abuse/status, observability definitions, and Coolify deployment. Browser-facing surfaces and frontend build checks now live in `dmark-web`.
 - Competitive posture: `docs/COMPETITIVE_ROADMAP.md` defines the Icelandic Dmarcian/EasyDMARC alternative strategy, including concierge DMARC enforcement, monthly trust reports, `.is` Defender coverage, and the Checkmate-style sales-audit funnel documented in `docs/CHECKMATE_INTEGRATION.md`. Backend grading and evidence primitives remain here; public funnel UX belongs in `dmark-web`.
-- GA posture: not ready to declare GA until browser/manual QA, production operations drills, load checks, backup/restore and rollback drills, and live-provider checks are completed or explicitly scoped out.
+- GA posture: not ready to declare GA until `dmark-web` browser/manual QA plus backend production operations drills, load checks, backup/restore and rollback drills, and live-provider checks are completed or explicitly scoped out.
 
 ## Verified Automated Gates
 
@@ -33,6 +33,7 @@ Run from `/Users/andri/Documents/GitHub/meil` with Go caches pointed at writable
 - Fresh ClickHouse migrations: pass.
 - Competitive primitives: focused tests pass for `internal/dmarcjourney`, `internal/brandrisk`, `internal/trustreport`, and `internal/salesaudit`.
 - 2026-05-27 follow-up verification: `go test ./...`, `go build -o /private/tmp/meil-build-check ./cmd/meil`, `git diff --check`, and `MEIL_DB_INTEGRATION=1 go test ./internal/store/pg -count=1` pass.
+- 2026-05-28 frontend cleanup spot-check: stale Next.js/Tailwind/Node files were removed from this repository; CI now runs Go/sqlc/security gates without frontend generation; `go test ./...`, `go build -o /private/tmp/meil-build-check ./cmd/meil`, and `git diff --check` pass locally. `make generate-check` was not rerun because `sqlc` is not installed in this shell.
 
 ## Remaining GA Gates
 

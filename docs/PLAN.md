@@ -4,7 +4,7 @@ This document records the current implementation posture. The long-form product 
 
 ## Current Scope
 
-Dmark is now split across two repositories: `dmark-app` is the Go backend/app service, and `dmark-web` owns the frontend and marketing website. This repository includes implementation slices for:
+Dmark is now split across two repositories: `dmark-app` is the Go backend/app service, and `dmark-web` owns the frontend and marketing website. This repository intentionally excludes frontend source, Node dependencies, and browser asset generation. It includes implementation slices for:
 
 1. SPF, DKIM, DMARC, and BIMI checking with shared API and CLI scanner semantics.
 2. Protected-domain APIs, domain CSV import/export, and backend foundations for future auth flows.
@@ -29,6 +29,6 @@ Required gates:
 
 The current local environment can run the full automated gate after installing Go, QA tooling, Docker CLI, Docker Compose, and Colima, using writable temp directories for Go and golangci-lint caches. The latest local pass covers unit tests, race tests, vet, lint, `govulncheck`, fuzz smoke tests, generated-file idempotence, build, Docker image build, Postgres migrations, River migrations, and ClickHouse migrations.
 
-Browser QA, manual accessibility checks, load checks, backup/restore drills, rollback drills, and live-provider checks remain GA blockers until completed or explicitly scoped out.
+Browser QA and manual accessibility checks remain GA blockers in `dmark-web`. Backend load checks, backup/restore drills, rollback drills, and live-provider checks remain GA blockers here until completed or explicitly scoped out.
 
 The active GA readiness tracker lives in `docs/GA_READINESS.md`.

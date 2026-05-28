@@ -1,6 +1,6 @@
-# RecordMaster DNS and Domain Trust Guide
+# Dmark DNS and Domain Trust Guide
 
-DNS records affect brand trust because mail providers, security tools, and customers use public domain evidence to decide whether a message or site should be trusted. RecordMaster currently checks public DNS and email-auth posture; planned Defender work extends that evidence into broader brand-name risk monitoring.
+DNS records affect brand trust because mail providers, security tools, and customers use public domain evidence to decide whether a message or site should be trusted. Dmark currently checks public DNS and email-auth posture; planned Defender work extends that evidence into broader brand-name risk monitoring.
 
 ## SPF
 
@@ -43,16 +43,16 @@ MX records show whether the domain receives mail. NS records show the delegated 
 
 Reporter ingestion expects mailbox forwarding or direct delivery of DMARC aggregate attachments. Supported payloads are plain XML, gzip-compressed XML, and zip archives containing XML files.
 
-When RecordMaster provisions a reporting target, it uses a domain-specific address under the configured ingestion mailbox domain:
+When Dmark provisions a reporting target, it uses a domain-specific address under the configured ingestion mailbox domain:
 
 ```txt
-reports+example=com@ingest.recordmaster.example
+reports+example=com@ingest.dmark.example
 ```
 
 Publish that address in the DMARC `rua` tag, or forward aggregate report attachments from your existing reporting mailbox to that address:
 
 ```txt
-_dmarc.example.com. TXT "v=DMARC1; p=none; rua=mailto:reports+example=com@ingest.recordmaster.example"
+_dmarc.example.com. TXT "v=DMARC1; p=none; rua=mailto:reports+example=com@ingest.dmark.example"
 ```
 
 ## Common Brand-Risk Mistakes

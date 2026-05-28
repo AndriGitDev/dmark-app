@@ -2,9 +2,9 @@
 
 This document defines the external API and webhook contracts for paid tiers. API access requires an API key with the required scope.
 
-## Public Frontend Endpoints
+## Public Browser Bridge
 
-The separate `dmark-web` frontend should use these JSON endpoints for public marketing flows:
+The separate `dmark-web` frontend should use these backend-owned JSON endpoints for public marketing flows:
 
 ```http
 GET /api/public/scan?domain=example.com
@@ -29,7 +29,7 @@ POST /api/public/audit-claims
 }
 ```
 
-Allowed browser origins are configured with `FRONTEND_ORIGINS` as a comma-separated list of absolute origins such as `https://dmark.is,https://www.dmark.is`. If `dmark-web` keeps its Next.js API proxy, set `DMARK_SCAN_API_URL` to `/api/public/scan` on this backend and leave `DMARK_API_TOKEN` unset.
+Allowed browser origins are configured with `FRONTEND_ORIGINS` as a comma-separated list of absolute origins such as `https://dmark.is,https://www.dmark.is`. If `dmark-web` proxies calls through its own server-side route, point that route at `/api/public/scan` on this backend and leave `DMARK_API_TOKEN` unset for public scans.
 
 ## Authentication
 
@@ -94,7 +94,7 @@ POST /api/v1/status/incidents/{id}/resolve
 POST /billing/webhook
 ```
 
-API responses include stable IDs, timestamps in RFC3339, and machine-readable status strings that match internal scanner, drift, report-health, and risk models. Browser-facing pages and public form flows belong in the separate `dmark-web` repository.
+API responses include stable IDs, timestamps in RFC3339, and machine-readable status strings that match internal scanner, drift, report-health, and risk models. Browser-facing pages, static assets, and public form flows belong in the separate `dmark-web` repository.
 
 Public terminology maps these endpoints to Record checks, Protected domains, Findings, Alerts, Reporter reports, Sender inventory, and Brand risk findings. Endpoint paths keep `/domains` for compatibility while the UI presents them as Protected domains.
 

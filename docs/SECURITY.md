@@ -1,4 +1,4 @@
-# Kastro RecordMaster Security
+# Dmark Security
 
 Report security issues privately to the project owner before opening public issues.
 

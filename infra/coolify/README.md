@@ -1,6 +1,6 @@
 # Dmark Coolify Deployment
 
-The production compose file deploys the Dmark backend `app` service running `meil serve` and a private Postgres `db` service with a persistent Docker volume. The binary also includes `meil worker` for River-backed scan and enrichment jobs; deploy it as a separate worker process when the target environment needs background scan/enrichment jobs. Frontend and marketing deployment belong to the separate `dmark-web` repository.
+The production compose file deploys the Dmark backend `app` service running `meil serve` and a private Postgres `db` service with a persistent Docker volume. The binary also includes `meil worker` for River-backed scan and enrichment jobs; deploy it as a separate worker process when the target environment needs background scan/enrichment jobs. Frontend and marketing deployment, including Node/Next.js build configuration, belong to the separate `dmark-web` repository.
 
 ## Hostnames
 

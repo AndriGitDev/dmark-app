@@ -1,6 +1,6 @@
-# RecordMaster Competitive Roadmap
+# Dmark Competitive Roadmap
 
-RecordMaster is the Icelandic DMARC, email-authentication, and domain-trust platform for SMB and midmarket companies. The goal is to beat Dmarcian and EasyDMARC locally first, then expand feature parity where customers prove demand.
+Dmark is the Icelandic DMARC, email-authentication, and domain-trust platform for SMB and midmarket companies. The goal is to beat Dmarcian and EasyDMARC locally first, then expand feature parity where customers prove demand.
 
 ## Positioning
 
@@ -23,7 +23,7 @@ Dmarcian is strong at DMARC education, RUA processing, policy management, alerti
 
 EasyDMARC is broader and more productized: RUA/RUF, aggregate maps, vendor identification, TLS reporting, BIMI, managed DMARC/BIMI/DKIM/MTA-STS, SPF flattening, reputation monitoring, DNS/provider integrations, MSP packaging, and enterprise support.
 
-RecordMaster should not try to match every enterprise checkbox before GA. The first win is a better local buyer experience:
+Dmark should not try to match every enterprise checkbox before GA. The first win is a better local buyer experience:
 
 - Local trust and `.is` context.
 - Concierge DMARC enforcement.

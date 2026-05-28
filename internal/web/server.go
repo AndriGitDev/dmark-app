@@ -1260,7 +1260,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		})
 	})
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		writeAPIError(w, http.StatusNotFound, "frontend routes are served by dmark-web")
+		writeAPIError(w, http.StatusNotFound, "browser routes are served by dmark-web")
 	})
 	return r
 }
@@ -1298,7 +1298,7 @@ func legacyHostRedirect(next http.Handler) http.Handler {
 func backendOnlySurface(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isFrontendRoute(r.URL.Path) {
-			writeAPIError(w, http.StatusNotFound, "frontend routes are served by dmark-web")
+			writeAPIError(w, http.StatusNotFound, "browser routes are served by dmark-web")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -1307,7 +1307,7 @@ func backendOnlySurface(next http.Handler) http.Handler {
 
 func isFrontendRoute(path string) bool {
 	switch path {
-	case "/", "/login", "/logout", "/auth/callback", "/check", "/claim-audit", "/assets/css/marketing-20260512.css":
+	case "/", "/login", "/logout", "/auth/callback", "/check", "/claim-audit":
 		return true
 	}
 	return strings.HasPrefix(path, "/app/") || path == "/app" || strings.HasPrefix(path, "/assets/")

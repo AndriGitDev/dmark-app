@@ -2,7 +2,7 @@
 
 Dmark is an interactive DMARC, SPF, and DKIM diagnostic and remediation platform for teams that need trusted email delivery. This repository contains the Go backend, worker, ingestion, scanner, API, and deployment assets.
 
-The frontend and marketing website live in the separate `dmark-web` repository. Keep visual marketing work there; keep domain logic, persistence, jobs, API contracts, ingestion, and operational work here.
+The frontend and marketing website live in the separate `dmark-web` repository. This repository intentionally has no Node, Next.js, Tailwind, templ, or static browser asset build. Keep visual marketing work there; keep domain logic, persistence, jobs, API contracts, ingestion, and operational work here.
 
 The repository is named `dmark-app` after the Dmark app split. The Go module, binary, CLI command, database names, and deployment service names intentionally remain `meil` for now.
 
@@ -28,7 +28,7 @@ make build
 
 ## Frontend Connection
 
-`dmark-web` can connect to this backend through the public JSON surface:
+`dmark-web` can connect to this backend through the public JSON bridge:
 
 ```sh
 DMARK_SCAN_API_URL=https://dmark.kastro.is/api/public/scan

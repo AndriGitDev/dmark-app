@@ -1,4 +1,4 @@
-# Kastro RecordMaster Operations
+# Dmark Operations
 
 ## Release Gates
 
@@ -24,12 +24,12 @@ Before production promotion, run the automated gates from `docs/QA_TEST_PLAN.md`
 The repository includes a small HTTP load utility for release and incident drills:
 
 ```sh
-BASE_URL=https://recordmaster.example PATH=/healthz REQUESTS=200 CONCURRENCY=20 make load-api
-BASE_URL=https://recordmaster.example API_TOKEN=... DOMAIN_ID=... REQUESTS=200 CONCURRENCY=20 make load-reporter
-BASE_URL=https://recordmaster.example API_TOKEN=... DOMAIN_ID=... REQUESTS=50 CONCURRENCY=5 make load-scan-job
+BASE_URL=https://dmark.example PATH=/healthz REQUESTS=200 CONCURRENCY=20 make load-api
+BASE_URL=https://dmark.example API_TOKEN=... DOMAIN_ID=... REQUESTS=200 CONCURRENCY=20 make load-reporter
+BASE_URL=https://dmark.example API_TOKEN=... DOMAIN_ID=... REQUESTS=50 CONCURRENCY=5 make load-scan-job
 ```
 
-Use `api-get`/`reporter-get` for authenticated API and Reporter read endpoints, and `api-post` for domain recheck or other job-triggering endpoints. Browser load checks belong in `dmark-web`. Record p50, p95, max latency, status distribution, target commit, and environment size with the release notes.
+Use `api-get`/`reporter-get` for authenticated API and Reporter read endpoints, and `api-post` for domain recheck or other job-triggering endpoints. Browser load checks and frontend bundle checks belong in `dmark-web`. Record p50, p95, max latency, status distribution, target commit, and environment size with the release notes.
 
 ## Incident Process
 
