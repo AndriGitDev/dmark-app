@@ -50,9 +50,6 @@ POST /api/v1/api-keys/{id}/revoke
 GET /api/v1/team/invitations
 POST /api/v1/team/invitations
 POST /api/v1/domains/{id}/transfer
-GET /app/privacy/export
-GET /app/privacy/deletion-plan
-POST /app/privacy/delete
 GET /api/v1/privacy/retention
 POST /api/v1/privacy/retention
 GET /api/v1/admin/cases
@@ -66,11 +63,9 @@ GET /api/v1/status/incidents
 POST /api/v1/status/incidents
 POST /api/v1/status/incidents/{id}/resolve
 POST /billing/webhook
-POST /check
-POST /claim-audit
 ```
 
-API responses include stable IDs, timestamps in RFC3339, and machine-readable status strings that match internal scanner, drift, report-health, and risk models. `/check` and `/claim-audit` are public HTML form endpoints, not authenticated JSON API endpoints.
+API responses include stable IDs, timestamps in RFC3339, and machine-readable status strings that match internal scanner, drift, report-health, and risk models. Browser-facing pages and public form flows belong in the separate `dmark-web` repository.
 
 Public terminology maps these endpoints to Record checks, Protected domains, Findings, Alerts, Reporter reports, Sender inventory, and Brand risk findings. Endpoint paths keep `/domains` for compatibility while the UI presents them as Protected domains.
 

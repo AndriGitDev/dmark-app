@@ -16,28 +16,6 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-func TestNewScenarioRequestChecker(t *testing.T) {
-	t.Parallel()
-
-	base, err := url.Parse("https://meil.example")
-	if err != nil {
-		t.Fatalf("parsing base URL: %v", err)
-	}
-	req, err := newScenarioRequest(context.Background(), base, scenarioConfig{scenario: "checker", domain: "example.com"})
-	if err != nil {
-		t.Fatalf("newScenarioRequest returned error: %v", err)
-	}
-	if req.Method != http.MethodPost || req.URL.Path != "/check" {
-		t.Fatalf("request = %s %s", req.Method, req.URL.Path)
-	}
-	if req.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
-		t.Fatalf("Content-Type = %q", req.Header.Get("Content-Type"))
-	}
-	if body := readRequestBody(t, req); body != "domain=example.com" {
-		t.Fatalf("body = %q", body)
-	}
-}
-
 func TestNewScenarioRequestAPIGetBearerToken(t *testing.T) {
 	t.Parallel()
 

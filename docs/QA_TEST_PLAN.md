@@ -11,9 +11,8 @@ Existing tests cover:
 - Passwordless auth token creation and single-use consumption.
 - Domain service add-and-scan behavior.
 - Lettermint request shape.
-- Public home, stylesheet, `/check`, invalid domain, `/healthz`, `/status`, and `/security` routes.
-- Static rendered-view accessibility contracts for labels, named links, form buttons, document metadata, live regions, and letter spacing.
-- Auth callback/session behavior, hardened session cookie attributes, CSRF rejection, authenticated domain import/export, and alert ack/mute handlers.
+- Frontend route shutdown coverage for `/`, `/login`, `/auth/callback`, `/check`, `/claim-audit`, `/app/*`, and `/assets/*`.
+- Backend `/healthz`, `/status`, `/security`, API, billing, webhook, admin, privacy, and status routes.
 - CLI scan argument validation, formatted output, JSON output, ingest command validation, and worker job listing.
 - Drift classification, alert lifecycle rules, job retry/dead-letter helpers, DMARC ingestion with sanitized provider/gateway fixtures, reporter summaries, attribution, risk, recommendations, DMARC enforcement journey states, monthly trust report models, billing, teams, entitlements, API-key helpers, webhooks, privacy, admin, status, and operations policy logic.
 - Defender lookalike candidate generation for typo and Icelandic-character homoglyph variants.
@@ -23,8 +22,8 @@ Existing tests cover:
 Known gaps:
 
 - Database-backed integration tests now cover fresh migrations, auth token states, domain uniqueness/isolation, latest-check selection, and delete cascades when `MEIL_DB_INTEGRATION=1` and `DATABASE_URL` are set.
-- No browser-level tests for the public checker or saved-domain dashboard; static rendered-view accessibility contracts are covered.
-- Local unit, race, vet, lint, build, templ, sqlc, Tailwind, Docker build, Postgres migration, River migration, and ClickHouse migration gates have successful evidence from the current local toolchain and Colima-backed services.
+- Browser-level tests now belong in the separate `dmark-web` repository.
+- Local unit, race, vet, lint, build, sqlc, Docker build, Postgres migration, River migration, and ClickHouse migration gates have successful evidence from the current local toolchain and Colima-backed services.
 - No live-provider billing, email, enrichment, geolocation, or DMARC mailbox tests; current coverage uses deterministic service-level tests and attribution fixtures.
 
 ## Stage 0: Static And Repository Hygiene
@@ -41,7 +40,7 @@ Automated checks:
 - `go vet ./...`
 - `golangci-lint run`
 - `govulncheck ./...`
-- `make generate-check` to verify templ, sqlc, and Tailwind generated files are current.
+- `make generate-check` to verify sqlc generated files are current.
 - `go build ./cmd/meil`
 - Container build for `infra/coolify/Dockerfile`.
 - Migration syntax check on a fresh Postgres database.
@@ -58,9 +57,9 @@ Release gate:
 - All automated checks pass from a clean checkout.
 - Generated artifacts are committed intentionally.
 
-## Stage 1: Scanner And Public Checker
+## Stage 1: Scanner And Backend Scan API
 
-Run before changes to scanner logic, public `/check`, or CLI `scan`.
+Run before changes to scanner logic, `/api/v1/scan`, or CLI `scan`.
 
 Unit tests:
 
@@ -74,17 +73,15 @@ Unit tests:
 
 Handler and CLI tests:
 
-- POST `/check` renders all four check cards for valid input.
-- POST `/check` returns `400` for invalid input.
-- POST `/check` enforces request body size.
-- GET `/` renders the checker form, static assets, and accessible labels.
+- GET `/api/v1/scan?domain=...` returns stable JSON for valid API keys.
+- GET `/api/v1/scan` returns `400` for missing or invalid domains.
+- Frontend routes return JSON `404` because browser surfaces are served by `dmark-web`.
 - `meil scan <domain>` prints the same statuses as scanner results.
 - Future `meil scan --json <domain>` returns stable JSON suitable for scripts.
 
 Manual exploratory checks:
 
 - Check representative domains: fully configured, missing DMARC, `p=none`, no SPF, multiple SPF, known Google Workspace DKIM, and known Microsoft DKIM.
-- Test long TXT records on desktop and mobile.
 - Disable network/DNS locally and confirm graceful error messages.
 - Submit empty, malformed, extremely long, and URL-like inputs.
 
@@ -92,7 +89,6 @@ Release gate:
 
 - Public checks finish within the configured timeout budget.
 - Invalid input and DNS failure never panic or hang.
-- UI remains readable with long records and all status combinations.
 
 ## Stage 2: Authentication And Saved Domains
 
@@ -122,17 +118,10 @@ Database integration tests:
 
 Coverage artifact: `internal/store/pg/app_store_integration_test.go`, enabled in CI with `MEIL_DB_INTEGRATION=1`.
 
-Web tests:
+Frontend route boundary tests:
 
-- GET `/login` renders the login form.
-- POST `/login` sends a magic link when auth and sender are configured.
-- POST `/login` handles invalid email, sender failure, and oversized body.
-- GET `/auth/callback` creates a session for a valid token.
-- GET `/auth/callback` rejects invalid, expired, and consumed tokens.
-- POST `/logout` destroys the session.
-- GET `/app/domains` redirects anonymous users to `/login`.
-- Authenticated domain add, list, recheck, and delete paths call the domain service with the session user ID.
-- State-changing routes enforce CSRF once CSRF middleware is added.
+- GET/POST `/login`, `/logout`, `/auth/callback`, `/check`, `/claim-audit`, `/app/*`, and `/assets/*` return JSON `404` with a `dmark-web` handoff message.
+- Browser login, dashboard, public checker, and static asset tests live with the Next.js frontend.
 
 Manual exploratory checks:
 
@@ -288,25 +277,22 @@ Run continuously, with full passes before major releases.
 
 Security:
 
-- Threat model public DNS checker abuse, login flow, sessions, report ingestion, billing webhooks, and admin tooling.
-- Check CSRF, session cookie attributes, rate limits, body limits, redirect behavior, and secret logging.
+- Threat model API scan abuse, report ingestion, billing webhooks, and admin tooling.
+- Check API auth, body limits, redirect behavior, and secret logging.
 - Run dependency vulnerability scans.
 - Fuzz scanner parsers and DMARC XML ingestion. Seed corpus entry points are `FuzzNormalizeDomain`, `FuzzParseSPF`, `FuzzParseTagRecord`, and `FuzzParseAggregatePayload`; `make fuzz-smoke` runs short smoke passes.
 
 Performance:
 
-- Load test public checker with mocked resolver and controlled live DNS.
+- Load test API scan with mocked resolver and controlled live DNS.
 - Load test scheduled scan workers at target saved-domain volume.
 - Load test ClickHouse report queries over target retention data.
-- Use `scripts/load` or the Makefile `load-checker`, `load-api`, `load-reporter`, and `load-scan-job` targets for HTTP checker, API, Reporter read endpoint, and job-triggering endpoint load checks.
+- Use `scripts/load` or the Makefile `load-api`, `load-reporter`, and `load-scan-job` targets for API, Reporter read endpoint, and job-triggering endpoint load checks.
 - Track p95/p99 latencies and resource use.
 
 Accessibility:
 
-- Keyboard navigation for public checker, login, and dashboard.
-- Focus states on all interactive controls.
-- Screen reader labels for forms, status cards, and alert actions.
-- Color contrast for pass, warn, fail, missing, and unknown states.
+- Backend accessibility checks are limited to API documentation and error clarity. Browser accessibility belongs in `dmark-web`.
 
 Reliability:
 
@@ -336,17 +322,10 @@ Release gate:
 Run after every deploy:
 
 - GET `/healthz` returns `200 ok`.
-- GET `/` renders the public checker.
-- POST `/check` for a known-good domain renders SPF, DKIM, DMARC, and BIMI cards.
-- POST `/check` for invalid input returns `400`.
-- GET `/login` renders.
-- POST `/login` sends a magic link in the target environment.
-- Magic link callback signs in and redirects to `/app/domains`.
-- Add a saved domain and confirm latest check appears.
-- Recheck the saved domain.
-- Delete the saved domain.
-- Logout redirects to `/`.
-- Static CSS and JS assets return `200`.
+- GET `/status` returns JSON status.
+- GET `/security` returns JSON security guidance.
+- GET `/` returns JSON `404` with the `dmark-web` handoff message.
+- Authenticated API scan/domain/report/status smoke tests pass with a valid API key.
 - Logs show no panic, migration error, or missing environment variable.
 
 ## Test Data
@@ -354,7 +333,6 @@ Run after every deploy:
 Maintain deterministic fixtures for:
 
 - DNS records for SPF, DKIM, DMARC, and BIMI.
-- Public checker HTML snapshots for all statuses.
 - Magic-link email request payloads.
 - Domain snapshot and drift event pairs.
 - DMARC aggregate report XML, gzip, and zip files.

@@ -19,7 +19,6 @@ func CoreMetrics() []Metric {
 	return []Metric{
 		{Name: "meil_http_requests_total", Type: Counter, Description: "HTTP requests by route, method, and status.", Labels: []string{"route", "method", "status"}},
 		{Name: "meil_http_request_duration_seconds", Type: Histogram, Description: "HTTP request latency by route and method.", Labels: []string{"route", "method"}},
-		{Name: "meil_public_check_rate_limited_total", Type: Counter, Description: "Public checker requests rejected by rate limiting.", Labels: []string{"client_class"}},
 		{Name: "meil_dns_lookup_duration_seconds", Type: Histogram, Description: "DNS TXT lookup latency by check type and resolver error class.", Labels: []string{"check", "error_class"}},
 		{Name: "meil_scan_jobs_queued", Type: Gauge, Description: "Queued scan jobs ready for workers.", Labels: []string{"status"}},
 		{Name: "meil_scan_job_attempts_total", Type: Counter, Description: "Scan job attempts by result.", Labels: []string{"result"}},

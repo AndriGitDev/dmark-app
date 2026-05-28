@@ -18,7 +18,7 @@ Coolify settings:
 
 The compose file assumes Coolify runs Docker Compose with the repository root as `--project-directory`, which is Coolify's default for Git deployments.
 
-The Dockerfile builds from committed generated files. Run `templ generate` before committing template changes; CI checks that generated templ output is current.
+The Dockerfile builds the Go backend only. Generated files are limited to backend code generation such as sqlc.
 
 Required environment variables:
 
@@ -26,7 +26,7 @@ Required environment variables:
 POSTGRES_PASSWORD=replace-with-a-long-url-safe-password
 ```
 
-`HTTP_ADDR`, `PUBLIC_BASE_URL`, `ASSETS_DIR`, and `DATABASE_URL` are set by `infra/coolify/docker-compose.yml`.
+`HTTP_ADDR`, `PUBLIC_BASE_URL`, and `DATABASE_URL` are set by `infra/coolify/docker-compose.yml`.
 
 Use an alphanumeric or URL-encoded Postgres password because the compose file embeds it in `DATABASE_URL`.
 
@@ -40,7 +40,7 @@ LETTERMINT_FROM=Dmark <login@dmark.kastro.is>
 BILLING_WEBHOOK_SECRET=
 ```
 
-`LETTERMINT_TOKEN` and `LETTERMINT_FROM` are required for passwordless login emails. Without them, the public checker still works, but login returns "Email login is not configured for this environment."
+`LETTERMINT_TOKEN` and `LETTERMINT_FROM` are reserved for backend email flows. The browser login surface now belongs in `dmark-web`.
 
 DNS:
 

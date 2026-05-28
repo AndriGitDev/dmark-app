@@ -5,7 +5,8 @@ This audit maps `docs/ROADMAP.md` to concrete repository artifacts. It is intent
 ## Audit Status
 
 - Implementation breadth: Phase 1 through Phase 7 now have code and documentation artifacts.
-- Local verification: `make qa-code` passes using a temporary local Go 1.25.10 toolchain and covers unit tests, race tests, vet, lint, `govulncheck`, short fuzz smoke runs, generated-file idempotence for templ/sqlc/Tailwind, and build.
+- Local verification: `make qa-code` passes using a temporary local Go 1.25.10 toolchain and covers unit tests, race tests, vet, lint, `govulncheck`, short fuzz smoke runs, generated-file idempotence for sqlc, and build.
+- Repository boundary: browser-facing checker/auth/app views moved to `dmark-web`; this repository is backend/API only.
 - Completion status: code and service-backed QA gates pass against the local dev Postgres and ClickHouse stack.
 - Latest service-gate evidence:
   - `make qa-code` passes: unit tests, race tests, vet, golangci-lint, `govulncheck`, fuzz smoke runs, generated-file idempotence, and build.
@@ -17,10 +18,8 @@ Evidence:
 
 - Scanner parsing, metadata, selector probing, and summaries: `internal/scanner/scanner.go`, `internal/scanner/summary.go`, `internal/scanner/*_test.go`.
 - International domain normalization via IDNA/punycode: `internal/scanner/scanner.go`, `internal/scanner/scanner_test.go`.
-- Shared web/CLI scanner surface and JSON output: `internal/web/server.go`, `cmd/meil/main.go`, `cmd/meil/main_test.go`.
-- Public rate limiting and form/body controls: `internal/web/server.go`.
-- Public result protection path: `internal/web/views/home.templ` and generated `home_templ.go` render `Protect this domain`.
-- Static accessibility contracts for rendered public/auth/app views: `internal/web/views/accessibility_test.go`.
+- Shared API/CLI scanner surface and JSON output: `internal/web/server.go`, `cmd/meil/main.go`, `cmd/meil/main_test.go`.
+- Frontend route handoff controls: `internal/web/server.go`, `internal/web/server_test.go`.
 
 Verification gaps:
 
@@ -31,7 +30,7 @@ Verification gaps:
 
 Evidence:
 
-- Auth lifecycle, hardened session cookie attributes, CSRF, request IDs, login rate limiting, styled errors, logout confirmation, resend path, import/export, and alert actions: `internal/web/server.go`, `internal/web/server_test.go`, `internal/web/views/home.templ`, `internal/web/views/home_templ.go`.
+- Auth/domain foundations, request IDs, API import/export, and frontend route handoff: `internal/web/server.go`, `internal/web/server_test.go`.
 - Domain settings, ownership verification, history, dashboard states, weekly summaries, CSV import/export: `internal/domains/*.go`.
 - River-backed scan/enrichment workers, retry policy, idempotency keys, and scheduler: `internal/jobs/scan.go`, `internal/jobs/enrichment.go`, `internal/scheduler/scheduler.go`, `cmd/meil/main.go`.
 - Postgres schema foundations plus migration/store integration coverage for auth token states, domain uniqueness, latest checks, and cascades: `migrations/postgres/00002_roadmap_foundations.sql`, `internal/store/pg/app_store_integration_test.go`.
@@ -97,8 +96,8 @@ Verification gaps:
 
 Evidence:
 
-- Status and incident model, public status/security pages, status component/incident admin API, and unauthenticated checker/login abuse controls: `internal/statuspage/status.go`, `internal/web/server.go`, `internal/store/pg/app_store.go`.
-- Data retention, organization retention settings API, authenticated privacy export/deletion/delete-account routes, admin/support case API, abuse decision API, operations drills, and HTTP load-check tooling for checker/API/Reporter/scan-job endpoints: `internal/retention/retention.go`, `internal/privacy/privacy.go`, `internal/web/server.go`, `internal/store/pg/app_store.go`, `internal/admin/admin.go`, `internal/abuse/abuse.go`, `internal/ops/drills.go`, `scripts/load/main.go`, `Makefile`.
+- Status and incident model, JSON status/security endpoints, status component/incident admin API, and frontend route handoff controls: `internal/statuspage/status.go`, `internal/web/server.go`, `internal/store/pg/app_store.go`.
+- Data retention, organization retention settings API, admin/support case API, abuse decision API, operations drills, and HTTP load-check tooling for API/Reporter/scan-job endpoints: `internal/retention/retention.go`, `internal/privacy/privacy.go`, `internal/web/server.go`, `internal/store/pg/app_store.go`, `internal/admin/admin.go`, `internal/abuse/abuse.go`, `internal/ops/drills.go`, `scripts/load/main.go`, `Makefile`.
 - CI gates, Makefile QA targets, River/app migration path, and operational docs: `.github/workflows/ci.yml`, `Makefile`, `cmd/meil/main.go`, `docs/QA_TEST_PLAN.md`, `docs/OPERATIONS.md`, `docs/SECURITY.md`, `docs/THREAT_MODEL.md`, `docs/DNS_GUIDE.md`, `docs/API.md`.
 - Config validation and secret inventory: `internal/config/config.go`, `internal/config/secrets.go`, `.env.example`.
 - Observability definitions for metrics, traces, dashboards, and alerts: `internal/observability/*.go`.
@@ -120,11 +119,10 @@ Run these from a machine with the required tools and service access:
 4. `make lint`
 5. `govulncheck ./...`
 6. `make generate-check`
-7. `make templ-check`
-8. `make generate`
-9. `make build`
-10. `docker build -f infra/coolify/Dockerfile .`
-11. Fresh Postgres migration check with `go run ./cmd/meil migrate postgres up`
-12. Fresh ClickHouse migration check with `go run ./cmd/meil migrate clickhouse up`
+7. `make generate`
+8. `make build`
+9. `docker build -f infra/coolify/Dockerfile .`
+10. Fresh Postgres migration check with `go run ./cmd/meil migrate postgres up`
+11. Fresh ClickHouse migration check with `go run ./cmd/meil migrate clickhouse up`
 
 The goal should not be marked complete until those gates pass and the verification gaps above are either closed or explicitly accepted as non-release scope.

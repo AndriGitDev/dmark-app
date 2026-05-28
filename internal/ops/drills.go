@@ -31,7 +31,7 @@ func BackupRestoreDrills() []Drill {
 
 func LoadTestScenarios() []Drill {
 	return []Drill{
-		{Name: "public_checker", Steps: []string{"run representative domain checks", "verify p95 latency", "verify rate-limit behavior", "verify resolver error budget"}},
+		{Name: "api_scan", Steps: []string{"run representative API scan requests", "verify p95 latency", "verify authorization behavior", "verify resolver error budget"}},
 		{Name: "scan_jobs", Steps: []string{"enqueue scheduled scans", "run workers", "verify queue latency", "verify retry and dead-letter behavior"}},
 		{Name: "reporter_queries", Steps: []string{"load aggregate rows", "query high-cardinality sources", "query long date ranges", "verify response time target"}},
 	}
@@ -45,7 +45,7 @@ func DeploymentRollbackDrill() Drill {
 			"deploy candidate release to the target environment",
 			"run smoke tests and service-backed QA gates",
 			"trigger rollback to the previous deploy artifact",
-			"verify health, public checker, login, worker startup, and Reporter read paths",
+			"verify health, API scan, worker startup, and Reporter read paths",
 			"confirm migrations are backward-compatible or have a documented manual recovery path",
 		},
 	}

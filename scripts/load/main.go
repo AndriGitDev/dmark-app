@@ -34,8 +34,7 @@ func run(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("load", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	baseURL := flags.String("base-url", "http://127.0.0.1:8080", "target base URL")
-	scenario := flags.String("scenario", "checker", "scenario: checker, api-get, api-post, reporter-get")
-	domain := flags.String("domain", "example.com", "domain used by checker scenario")
+	scenario := flags.String("scenario", "api-get", "scenario: api-get, api-post, reporter-get")
 	path := flags.String("path", "/healthz", "GET path used by api-get and reporter-get scenarios")
 	body := flags.String("body", "", "request body used by api-post scenario")
 	contentType := flags.String("content-type", "application/json", "request content type used by api-post scenario")
@@ -64,7 +63,6 @@ func run(ctx context.Context, args []string) error {
 	client := http.Client{Timeout: *timeout}
 	results := runScenario(ctx, client, target, scenarioConfig{
 		scenario:    *scenario,
-		domain:      *domain,
 		path:        *path,
 		body:        *body,
 		contentType: *contentType,
@@ -81,7 +79,6 @@ func run(ctx context.Context, args []string) error {
 
 type scenarioConfig struct {
 	scenario    string
-	domain      string
 	path        string
 	body        string
 	contentType string
@@ -129,16 +126,6 @@ func oneRequest(ctx context.Context, client http.Client, base *url.URL, cfg scen
 
 func newScenarioRequest(ctx context.Context, base *url.URL, cfg scenarioConfig) (*http.Request, error) {
 	switch cfg.scenario {
-	case "checker":
-		target := *base
-		target.Path = "/check"
-		body := url.Values{"domain": []string{cfg.domain}}.Encode()
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), bytes.NewBufferString(body))
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		return req, nil
 	case "api-get", "reporter-get":
 		target := *base
 		target.Path = cfg.path

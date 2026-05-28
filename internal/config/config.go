@@ -11,7 +11,6 @@ import (
 type Config struct {
 	HTTPAddr              string `env:"HTTP_ADDR" envDefault:":8080"`
 	PublicBaseURL         string `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8080"`
-	AssetsDir             string `env:"ASSETS_DIR" envDefault:"assets"`
 	DatabaseURL           string `env:"DATABASE_URL" envDefault:"postgres://meil:meil@localhost:5432/meil?sslmode=disable"`
 	ClickHouseURL         string `env:"CLICKHOUSE_URL" envDefault:"http://localhost:8123"`
 	ClickHouseDatabase    string `env:"CLICKHOUSE_DATABASE" envDefault:"meil"`

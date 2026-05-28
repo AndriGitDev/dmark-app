@@ -4,24 +4,18 @@ package web
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/a-h/templ"
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 
@@ -32,8 +26,6 @@ import (
 	"github.com/AndriGitDev/meil/internal/auth"
 	"github.com/AndriGitDev/meil/internal/billing"
 	"github.com/AndriGitDev/meil/internal/brand"
-	"github.com/AndriGitDev/meil/internal/brandrisk"
-	"github.com/AndriGitDev/meil/internal/dmarcjourney"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
@@ -44,8 +36,6 @@ import (
 	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/statuspage"
 	"github.com/AndriGitDev/meil/internal/teams"
-	"github.com/AndriGitDev/meil/internal/trustreport"
-	"github.com/AndriGitDev/meil/internal/web/views"
 	"github.com/AndriGitDev/meil/internal/webhooks"
 )
 
@@ -206,144 +196,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 	r.Use(requestIDMiddleware)
 	r.Use(legacyHostRedirect)
 	r.Use(deps.SessionManager.LoadAndSave)
-	assetsDir := os.Getenv("ASSETS_DIR")
-	if assetsDir == "" {
-		assetsDir = "assets"
-	}
-	r.Get("/assets/css/marketing-20260512.css", func(w http.ResponseWriter, r *http.Request) {
-		// #nosec G703 -- assetsDir is an operator-controlled directory, and the served file path is fixed.
-		http.ServeFile(w, r, filepath.Join(assetsDir, "css", "output.css"))
-	})
-	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(assetsDir))))
-	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
-		templ.Handler(views.Login(csrfToken(deps.SessionManager, r))).ServeHTTP(w, r)
-	})
-	loginLimiter := newRateLimiter(deps.LoginAttemptsPerMinute, time.Minute)
-	r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager), loginLimiter.middleware).Post("/login", func(w http.ResponseWriter, r *http.Request) {
-		if deps.Auth == nil || deps.Sender == nil {
-			renderError(w, http.StatusServiceUnavailable, "Login unavailable", "Email login is not configured for this environment.")
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, 4096)
-		if err := r.ParseForm(); err != nil {
-			renderError(w, http.StatusBadRequest, "Invalid form", "Check the submitted fields and try again.")
-			return
-		}
-		email, err := startLoginAndSendEmail(r.Context(), deps, r.PostForm.Get("email"), "Sign in to "+brand.FullProductName, "Sign in to "+brand.FullProductName)
-		if err != nil {
-			if strings.Contains(err.Error(), "invalid email address") {
-				renderError(w, http.StatusBadRequest, "Login failed", err.Error())
-				return
-			}
-			renderError(w, http.StatusBadGateway, "Email delivery failed", "The login email could not be sent. Try again shortly.")
-			return
-		}
-		templ.Handler(views.LoginSent(email)).ServeHTTP(w, r)
-	})
-	r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager), loginLimiter.middleware).Post("/claim-audit", func(w http.ResponseWriter, r *http.Request) {
-		if deps.Auth == nil || deps.Sender == nil {
-			renderError(w, http.StatusServiceUnavailable, "Audit claim unavailable", "Email login is not configured for this environment.")
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, 4096)
-		if err := r.ParseForm(); err != nil {
-			renderError(w, http.StatusBadRequest, "Invalid form", "Check the submitted fields and try again.")
-			return
-		}
-		domainName, err := scanner.NormalizeDomain(r.PostForm.Get("domain"))
-		if err != nil {
-			renderError(w, http.StatusBadRequest, "Audit claim failed", err.Error())
-			return
-		}
-		email, err := auth.NormalizeEmail(r.PostForm.Get("email"))
-		if err != nil {
-			renderError(w, http.StatusBadRequest, "Audit claim failed", err.Error())
-			return
-		}
-		audit := salesaudit.Assess(scanner.Result{Domain: domainName}, salesaudit.Options{RequestedEmail: email})
-		if audit.BlockedReason != "" {
-			renderError(w, http.StatusBadRequest, "Audit claim blocked", audit.BlockedReason)
-			return
-		}
-		sentEmail, err := startLoginAndSendEmail(r.Context(), deps, email, "Claim your "+brand.FullProductName+" audit", "Claim the "+brand.FullProductName+" audit for "+domainName)
-		if err != nil {
-			renderError(w, http.StatusBadGateway, "Email delivery failed", "The audit claim email could not be sent. Try again shortly.")
-			return
-		}
-		recordAuditClaim(r.Context(), deps.AuditClaims, domainName, sentEmail, auditForClaimRecord(r.Context(), deps.Scanner, domainName, email, audit))
-		deps.SessionManager.Put(r.Context(), claimDomainSessionKey, domainName)
-		templ.Handler(views.ClaimSent(sentEmail, domainName)).ServeHTTP(w, r)
-	})
-	r.Get("/auth/callback", func(w http.ResponseWriter, r *http.Request) {
-		if deps.Auth == nil {
-			renderError(w, http.StatusServiceUnavailable, "Login unavailable", "Email login is not configured for this environment.")
-			return
-		}
-		login, err := deps.Auth.FinishLogin(r.Context(), r.URL.Query().Get("token"))
-		if err != nil {
-			if errors.Is(err, auth.ErrExpiredToken) {
-				w.WriteHeader(http.StatusBadRequest)
-				templ.Handler(views.LoginProblem("Login link expired", "Request a new magic link to continue.")).ServeHTTP(w, r)
-				return
-			}
-			if errors.Is(err, auth.ErrConsumedToken) {
-				w.WriteHeader(http.StatusBadRequest)
-				templ.Handler(views.LoginProblem("Login link already used", "Magic links can only be used once. Request a new link if you need to sign in again.")).ServeHTTP(w, r)
-				return
-			}
-			w.WriteHeader(http.StatusBadRequest)
-			templ.Handler(views.LoginProblem("Invalid login link", "Request a new magic link to continue.")).ServeHTTP(w, r)
-			return
-		}
-		if err := deps.SessionManager.RenewToken(r.Context()); err != nil {
-			renderError(w, http.StatusInternalServerError, "Session error", "The session could not be renewed. Try signing in again.")
-			return
-		}
-		deps.SessionManager.Put(r.Context(), "user_id", login.UserID)
-		deps.SessionManager.Put(r.Context(), "user_email", login.Email)
-		if claimDomain := popClaimDomain(deps.SessionManager, r); claimDomain != "" {
-			if deps.Domains != nil {
-				if err := deps.Domains.AddDomain(r.Context(), login.UserID, claimDomain); err != nil {
-					pushFlash(deps.SessionManager, r, ErrorFlash("Signed in, but the claimed domain could not be protected. Add it manually from this page."))
-				} else {
-					pushFlash(deps.SessionManager, r, DomainAddedFlash(claimDomain))
-				}
-			} else {
-				pushFlash(deps.SessionManager, r, NewFlash(FlashInfo, "Signed in. Add "+claimDomain+" to protect it."))
-			}
-		}
-		http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
-	})
-	r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/logout", func(w http.ResponseWriter, r *http.Request) {
-		_ = deps.SessionManager.Destroy(r.Context())
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-	})
-	r.Get("/logout", func(w http.ResponseWriter, r *http.Request) {
-		if currentUserID(deps.SessionManager, r) == "" {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
-			return
-		}
-		writeLogoutConfirmationPage(w, csrfToken(deps.SessionManager, r))
-	})
-	checkLimiter := newRateLimiter(deps.PublicChecksPerMinute, time.Minute)
-	r.With(sameOriginPost(deps.PublicBaseURL), checkLimiter.middleware).Post("/check", func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, 4096)
-		if err := r.ParseForm(); err != nil {
-			renderError(w, http.StatusBadRequest, "Invalid form", "Check the submitted domain and try again.")
-			return
-		}
-		if len(r.PostForm.Get("domain")) > 253 {
-			renderError(w, http.StatusBadRequest, "Domain is too long", "Domain names must be 253 characters or fewer.")
-			return
-		}
-		result, err := deps.Scanner.Scan(r.Context(), r.PostForm.Get("domain"))
-		if err != nil {
-			renderError(w, http.StatusBadRequest, "Unable to complete check", err.Error())
-			return
-		}
-		audit := salesaudit.Assess(result, salesaudit.Options{})
-		templ.Handler(views.CheckResult(result, audit, csrfToken(deps.SessionManager, r))).ServeHTTP(w, r)
-	})
+	r.Use(backendOnlySurface)
 	r.Post("/billing/webhook", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Billing == nil || strings.TrimSpace(deps.BillingWebhookSecret) == "" {
 			writeAPIError(w, http.StatusServiceUnavailable, "billing webhooks are not configured")
@@ -1269,209 +1122,34 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, apicontracts.NewScanResponse(result))
 	})
-	r.Route("/app", func(r chi.Router) {
-		r.Use(requireLogin(deps.SessionManager))
-		r.Get("/domains", func(w http.ResponseWriter, r *http.Request) {
-			if deps.Domains == nil {
-				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
-				return
-			}
-			saved, err := deps.Domains.ListDomains(r.Context(), currentUserID(deps.SessionManager, r))
-			if err != nil {
-				renderError(w, http.StatusInternalServerError, "Unable to load domains", "Protected domains could not be loaded. Try again shortly.")
-				return
-			}
-			templ.Handler(views.AppDomains(currentUserEmail(deps.SessionManager, r), saved, csrfToken(deps.SessionManager, r), popFlashViews(deps.SessionManager, r))).ServeHTTP(w, r)
-		})
-		r.Get("/defender", func(w http.ResponseWriter, r *http.Request) {
-			writeStaticPage(w, "Brand Risk", "Select a protected domain to review DNS and email-auth evidence for current brand-risk findings.", []string{
-				"Domain trust findings from SPF, DKIM, DMARC, and BIMI.",
-				"Evidence and recommended action on every finding.",
-				"Lookalike-domain monitoring remains planned until the Defender feed is implemented.",
-			})
-		})
-		r.Get("/domains/{id}/trust-report", func(w http.ResponseWriter, r *http.Request) {
-			if deps.Domains == nil {
-				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
-				return
-			}
-			saved, err := deps.Domains.GetDomain(r.Context(), currentUserID(deps.SessionManager, r), chi.URLParam(r, "id"))
-			if err != nil {
-				renderError(w, http.StatusNotFound, "Domain not found", "The protected domain could not be found for this account.")
-				return
-			}
-			report := buildTrustReport(r.Context(), currentUserEmail(deps.SessionManager, r), currentUserID(deps.SessionManager, r), saved, deps.UserReporter)
-			templ.Handler(views.TrustReport(currentUserEmail(deps.SessionManager, r), saved, report, csrfToken(deps.SessionManager, r))).ServeHTTP(w, r)
-		})
-		r.Get("/domains/{id}/brand-risk", func(w http.ResponseWriter, r *http.Request) {
-			if deps.Domains == nil {
-				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
-				return
-			}
-			saved, err := deps.Domains.GetDomain(r.Context(), currentUserID(deps.SessionManager, r), chi.URLParam(r, "id"))
-			if err != nil {
-				renderError(w, http.StatusNotFound, "Domain not found", "The protected domain could not be found for this account.")
-				return
-			}
-			findings := []brandrisk.Finding{}
-			if saved.LatestCheck != nil {
-				findings = brandrisk.FromScan(scanner.Result{
-					Domain:    saved.Domain,
-					CheckedAt: saved.LatestCheck.CheckedAt,
-					SPF:       saved.LatestCheck.SPF,
-					DKIM:      saved.LatestCheck.DKIM,
-					DMARC:     saved.LatestCheck.DMARC,
-					BIMI:      saved.LatestCheck.BIMI,
-				})
-			}
-			templ.Handler(views.BrandRisk(currentUserEmail(deps.SessionManager, r), saved, findings, csrfToken(deps.SessionManager, r))).ServeHTTP(w, r)
-		})
-		r.Get("/domains/export", func(w http.ResponseWriter, r *http.Request) {
-			if deps.Domains == nil {
-				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
-				return
-			}
-			var export strings.Builder
-			if err := deps.Domains.ExportCSV(r.Context(), currentUserID(deps.SessionManager, r), &export); err != nil {
-				renderError(w, http.StatusInternalServerError, "Export failed", "Protected domains could not be exported. Try again shortly.")
-				return
-			}
-			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-			w.Header().Set("Content-Disposition", `attachment; filename="dmark-protected-domains.csv"`)
-			_, _ = io.WriteString(w, export.String())
-		})
-		r.Get("/privacy/export", func(w http.ResponseWriter, r *http.Request) {
-			includeRawXML := r.URL.Query().Get("raw_xml") == "1" || strings.EqualFold(r.URL.Query().Get("raw_xml"), "true")
-			writeJSON(w, http.StatusOK, privacy.NewExportManifest(
-				currentUserID(deps.SessionManager, r),
-				currentUserEmail(deps.SessionManager, r),
-				includeRawXML,
-			))
-		})
-		r.Get("/privacy/deletion-plan", func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, http.StatusOK, privacy.NewDeletionPlan(currentUserID(deps.SessionManager, r)))
-		})
-		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/privacy/delete", func(w http.ResponseWriter, r *http.Request) {
-			if deps.PrivacyDeletion == nil {
-				renderError(w, http.StatusServiceUnavailable, "Account deletion unavailable", "Account deletion is not configured for this environment.")
-				return
-			}
-			if !strings.EqualFold(strings.TrimSpace(r.PostForm.Get("confirm")), "delete") {
-				renderError(w, http.StatusBadRequest, "Confirmation required", "Type DELETE to confirm account deletion.")
-				return
-			}
-			if _, err := deps.PrivacyDeletion.DeleteAccountData(r.Context(), currentUserID(deps.SessionManager, r), currentUserEmail(deps.SessionManager, r)); err != nil {
-				renderError(w, http.StatusInternalServerError, "Deletion failed", "Account data could not be deleted. Contact support.")
-				return
-			}
-			_ = deps.SessionManager.Destroy(r.Context())
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-		})
-		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/domains/import", func(w http.ResponseWriter, r *http.Request) {
-			if deps.Domains == nil {
-				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
-				return
-			}
-			reader, closeFn, err := csvImportReader(r)
-			if err != nil {
-				renderError(w, http.StatusBadRequest, "Import failed", err.Error())
-				return
-			}
-			defer closeFn()
-			result, err := deps.Domains.ImportCSV(r.Context(), currentUserID(deps.SessionManager, r), reader)
-			if err != nil {
-				renderError(w, http.StatusBadRequest, "Import failed", err.Error())
-				return
-			}
-			pushFlash(deps.SessionManager, r, NewFlash(FlashSuccess, fmt.Sprintf("Imported %d domains.", result.Created)))
-			http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
-		})
-		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/domains", func(w http.ResponseWriter, r *http.Request) {
-			if deps.Domains == nil {
-				renderError(w, http.StatusServiceUnavailable, "Domains unavailable", "Protected domains are not configured for this environment.")
-				return
-			}
-			r.Body = http.MaxBytesReader(w, r.Body, 4096)
-			if err := r.ParseForm(); err != nil {
-				renderError(w, http.StatusBadRequest, "Invalid form", "Check the submitted domain and try again.")
-				return
-			}
-			domainName := r.PostForm.Get("domain")
-			if err := deps.Domains.AddDomain(r.Context(), currentUserID(deps.SessionManager, r), domainName); err != nil {
-				renderError(w, http.StatusBadRequest, "Unable to save domain", err.Error())
-				return
-			}
-			pushFlash(deps.SessionManager, r, DomainAddedFlash(domainName))
-			http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
-		})
-		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/domains/{id}/check", func(w http.ResponseWriter, r *http.Request) {
-			if err := deps.Domains.ScanDomain(r.Context(), currentUserID(deps.SessionManager, r), chi.URLParam(r, "id")); err != nil {
-				renderError(w, http.StatusBadRequest, "Recheck failed", "The protected domain could not be checked. Confirm it still belongs to your account.")
-				return
-			}
-			pushFlash(deps.SessionManager, r, NewFlash(FlashInfo, "Recheck queued."))
-			http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
-		})
-		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/domains/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
-			if err := deps.Domains.DeleteDomain(r.Context(), currentUserID(deps.SessionManager, r), chi.URLParam(r, "id")); err != nil {
-				renderError(w, http.StatusBadRequest, "Delete failed", "The protected domain could not be deleted. Confirm it still belongs to your account.")
-				return
-			}
-			pushFlash(deps.SessionManager, r, NewFlash(FlashSuccess, "Deleted domain."))
-			http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
-		})
-		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/alerts/{id}/ack", func(w http.ResponseWriter, r *http.Request) {
-			if deps.Alerts == nil {
-				renderError(w, http.StatusServiceUnavailable, "Alerts unavailable", "Alerts are not configured for this environment.")
-				return
-			}
-			if err := deps.Alerts.AcknowledgeEvent(r.Context(), currentUserID(deps.SessionManager, r), chi.URLParam(r, "id"), time.Now()); err != nil {
-				renderError(w, http.StatusBadRequest, "Acknowledgement failed", "The alert could not be acknowledged.")
-				return
-			}
-			pushFlash(deps.SessionManager, r, NewFlash(FlashSuccess, "Alert acknowledged."))
-			http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
-		})
-		r.With(sameOriginPost(deps.PublicBaseURL), csrfPost(deps.SessionManager)).Post("/alerts/{id}/mute", func(w http.ResponseWriter, r *http.Request) {
-			if deps.Alerts == nil {
-				renderError(w, http.StatusServiceUnavailable, "Alerts unavailable", "Alerts are not configured for this environment.")
-				return
-			}
-			until := muteUntil(r.PostForm.Get("duration"), time.Now())
-			if err := deps.Alerts.MuteEvent(r.Context(), currentUserID(deps.SessionManager, r), chi.URLParam(r, "id"), until); err != nil {
-				renderError(w, http.StatusBadRequest, "Mute failed", "The alert could not be muted.")
-				return
-			}
-			pushFlash(deps.SessionManager, r, NewFlash(FlashInfo, "Alert muted."))
-			http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
-		})
-	})
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
 	r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
-		writeStaticPage(w, brand.ProductName+" status", "All core components are operational.", []string{
-			"Public checker",
-			"Protected-domain monitoring",
-			"DMARC report ingestion",
-			"Notifications",
+		writeJSON(w, http.StatusOK, map[string]any{
+			"service": brand.ProductName,
+			"status":  "operational",
+			"components": []string{
+				"api",
+				"scanner",
+				"report ingestion",
+				"notifications",
+			},
 		})
 	})
 	r.Get("/security", func(w http.ResponseWriter, r *http.Request) {
-		writeStaticPage(w, "Security", "Report security issues privately to the project owner before opening public issues.", []string{
-			"Passwordless login tokens are hashed, single-use, and expiring.",
-			"Public checker requests are rate-limited and body-limited.",
-			"DMARC report ingestion rejects unsafe archives and oversized payloads.",
-			"Current subprocessors: Lettermint and operator-managed infrastructure.",
+		writeJSON(w, http.StatusOK, map[string]any{
+			"contact": "Report security issues privately to the project owner before opening public issues.",
+			"controls": []string{
+				"API keys are stored as hashes only.",
+				"DMARC report ingestion rejects unsafe archives and oversized payloads.",
+				"Current subprocessors: Lettermint and operator-managed infrastructure.",
+			},
 		})
 	})
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		if currentUserID(deps.SessionManager, r) != "" {
-			http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
-			return
-		}
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		writeAPIError(w, http.StatusNotFound, "frontend routes are served by dmark-web")
 	})
 	return r
 }
@@ -1506,39 +1184,22 @@ func legacyHostRedirect(next http.Handler) http.Handler {
 	})
 }
 
-func writeStaticPage(w http.ResponseWriter, title string, lead string, items []string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%s - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto max-w-3xl px-5 py-12\"><a href=\"/\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-accent\">Dmark</a><h1 class=\"mt-6 text-5xl font-semibold tracking-tight text-ink\">%s</h1><p class=\"mt-4 text-muted\">%s</p><ul class=\"mt-8 grid gap-3\">", title, brand.FullProductName, title, lead)
-	for _, item := range items {
-		_, _ = fmt.Fprintf(w, "<li class=\"rounded-lg border border-border bg-card p-4 text-sm text-muted\">%s</li>", item)
-	}
-	_, _ = fmt.Fprint(w, "</ul></main></body></html>")
+func backendOnlySurface(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isFrontendRoute(r.URL.Path) {
+			writeAPIError(w, http.StatusNotFound, "frontend routes are served by dmark-web")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
-func renderError(w http.ResponseWriter, status int, title string, detail string) {
-	if title == "" {
-		title = http.StatusText(status)
+func isFrontendRoute(path string) bool {
+	switch path {
+	case "/", "/login", "/logout", "/auth/callback", "/check", "/claim-audit", "/assets/css/marketing-20260512.css":
+		return true
 	}
-	if detail == "" {
-		detail = "Try again shortly."
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%s - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12\"><section class=\"w-full rounded-xl border border-border bg-card p-8\"><a href=\"/\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-accent\">Dmark</a><p class=\"mt-6 font-mono text-xs uppercase tracking-[0.24em] text-muted\">%d</p><h1 class=\"mt-3 text-4xl font-semibold tracking-tight text-ink\">%s</h1><p class=\"mt-4 text-sm leading-6 text-muted\">%s</p><a href=\"/\" class=\"mt-8 inline-flex min-h-12 items-center rounded-lg bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover\">Return home</a></section></main></body></html>",
-		html.EscapeString(title),
-		brand.FullProductName,
-		status,
-		html.EscapeString(title),
-		html.EscapeString(detail),
-	)
-}
-
-func writeLogoutConfirmationPage(w http.ResponseWriter, csrfToken string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Sign out - %s</title><link rel=\"stylesheet\" href=\"/assets/css/marketing-20260512.css\"></head><body class=\"min-h-screen bg-background font-sans text-foreground\"><main class=\"mx-auto grid min-h-screen max-w-xl place-items-center px-5 py-12\"><section class=\"w-full rounded-xl border border-border bg-card p-8\"><a href=\"/app/domains\" class=\"font-mono text-xs uppercase tracking-[0.2em] text-accent\">Dmark</a><h1 class=\"mt-6 text-4xl font-semibold tracking-tight text-ink\">Sign out?</h1><p class=\"mt-4 text-sm leading-6 text-muted\">End this Dmark session on the current browser.</p><form method=\"post\" action=\"/logout\" class=\"mt-8 flex flex-wrap gap-3\"><input type=\"hidden\" name=\"csrf_token\" value=\"%s\"><button type=\"submit\" class=\"min-h-12 rounded-lg bg-accent px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-accent-hover\">Sign out</button><a href=\"/app/domains\" class=\"inline-flex min-h-12 items-center rounded-lg border border-border px-5 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-muted transition hover:text-ink\">Stay signed in</a></form></section></main></body></html>",
-		brand.FullProductName,
-		html.EscapeString(csrfToken),
-	)
+	return strings.HasPrefix(path, "/app/") || path == "/app" || strings.HasPrefix(path, "/assets/")
 }
 
 func authorizeAPI(w http.ResponseWriter, r *http.Request, authenticator APIKeyAuthenticator, required apikeys.Scope) (apikeys.Principal, bool) {
@@ -1587,249 +1248,6 @@ func apiLimit(raw string, fallback int, max int) (int, error) {
 	return value, nil
 }
 
-func requireLogin(sessionManager *scs.SessionManager) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if currentUserID(sessionManager, r) == "" {
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-func currentUserID(sessionManager *scs.SessionManager, r *http.Request) string {
-	return sessionManager.GetString(r.Context(), "user_id")
-}
-
-func currentUserEmail(sessionManager *scs.SessionManager, r *http.Request) string {
-	return sessionManager.GetString(r.Context(), "user_email")
-}
-
-const (
-	csrfSessionKey        = "csrf_token"
-	flashSessionKey       = "flash_message"
-	claimDomainSessionKey = "claim_domain"
-)
-
-func startLoginAndSendEmail(ctx context.Context, deps Deps, emailInput string, subject string, intro string) (string, error) {
-	email, token, err := deps.Auth.StartLogin(ctx, emailInput)
-	if err != nil {
-		return "", err
-	}
-	link := deps.PublicBaseURL + "/auth/callback?token=" + url.QueryEscape(token)
-	if err := deps.Sender.Send(ctx, notifier.Email{
-		To:      email,
-		Subject: subject,
-		Text:    intro + ": " + link,
-		HTML:    fmt.Sprintf(`<p>%s:</p><p><a href="%s">Open your magic link</a></p>`, html.EscapeString(intro), html.EscapeString(link)),
-	}); err != nil {
-		return "", err
-	}
-	return email, nil
-}
-
-func popClaimDomain(sessionManager *scs.SessionManager, r *http.Request) string {
-	domain := sessionManager.GetString(r.Context(), claimDomainSessionKey)
-	if domain == "" {
-		return ""
-	}
-	sessionManager.Remove(r.Context(), claimDomainSessionKey)
-	return domain
-}
-
-func recordAuditClaim(ctx context.Context, store AuditClaimStore, domain string, email string, audit salesaudit.Result) {
-	if store == nil {
-		return
-	}
-	claim, err := salesaudit.NewClaim(domain, email, audit, time.Now().UTC())
-	if err != nil {
-		return
-	}
-	_, _ = store.CreateAuditClaim(ctx, claim)
-}
-
-func auditForClaimRecord(ctx context.Context, emailScanner EmailScanner, domain string, email string, fallback salesaudit.Result) salesaudit.Result {
-	if emailScanner == nil {
-		return fallback
-	}
-	result, err := emailScanner.Scan(ctx, domain)
-	if err != nil {
-		return fallback
-	}
-	return salesaudit.Assess(result, salesaudit.Options{RequestedEmail: email})
-}
-
-func buildTrustReport(ctx context.Context, email string, userID string, domain domains.Domain, reporterStore UserReporterStore) trustreport.Report {
-	input := trustreport.Input{
-		GeneratedAt: time.Now().UTC(),
-		Customer:    email,
-		Domains:     []trustreport.DomainInput{{Domain: domain.Domain}},
-	}
-	if domain.LatestCheck != nil {
-		scan := scanner.Result{
-			Domain:    domain.Domain,
-			CheckedAt: domain.LatestCheck.CheckedAt,
-			SPF:       domain.LatestCheck.SPF,
-			DKIM:      domain.LatestCheck.DKIM,
-			DMARC:     domain.LatestCheck.DMARC,
-			BIMI:      domain.LatestCheck.BIMI,
-		}
-		input.Domains[0].Scan = scan
-		input.Domains[0].DMARCEvidence = dmarcjourney.Evidence{
-			ReporterConfigured: strings.Contains(strings.ToLower(domain.LatestCheck.DMARC.Record), "rua="),
-		}
-	}
-	if reporterStore != nil {
-		if senders, err := reporterStore.ListUserReporterSenders(ctx, userID, domain.ID, 50); err == nil {
-			input.Domains[0].SenderInventory = senders
-			mergeSenderEvidence(&input.Domains[0].DMARCEvidence, senders)
-		}
-		if health, err := reporterStore.GetUserReporterHealth(ctx, userID, domain.ID); err == nil {
-			mergeReporterHealth(&input.Domains[0].DMARCEvidence, health)
-		}
-	}
-	return trustreport.Build(input)
-}
-
-func mergeReporterHealth(evidence *dmarcjourney.Evidence, health reporter.HealthResult) {
-	if !health.LastReportAt.IsZero() || len(health.ReporterOrgs) > 0 {
-		evidence.ReporterConfigured = true
-	}
-}
-
-func mergeSenderEvidence(evidence *dmarcjourney.Evidence, senders []reporter.InventoryEntry) {
-	var firstSeen time.Time
-	var lastSeen time.Time
-	for _, sender := range senders {
-		evidence.TotalMessages += sender.Volume
-		evidence.FailedMessages += int(float64(sender.Volume) * sender.FailureRate)
-		if reporter.InventoryRisk(reporter.ToSenderInventoryItem(sender)) == "review" && sender.Provider == "" {
-			evidence.UnknownSenderMessages += sender.Volume
-		}
-		if !sender.FirstSeen.IsZero() && (firstSeen.IsZero() || sender.FirstSeen.Before(firstSeen)) {
-			firstSeen = sender.FirstSeen
-		}
-		if sender.LastSeen.After(lastSeen) {
-			lastSeen = sender.LastSeen
-		}
-	}
-	evidence.AlignedMessages = evidence.TotalMessages - evidence.FailedMessages
-	if evidence.AlignedMessages < 0 {
-		evidence.AlignedMessages = 0
-	}
-	if !firstSeen.IsZero() && !lastSeen.IsZero() {
-		evidence.DaysObserved = int(lastSeen.Sub(firstSeen).Hours()/24) + 1
-		if evidence.DaysObserved < 1 {
-			evidence.DaysObserved = 1
-		}
-	}
-}
-
-func csrfToken(sessionManager *scs.SessionManager, r *http.Request) string {
-	token := sessionManager.GetString(r.Context(), csrfSessionKey)
-	if token != "" {
-		return token
-	}
-	token = newCSRFToken()
-	sessionManager.Put(r.Context(), csrfSessionKey, token)
-	return token
-}
-
-func newCSRFToken() string {
-	var raw [32]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return fmt.Sprintf("csrf-%d", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(raw[:])
-}
-
-func pushFlash(sessionManager *scs.SessionManager, r *http.Request, message FlashMessage) {
-	visible := VisibleFlashes([]FlashMessage{message})
-	if len(visible) == 0 {
-		return
-	}
-	sessionManager.Put(r.Context(), flashSessionKey, encodeFlash(visible[0]))
-}
-
-func popFlashViews(sessionManager *scs.SessionManager, r *http.Request) []views.Flash {
-	raw := sessionManager.GetString(r.Context(), flashSessionKey)
-	if raw == "" {
-		return nil
-	}
-	sessionManager.Remove(r.Context(), flashSessionKey)
-	flash := decodeFlash(raw)
-	visible := VisibleFlashes([]FlashMessage{flash})
-	if len(visible) == 0 {
-		return nil
-	}
-	return []views.Flash{{
-		Kind:    string(visible[0].Kind),
-		Message: visible[0].Message,
-	}}
-}
-
-func encodeFlash(message FlashMessage) string {
-	kind := strings.ReplaceAll(string(message.Kind), "\t", " ")
-	text := strings.ReplaceAll(message.Message, "\t", " ")
-	text = strings.ReplaceAll(text, "\n", " ")
-	return kind + "\t" + text
-}
-
-func decodeFlash(raw string) FlashMessage {
-	kind, message, ok := strings.Cut(raw, "\t")
-	if !ok {
-		return NewFlash(FlashInfo, raw)
-	}
-	return NewFlash(FlashKind(kind), message)
-}
-
-func csrfPost(sessionManager *scs.SessionManager) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				next.ServeHTTP(w, r)
-				return
-			}
-			r.Body = http.MaxBytesReader(w, r.Body, 4096)
-			var err error
-			if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
-				// #nosec G120 -- r.Body is capped by MaxBytesReader immediately above.
-				err = r.ParseMultipartForm(4096)
-			} else {
-				err = r.ParseForm()
-			}
-			if err != nil {
-				renderError(w, http.StatusBadRequest, "Invalid form", "Check the submitted fields and try again.")
-				return
-			}
-			expected := sessionManager.GetString(r.Context(), csrfSessionKey)
-			actual := r.PostForm.Get("csrf_token")
-			if actual == "" {
-				actual = r.Header.Get("X-CSRF-Token")
-			}
-			if expected == "" || actual == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(actual)) != 1 {
-				renderError(w, http.StatusForbidden, "Invalid security token", "Refresh the page and submit the form again.")
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-func csvImportReader(r *http.Request) (io.Reader, func(), error) {
-	file, _, err := r.FormFile("csv")
-	if err == nil {
-		return file, func() { _ = file.Close() }, nil
-	}
-	value := strings.TrimSpace(r.PostForm.Get("csv"))
-	if value == "" {
-		return nil, func() {}, fmt.Errorf("csv import file is required")
-	}
-	return strings.NewReader(value), func() {}, nil
-}
-
 func muteUntil(duration string, now time.Time) time.Time {
 	switch strings.TrimSpace(strings.ToLower(duration)) {
 	case "1h", "hour":
@@ -1868,114 +1286,4 @@ func newRequestID() string {
 		return fmt.Sprintf("req-%d", time.Now().UnixNano())
 	}
 	return "req-" + hex.EncodeToString(raw[:])
-}
-
-func sameOriginPost(publicBaseURL string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				next.ServeHTTP(w, r)
-				return
-			}
-			if !sameOrigin(r, publicBaseURL) {
-				renderError(w, http.StatusForbidden, "Request rejected", "The form submission did not come from this site.")
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-func sameOrigin(r *http.Request, publicBaseURL string) bool {
-	expected := requestOrigin(r)
-	if configured, err := url.Parse(publicBaseURL); err == nil && configured.Host != "" {
-		expected = configured.Scheme + "://" + configured.Host
-	}
-	for _, header := range []string{"Origin", "Referer"} {
-		value := r.Header.Get(header)
-		if value == "" {
-			continue
-		}
-		parsed, err := url.Parse(value)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			return false
-		}
-		if parsed.Scheme+"://"+parsed.Host != expected {
-			return false
-		}
-	}
-	return true
-}
-
-func requestOrigin(r *http.Request) string {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded != "" {
-		scheme = strings.TrimSpace(strings.Split(forwarded, ",")[0])
-	}
-	return scheme + "://" + r.Host
-}
-
-type rateLimiter struct {
-	mu      sync.Mutex
-	limit   int
-	window  time.Duration
-	clients map[string]rateWindow
-}
-
-type rateWindow struct {
-	reset time.Time
-	count int
-}
-
-func newRateLimiter(limit int, window time.Duration) *rateLimiter {
-	return &rateLimiter{
-		limit:   limit,
-		window:  window,
-		clients: map[string]rateWindow{},
-	}
-}
-
-func (l *rateLimiter) middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !l.allow(clientIP(r), time.Now()) {
-			renderError(w, http.StatusTooManyRequests, "Too many requests", "Wait a minute before checking another domain.")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (l *rateLimiter) allow(key string, now time.Time) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	window := l.clients[key]
-	if window.reset.IsZero() || now.After(window.reset) {
-		l.clients[key] = rateWindow{reset: now.Add(l.window), count: 1}
-		return true
-	}
-	if window.count >= l.limit {
-		return false
-	}
-	window.count++
-	l.clients[key] = window
-	return true
-}
-
-func clientIP(r *http.Request) string {
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		ip, _, _ := strings.Cut(forwarded, ",")
-		return strings.TrimSpace(ip)
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		return strings.TrimSpace(host)
-	}
-	if r.RemoteAddr == "" {
-		return "unknown"
-	}
-	return r.RemoteAddr
 }

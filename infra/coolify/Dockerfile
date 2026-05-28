@@ -8,7 +8,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/meil ./
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/meil /meil
-COPY --from=build /src/assets /assets
 COPY --from=build /src/migrations /migrations
 USER nonroot:nonroot
 EXPOSE 8080

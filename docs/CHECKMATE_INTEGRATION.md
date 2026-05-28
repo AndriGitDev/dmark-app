@@ -36,7 +36,7 @@ The spoofed proof email is useful, but it is also abuse-sensitive. It should rem
 
 Phase 1, safe GA funnel:
 
-1. Public checker runs the existing scanner.
+1. `dmark-web` runs the browser funnel and calls backend scanner/API flows as needed.
 2. `internal/salesaudit` converts the scan to a sales grade, risk level, and CTA.
 3. Vulnerable domains get a "claim this audit" prompt.
 4. Claimed audits send a passwordless magic link and persist a `sales_audit_claims` lead record.
@@ -70,4 +70,4 @@ The first reusable implementation is in place locally. `internal/salesaudit` pro
 - CTA.
 - Evidence signals.
 
-The public checker renders that grade/risk/CTA, `/claim-audit` validates a matching work email, sends the existing magic link, stores the claim in `sales_audit_claims`, and then adds the domain to protected domains after callback when the same browser session is present. This gives the sales funnel durable follow-up data without taking on spoof-dispatch risk yet.
+`internal/salesaudit` remains the backend grading engine. The public checker, claim UI, and proof/demo funnel now belong in `dmark-web`; this repository should expose or back those flows through JSON/API endpoints rather than HTML form routes.

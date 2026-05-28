@@ -5,21 +5,17 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/AndriGitDev/meil/internal/admin"
-	"github.com/AndriGitDev/meil/internal/alerts"
 	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/attribution"
-	"github.com/AndriGitDev/meil/internal/auth"
 	"github.com/AndriGitDev/meil/internal/billing"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
-	"github.com/AndriGitDev/meil/internal/notifier"
 	"github.com/AndriGitDev/meil/internal/privacy"
 	"github.com/AndriGitDev/meil/internal/reporter"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
@@ -36,38 +32,6 @@ type fakeScanner struct {
 
 func (s fakeScanner) Scan(ctx context.Context, domain string) (scanner.Result, error) {
 	return s.result, s.err
-}
-
-type webAuthStore struct {
-	users  map[string]auth.User
-	tokens map[string]auth.LoginToken
-}
-
-func newWebAuthStore() *webAuthStore {
-	return &webAuthStore{users: map[string]auth.User{}, tokens: map[string]auth.LoginToken{}}
-}
-
-func (s *webAuthStore) UpsertUserByEmail(ctx context.Context, email string) (auth.User, error) {
-	if user, ok := s.users[email]; ok {
-		return user, nil
-	}
-	user := auth.User{ID: "user-1", Email: email}
-	s.users[email] = user
-	return user, nil
-}
-
-func (s *webAuthStore) CreateLoginToken(ctx context.Context, userID string, tokenHash []byte, expiresAt time.Time) error {
-	s.tokens[string(tokenHash)] = auth.LoginToken{UserID: userID, Email: "person@example.com"}
-	return nil
-}
-
-func (s *webAuthStore) ConsumeLoginToken(ctx context.Context, tokenHash []byte) (auth.LoginToken, error) {
-	login, ok := s.tokens[string(tokenHash)]
-	if !ok {
-		return auth.LoginToken{}, errors.New("not found")
-	}
-	delete(s.tokens, string(tokenHash))
-	return login, nil
 }
 
 type webDomainStore struct {
@@ -422,38 +386,6 @@ func (s *webDomainStore) CreateCheck(ctx context.Context, domainID string, resul
 	return nil
 }
 
-type webAlertStore struct {
-	ackUserID   string
-	ackEventID  string
-	muteUserID  string
-	muteEventID string
-	mutedUntil  time.Time
-}
-
-func (s *webAlertStore) AcknowledgeEvent(ctx context.Context, userID string, eventID string, at time.Time) error {
-	s.ackUserID = userID
-	s.ackEventID = eventID
-	return nil
-}
-
-func (s *webAlertStore) MuteEvent(ctx context.Context, userID string, eventID string, until time.Time) error {
-	s.muteUserID = userID
-	s.muteEventID = eventID
-	s.mutedUntil = until
-	return nil
-}
-
-var _ alerts.Store = (*webAlertStore)(nil)
-
-type webEmailSender struct {
-	sent []notifier.Email
-}
-
-func (s *webEmailSender) Send(ctx context.Context, email notifier.Email) error {
-	s.sent = append(s.sent, email)
-	return nil
-}
-
 type webBillingStore struct {
 	event        billing.WebhookEvent
 	applied      bool
@@ -492,19 +424,41 @@ func (a *webAPIKeyAuth) AuthenticateAPIKey(ctx context.Context, key string) (api
 	return a.principal, nil
 }
 
-func TestRootRedirectsToLogin(t *testing.T) {
+func TestFrontendRoutesAreDisabled(t *testing.T) {
 	t.Parallel()
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
+	router := NewRouter()
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/"},
+		{http.MethodGet, "/login"},
+		{http.MethodPost, "/login"},
+		{http.MethodGet, "/logout"},
+		{http.MethodPost, "/logout"},
+		{http.MethodGet, "/auth/callback"},
+		{http.MethodPost, "/check"},
+		{http.MethodPost, "/claim-audit"},
+		{http.MethodGet, "/app/domains"},
+		{http.MethodGet, "/assets/css/marketing-20260512.css"},
+	} {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			rec := httptest.NewRecorder()
 
-	NewRouter().ServeHTTP(rec, req)
+			router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
-	}
-	if location := rec.Header().Get("Location"); location != "/login" {
-		t.Fatalf("Location = %q, want /login", location)
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusNotFound, rec.Body.String())
+			}
+			if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
+				t.Fatalf("Content-Type = %q, want application/json", contentType)
+			}
+			if !strings.Contains(rec.Body.String(), "dmark-web") {
+				t.Fatalf("body missing dmark-web handoff message: %s", rec.Body.String())
+			}
+		})
 	}
 }
 
@@ -522,452 +476,6 @@ func TestRequestIDHeader(t *testing.T) {
 	}
 }
 
-func TestMarketingStylesheetRenders(t *testing.T) {
-	t.Setenv("ASSETS_DIR", "../../assets")
-
-	req := httptest.NewRequest(http.MethodGet, "/assets/css/marketing-20260512.css", nil)
-	rec := httptest.NewRecorder()
-
-	NewRouter().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/css") {
-		t.Fatalf("Content-Type = %q, want text/css", contentType)
-	}
-	if !strings.Contains(rec.Body.String(), ".bg-background") {
-		t.Fatalf("stylesheet does not contain marketing CSS")
-	}
-}
-
-func TestLoginRendersCSRFToken(t *testing.T) {
-	t.Parallel()
-
-	req := httptest.NewRequest(http.MethodGet, "/login", nil)
-	rec := httptest.NewRecorder()
-
-	NewRouter().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	if !strings.Contains(rec.Body.String(), `name="csrf_token"`) {
-		t.Fatalf("login form missing csrf token: %s", rec.Body.String())
-	}
-}
-
-func TestLoginRejectsMissingCSRFToken(t *testing.T) {
-	t.Parallel()
-
-	form := url.Values{"email": {"person@example.com"}}
-	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-
-	NewRouter().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
-	}
-}
-
-func TestAuthCallbackCreatesSession(t *testing.T) {
-	t.Parallel()
-
-	store := newWebAuthStore()
-	authService := auth.NewService(store, time.Minute)
-	_, token, err := authService.StartLogin(context.Background(), "person@example.com")
-	if err != nil {
-		t.Fatalf("StartLogin returned error: %v", err)
-	}
-	req := httptest.NewRequest(http.MethodGet, "/auth/callback?token="+url.QueryEscape(token), nil)
-	rec := httptest.NewRecorder()
-
-	NewRouterWithDeps(Deps{Auth: authService}).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
-	}
-	if location := rec.Header().Get("Location"); location != "/app/domains" {
-		t.Fatalf("Location = %q, want /app/domains", location)
-	}
-	if rec.Header().Get("Set-Cookie") == "" {
-		t.Fatalf("expected session cookie to be set")
-	}
-}
-
-func TestAuthCallbackSessionCookieSecurityAttributes(t *testing.T) {
-	t.Parallel()
-
-	store := newWebAuthStore()
-	authService := auth.NewService(store, time.Minute)
-	_, token, err := authService.StartLogin(context.Background(), "person@example.com")
-	if err != nil {
-		t.Fatalf("StartLogin returned error: %v", err)
-	}
-	req := httptest.NewRequest(http.MethodGet, "/auth/callback?token="+url.QueryEscape(token), nil)
-	rec := httptest.NewRecorder()
-
-	NewRouterWithDeps(Deps{
-		Auth:          authService,
-		PublicBaseURL: "https://meil.example",
-	}).ServeHTTP(rec, req)
-
-	cookies := rec.Result().Cookies()
-	if len(cookies) == 0 {
-		t.Fatalf("expected session cookie to be set")
-	}
-	cookie := cookies[0]
-	if !cookie.HttpOnly {
-		t.Fatalf("session cookie should be HttpOnly: %+v", cookie)
-	}
-	if cookie.SameSite != http.SameSiteLaxMode {
-		t.Fatalf("SameSite = %v, want Lax", cookie.SameSite)
-	}
-	if !cookie.Secure {
-		t.Fatalf("Secure = false for HTTPS public base URL")
-	}
-}
-
-func TestAuthCallbackRendersProblemScreen(t *testing.T) {
-	t.Parallel()
-
-	rawToken := "meil_login_rejected_value" // #nosec G101 -- regression fixture asserts rejected callback tokens are not reflected.
-	req := httptest.NewRequest(http.MethodGet, "/auth/callback?token="+url.QueryEscape(rawToken), nil)
-	rec := httptest.NewRecorder()
-
-	NewRouterWithDeps(Deps{Auth: auth.NewService(newWebAuthStore(), time.Minute)}).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-	}
-	if body := rec.Body.String(); !strings.Contains(body, "Invalid login link") || !strings.Contains(body, "Request new link") {
-		t.Fatalf("body missing problem screen content: %s", body)
-	}
-	if strings.Contains(rec.Body.String(), rawToken) {
-		t.Fatalf("body leaked login token: %s", rec.Body.String())
-	}
-}
-
-func TestLoginSentRendersResendAction(t *testing.T) {
-	t.Parallel()
-
-	sender := &webEmailSender{}
-	router := NewRouterWithDeps(Deps{
-		Auth:   auth.NewService(newWebAuthStore(), time.Minute),
-		Sender: sender,
-	})
-	csrfToken, cookie := loginCSRFToken(t, router)
-	form := url.Values{"csrf_token": {csrfToken}, "email": {"person@example.com"}}
-	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	if len(sender.sent) != 1 {
-		t.Fatalf("len(sent emails) = %d, want 1", len(sender.sent))
-	}
-	if body := rec.Body.String(); !strings.Contains(body, "Request another link") || !strings.Contains(body, "/login") {
-		t.Fatalf("body missing resend action: %s", body)
-	}
-}
-
-func TestLoginRateLimit(t *testing.T) {
-	t.Parallel()
-
-	sender := &webEmailSender{}
-	router := NewRouterWithDeps(Deps{
-		Auth:                   auth.NewService(newWebAuthStore(), time.Minute),
-		Sender:                 sender,
-		LoginAttemptsPerMinute: 2,
-	})
-	csrfToken, cookie := loginCSRFToken(t, router)
-	form := url.Values{"csrf_token": {csrfToken}, "email": {"person@example.com"}}
-	var rec *httptest.ResponseRecorder
-	for i := 0; i < 3; i++ {
-		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set("X-Forwarded-For", "203.0.113.20")
-		req.AddCookie(cookie)
-		rec = httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-		cookie = latestCookie(cookie, rec)
-	}
-
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusTooManyRequests)
-	}
-	if !strings.Contains(rec.Body.String(), "Too many requests") {
-		t.Fatalf("body missing rate limit message: %s", rec.Body.String())
-	}
-}
-
-func TestLogoutRequiresConfirmation(t *testing.T) {
-	t.Parallel()
-
-	router, cookie := authenticatedRouter(t, &webDomainStore{})
-	req := httptest.NewRequest(http.MethodGet, "/logout", nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	body := rec.Body.String()
-	for _, want := range []string{"Sign out?", `method="post" action="/logout"`, `name="csrf_token"`, "Stay signed in"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("body missing %q: %s", want, body)
-		}
-	}
-}
-
-func TestLogoutPostDestroysSession(t *testing.T) {
-	t.Parallel()
-
-	router, cookie := authenticatedRouter(t, &webDomainStore{})
-	csrfToken, cookie := logoutCSRFToken(t, router, cookie)
-	form := url.Values{"csrf_token": {csrfToken}}
-	req := httptest.NewRequest(http.MethodPost, "/logout", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
-	}
-	if location := rec.Header().Get("Location"); location != "/" {
-		t.Fatalf("Location = %q, want /", location)
-	}
-}
-
-func TestDomainsExportCSV(t *testing.T) {
-	t.Parallel()
-
-	router, cookie := authenticatedRouter(t, &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}})
-	req := httptest.NewRequest(http.MethodGet, "/app/domains/export", nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/csv") {
-		t.Fatalf("Content-Type = %q, want text/csv", contentType)
-	}
-	if !strings.Contains(rec.Body.String(), "example.com") {
-		t.Fatalf("CSV missing domain: %s", rec.Body.String())
-	}
-}
-
-func TestPrivacyExportManifest(t *testing.T) {
-	t.Parallel()
-
-	router, cookie := authenticatedRouter(t, &webDomainStore{})
-	req := httptest.NewRequest(http.MethodGet, "/app/privacy/export?raw_xml=true", nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
-		t.Fatalf("Content-Type = %q, want application/json", contentType)
-	}
-	body := rec.Body.String()
-	for _, want := range []string{`"Email":"person@example.com"`, `"IncludesRawXML":true`, `"raw_dmarc_xml"`} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("body missing %q: %s", want, body)
-		}
-	}
-}
-
-func TestPrivacyDeletionPlan(t *testing.T) {
-	t.Parallel()
-
-	router, cookie := authenticatedRouter(t, &webDomainStore{})
-	req := httptest.NewRequest(http.MethodGet, "/app/privacy/deletion-plan", nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-	body := rec.Body.String()
-	for _, want := range []string{`"delete_user"`, `"delete_domains"`, `"retain_audit_tombstone"`} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("body missing %q: %s", want, body)
-		}
-	}
-}
-
-func TestPrivacyDeleteRequiresConfirmation(t *testing.T) {
-	t.Parallel()
-
-	store := &webDomainStore{}
-	router, cookie := authenticatedRouterWithDeps(t, store, Deps{PrivacyDeletion: store})
-	csrfToken, cookie := appCSRFToken(t, router, cookie)
-	form := url.Values{"csrf_token": {csrfToken}, "confirm": {"nope"}}
-	req := httptest.NewRequest(http.MethodPost, "/app/privacy/delete", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-	}
-	if store.deletedUserID != "" {
-		t.Fatalf("deleted user id = %q, want none", store.deletedUserID)
-	}
-}
-
-func TestPrivacyDeleteDestroysAccountSession(t *testing.T) {
-	t.Parallel()
-
-	store := &webDomainStore{}
-	router, cookie := authenticatedRouterWithDeps(t, store, Deps{PrivacyDeletion: store})
-	csrfToken, cookie := appCSRFToken(t, router, cookie)
-	form := url.Values{"csrf_token": {csrfToken}, "confirm": {"DELETE"}}
-	req := httptest.NewRequest(http.MethodPost, "/app/privacy/delete", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
-	}
-	if location := rec.Header().Get("Location"); location != "/" {
-		t.Fatalf("Location = %q, want /", location)
-	}
-	if store.deletedUserID == "" {
-		t.Fatalf("expected account deletion store to be called")
-	}
-}
-
-func TestDomainsImportCSV(t *testing.T) {
-	t.Parallel()
-
-	store := &webDomainStore{}
-	router, cookie := authenticatedRouter(t, store)
-	csrfToken, cookie := appCSRFToken(t, router, cookie)
-	form := url.Values{"csrf_token": {csrfToken}, "csv": {"domain\nexample.com\nmail.example.org\n"}}
-	req := httptest.NewRequest(http.MethodPost, "/app/domains/import", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
-	}
-	if len(store.domains) != 2 {
-		t.Fatalf("len(imported domains) = %d, want 2: %+v", len(store.domains), store.domains)
-	}
-}
-
-func TestDomainAddShowsFlashOnce(t *testing.T) {
-	t.Parallel()
-
-	router, cookie := authenticatedRouter(t, &webDomainStore{})
-	csrfToken, cookie := appCSRFToken(t, router, cookie)
-	form := url.Values{"csrf_token": {csrfToken}, "domain": {"example.com"}}
-	req := httptest.NewRequest(http.MethodPost, "/app/domains", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
-	}
-	cookie = latestCookie(cookie, rec)
-
-	req = httptest.NewRequest(http.MethodGet, "/app/domains", nil)
-	req.AddCookie(cookie)
-	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	if body := rec.Body.String(); !strings.Contains(body, "Protected example.com.") || !strings.Contains(body, `role="status"`) {
-		t.Fatalf("body missing flash message: %s", body)
-	}
-	cookie = latestCookie(cookie, rec)
-
-	req = httptest.NewRequest(http.MethodGet, "/app/domains", nil)
-	req.AddCookie(cookie)
-	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if strings.Contains(rec.Body.String(), "Protected example.com.") {
-		t.Fatalf("flash message was not cleared after display: %s", rec.Body.String())
-	}
-}
-
-func TestAlertAcknowledgeRoute(t *testing.T) {
-	t.Parallel()
-
-	alertStore := &webAlertStore{}
-	router, cookie := authenticatedRouterWithAlerts(t, &webDomainStore{}, alertStore)
-	csrfToken, cookie := appCSRFToken(t, router, cookie)
-	form := url.Values{"csrf_token": {csrfToken}}
-	req := httptest.NewRequest(http.MethodPost, "/app/alerts/event-1/ack", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
-	}
-	if alertStore.ackUserID != "user-1" || alertStore.ackEventID != "event-1" {
-		t.Fatalf("unexpected acknowledgement: %+v", alertStore)
-	}
-}
-
-func TestAlertMuteRoute(t *testing.T) {
-	t.Parallel()
-
-	alertStore := &webAlertStore{}
-	router, cookie := authenticatedRouterWithAlerts(t, &webDomainStore{}, alertStore)
-	csrfToken, cookie := appCSRFToken(t, router, cookie)
-	form := url.Values{"csrf_token": {csrfToken}, "duration": {"7d"}}
-	req := httptest.NewRequest(http.MethodPost, "/app/alerts/event-1/mute", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
-	}
-	if alertStore.muteUserID != "user-1" || alertStore.muteEventID != "event-1" || alertStore.mutedUntil.IsZero() {
-		t.Fatalf("unexpected mute: %+v", alertStore)
-	}
-}
-
 func TestMuteUntil(t *testing.T) {
 	t.Parallel()
 
@@ -980,286 +488,6 @@ func TestMuteUntil(t *testing.T) {
 	}
 	if got := muteUntil("", now); !got.Equal(now.Add(24 * time.Hour)) {
 		t.Fatalf("muteUntil default = %s, want one day", got)
-	}
-}
-
-func TestCheckDomainRendersScannerResult(t *testing.T) {
-	t.Parallel()
-
-	form := url.Values{"domain": {"example.com"}}
-	req := httptest.NewRequest(http.MethodPost, "/check", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-
-	NewRouterWithScanner(fakeScanner{result: scanner.Result{
-		Domain: "example.com",
-		SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok", Record: "v=spf1 -all"},
-		DMARC:  scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none"},
-		BIMI:   scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
-		DKIM:   scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
-	}}).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	body := rec.Body.String()
-	for _, want := range []string{"example.com", "SPF", "pass", "DMARC", "warn", "v=spf1 -all", "Audit grade", "C", "high risk", `action="/claim-audit"`, `name="csrf_token"`, "Claim audit", "Review sender evidence and enforcement steps"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("body missing %q: %s", want, body)
-		}
-	}
-}
-
-func TestClaimAuditSendsMagicLinkAndProtectsDomainAfterCallback(t *testing.T) {
-	t.Parallel()
-
-	authStore := newWebAuthStore()
-	sender := &webEmailSender{}
-	domainStore := &webDomainStore{}
-	router := NewRouterWithDeps(Deps{
-		Scanner:     fakeScanner{result: scanner.Result{Domain: "example.com", SPF: scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass}, DKIM: scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass}, DMARC: scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Record: "v=DMARC1; p=none"}, BIMI: scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing}}},
-		Auth:        auth.NewService(authStore, time.Minute),
-		Sender:      sender,
-		AuditClaims: domainStore,
-		Domains: domains.NewService(domainStore, fakeScanner{result: scanner.Result{
-			Domain: "example.com",
-			SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass},
-			DKIM:   scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass},
-			DMARC:  scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Record: "v=DMARC1; p=none"},
-			BIMI:   scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing},
-		}}),
-	})
-	csrfToken, cookie := loginCSRFToken(t, router)
-	form := url.Values{"csrf_token": {csrfToken}, "domain": {"example.com"}, "email": {"person@example.com"}}
-	req := httptest.NewRequest(http.MethodPost, "/claim-audit", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("claim status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-	for _, want := range []string{"Audit claim sent", "example.com", "person@example.com", "Open the link in this browser"} {
-		if !strings.Contains(rec.Body.String(), want) {
-			t.Fatalf("claim body missing %q: %s", want, rec.Body.String())
-		}
-	}
-	if len(sender.sent) != 1 {
-		t.Fatalf("len(sent emails) = %d, want 1", len(sender.sent))
-	}
-	if len(domainStore.auditClaims) != 1 {
-		t.Fatalf("len(auditClaims) = %d, want 1", len(domainStore.auditClaims))
-	}
-	if claim := domainStore.auditClaims[0]; claim.Domain != "example.com" || claim.Email != "person@example.com" || claim.Grade != "B" || claim.Risk != salesaudit.RiskMedium || claim.Status != salesaudit.ClaimMagicLinkSent {
-		t.Fatalf("audit claim = %+v, want persisted example.com claim", claim)
-	}
-	cookie = latestCookie(cookie, rec)
-	token := magicLinkToken(t, sender.sent[0].Text)
-	req = httptest.NewRequest(http.MethodGet, "/auth/callback?token="+url.QueryEscape(token), nil)
-	req.AddCookie(cookie)
-	rec = httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("callback status = %d, want %d; body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
-	}
-	if location := rec.Header().Get("Location"); location != "/app/domains" {
-		t.Fatalf("Location = %q, want /app/domains", location)
-	}
-	if len(domainStore.domains) != 1 || domainStore.domains[0].Domain != "example.com" {
-		t.Fatalf("protected domains = %+v, want example.com", domainStore.domains)
-	}
-}
-
-func TestClaimAuditRejectsMismatchedWorkEmail(t *testing.T) {
-	t.Parallel()
-
-	router := NewRouterWithDeps(Deps{
-		Auth:   auth.NewService(newWebAuthStore(), time.Minute),
-		Sender: &webEmailSender{},
-	})
-	csrfToken, cookie := loginCSRFToken(t, router)
-	form := url.Values{"csrf_token": {csrfToken}, "domain": {"example.com"}, "email": {"person@other.com"}}
-	req := httptest.NewRequest(http.MethodPost, "/claim-audit", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-	}
-	if !strings.Contains(rec.Body.String(), "work email domain must match") {
-		t.Fatalf("body missing ownership error: %s", rec.Body.String())
-	}
-}
-
-func TestTrustReportRendersForProtectedDomain(t *testing.T) {
-	t.Parallel()
-
-	router, cookie := authenticatedRouter(t, &webDomainStore{domains: []domains.Domain{{
-		ID:     "domain-1",
-		Domain: "example.com",
-		LatestCheck: &domains.Check{
-			CheckedAt: time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC),
-			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
-			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
-			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none; rua=mailto:dmarc@example.com"},
-			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
-		},
-	}}})
-	req := httptest.NewRequest(http.MethodGet, "/app/domains/domain-1/trust-report", nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-	body := rec.Body.String()
-	for _, want := range []string{"Trust Report: example.com", "DMARC journey", "observing", "Keep p=none reporting enabled", "DKIM needs attention"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("body missing %q: %s", want, body)
-		}
-	}
-}
-
-func TestTrustReportUsesUserReporterEvidence(t *testing.T) {
-	t.Parallel()
-
-	store := &webDomainStore{
-		domains: []domains.Domain{{
-			ID:     "domain-1",
-			Domain: "example.com",
-			LatestCheck: &domains.Check{
-				CheckedAt: time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC),
-				SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
-				DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass, Message: "DKIM ok"},
-				DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none"},
-				BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusPass, Message: "BIMI ok"},
-			},
-		}},
-		reportSenders: []reporter.InventoryEntry{{
-			SourceIP:    "192.0.2.10",
-			Provider:    "Google",
-			Confidence:  attribution.ConfidenceHigh,
-			FirstSeen:   time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
-			LastSeen:    time.Date(2026, 5, 12, 0, 0, 0, 0, time.UTC),
-			Volume:      500,
-			FailureRate: 0,
-			Expected:    true,
-		}},
-		reportHealth: reporter.HealthResult{
-			LastReportAt: time.Date(2026, 5, 12, 12, 0, 0, 0, time.UTC),
-			ReporterOrgs: []string{
-				"Google",
-			},
-			Status: "healthy",
-		},
-	}
-	router, cookie := authenticatedRouterWithDeps(t, store, Deps{UserReporter: store})
-	req := httptest.NewRequest(http.MethodGet, "/app/domains/domain-1/trust-report", nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-	body := rec.Body.String()
-	for _, want := range []string{"Trust Report: example.com", "ready_for_quarantine", "Reporter evidence is sufficient", "Unknown senders", "from reporter evidence"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("body missing %q: %s", want, body)
-		}
-	}
-}
-
-func TestCheckDomainRejectsInvalidDomain(t *testing.T) {
-	t.Parallel()
-
-	form := url.Values{"domain": {"localhost"}}
-	req := httptest.NewRequest(http.MethodPost, "/check", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-
-	NewRouter().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-	}
-	body := rec.Body.String()
-	for _, want := range []string{"<!doctype html>", "Unable to complete check", "Return home"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("body missing %q: %s", want, body)
-		}
-	}
-	if body == "Bad Request\n" {
-		t.Fatalf("expected styled error page, got raw http.Error body")
-	}
-}
-
-func TestCheckDomainRejectsCrossSitePost(t *testing.T) {
-	t.Parallel()
-
-	form := url.Values{"domain": {"example.com"}}
-	req := httptest.NewRequest(http.MethodPost, "/check", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Origin", "https://attacker.example")
-	rec := httptest.NewRecorder()
-
-	NewRouterWithDeps(Deps{
-		Scanner:       fakeScanner{result: scanner.Result{Domain: "example.com"}},
-		PublicBaseURL: "http://example.com",
-	}).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
-	}
-}
-
-func TestCheckDomainRejectsOversizedDomain(t *testing.T) {
-	t.Parallel()
-
-	form := url.Values{"domain": {strings.Repeat("a", 254) + ".com"}}
-	req := httptest.NewRequest(http.MethodPost, "/check", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-
-	NewRouter().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-	}
-}
-
-func TestCheckDomainRateLimit(t *testing.T) {
-	t.Parallel()
-
-	router := NewRouterWithScanner(fakeScanner{result: scanner.Result{
-		Domain: "example.com",
-		SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
-		DMARC:  scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass, Message: "DMARC ok"},
-		BIMI:   scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
-		DKIM:   scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
-	}})
-	form := url.Values{"domain": {"example.com"}}
-	var rec *httptest.ResponseRecorder
-	for i := 0; i < 13; i++ {
-		req := httptest.NewRequest(http.MethodPost, "/check", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set("X-Forwarded-For", "203.0.113.10")
-		rec = httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-	}
-
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusTooManyRequests)
 	}
 }
 
@@ -2464,7 +1692,7 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
-func TestStatusPageRenders(t *testing.T) {
+func TestStatusEndpointReturnsJSON(t *testing.T) {
 	t.Parallel()
 
 	req := httptest.NewRequest(http.MethodGet, "/status", nil)
@@ -2475,18 +1703,18 @@ func TestStatusPageRenders(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/html") {
-		t.Fatalf("Content-Type = %q, want text/html", contentType)
+	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json", contentType)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Dmark status", "Public checker", "DMARC report ingestion"} {
+	for _, want := range []string{"Dmark", "operational", "report ingestion"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
 	}
 }
 
-func TestSecurityPageRenders(t *testing.T) {
+func TestSecurityEndpointReturnsJSON(t *testing.T) {
 	t.Parallel()
 
 	req := httptest.NewRequest(http.MethodGet, "/security", nil)
@@ -2497,145 +1725,13 @@ func TestSecurityPageRenders(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/html") {
-		t.Fatalf("Content-Type = %q, want text/html", contentType)
+	if contentType := rec.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json", contentType)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Security", "Passwordless login tokens", "DMARC report ingestion rejects unsafe archives"} {
+	for _, want := range []string{"contact", "API keys", "DMARC report ingestion rejects unsafe archives"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
 	}
-}
-
-func authenticatedRouter(t *testing.T, domainStore *webDomainStore) (http.Handler, *http.Cookie) {
-	return authenticatedRouterWithAlerts(t, domainStore, nil)
-}
-
-func authenticatedRouterWithAlerts(t *testing.T, domainStore *webDomainStore, alertStore alerts.Store) (http.Handler, *http.Cookie) {
-	return authenticatedRouterWithDeps(t, domainStore, Deps{Alerts: alertStore})
-}
-
-func authenticatedRouterWithDeps(t *testing.T, domainStore *webDomainStore, deps Deps) (http.Handler, *http.Cookie) {
-	t.Helper()
-
-	authStore := newWebAuthStore()
-	authService := auth.NewService(authStore, time.Minute)
-	_, token, err := authService.StartLogin(context.Background(), "person@example.com")
-	if err != nil {
-		t.Fatalf("StartLogin returned error: %v", err)
-	}
-	deps.Auth = authService
-	deps.Domains = domains.NewService(domainStore, fakeScanner{result: scanner.Result{Domain: "example.com", SPF: scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass}}})
-	router := NewRouterWithDeps(deps)
-	req := httptest.NewRequest(http.MethodGet, "/auth/callback?token="+url.QueryEscape(token), nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("callback status = %d, want %d", rec.Code, http.StatusSeeOther)
-	}
-	cookies := rec.Result().Cookies()
-	if len(cookies) == 0 {
-		t.Fatalf("expected callback to set session cookie")
-	}
-	return router, cookies[0]
-}
-
-func appCSRFToken(t *testing.T, router http.Handler, cookie *http.Cookie) (string, *http.Cookie) {
-	t.Helper()
-
-	req := httptest.NewRequest(http.MethodGet, "/app/domains", nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("app domains status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	latestCookie := cookie
-	if cookies := rec.Result().Cookies(); len(cookies) > 0 {
-		latestCookie = cookies[0]
-	}
-	token := hiddenInputValue(rec.Body.String(), "csrf_token")
-	if token == "" {
-		t.Fatalf("csrf token not found in body: %s", rec.Body.String())
-	}
-	return token, latestCookie
-}
-
-func loginCSRFToken(t *testing.T, router http.Handler) (string, *http.Cookie) {
-	t.Helper()
-
-	req := httptest.NewRequest(http.MethodGet, "/login", nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("login status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	cookies := rec.Result().Cookies()
-	if len(cookies) == 0 {
-		t.Fatalf("expected login page to set session cookie")
-	}
-	token := hiddenInputValue(rec.Body.String(), "csrf_token")
-	if token == "" {
-		t.Fatalf("csrf token not found in login body: %s", rec.Body.String())
-	}
-	return token, cookies[0]
-}
-
-func logoutCSRFToken(t *testing.T, router http.Handler, cookie *http.Cookie) (string, *http.Cookie) {
-	t.Helper()
-
-	req := httptest.NewRequest(http.MethodGet, "/logout", nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("logout status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	latestCookie := cookie
-	if cookies := rec.Result().Cookies(); len(cookies) > 0 {
-		latestCookie = cookies[0]
-	}
-	token := hiddenInputValue(rec.Body.String(), "csrf_token")
-	if token == "" {
-		t.Fatalf("csrf token not found in logout body: %s", rec.Body.String())
-	}
-	return token, latestCookie
-}
-
-func latestCookie(fallback *http.Cookie, rec *httptest.ResponseRecorder) *http.Cookie {
-	if cookies := rec.Result().Cookies(); len(cookies) > 0 {
-		return cookies[0]
-	}
-	return fallback
-}
-
-func magicLinkToken(t *testing.T, body string) string {
-	t.Helper()
-
-	const marker = "token="
-	start := strings.Index(body, marker)
-	if start < 0 {
-		t.Fatalf("magic link token not found in body: %s", body)
-	}
-	start += len(marker)
-	end := strings.IndexAny(body[start:], " \n\r\t")
-	if end < 0 {
-		return body[start:]
-	}
-	return body[start : start+end]
-}
-
-func hiddenInputValue(body string, name string) string {
-	marker := `name="` + name + `" value="`
-	start := strings.Index(body, marker)
-	if start < 0 {
-		return ""
-	}
-	start += len(marker)
-	end := strings.Index(body[start:], `"`)
-	if end < 0 {
-		return ""
-	}
-	return body[start : start+end]
 }

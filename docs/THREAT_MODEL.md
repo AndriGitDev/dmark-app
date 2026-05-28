@@ -1,6 +1,6 @@
 # Threat Model
 
-This threat model covers the current roadmap surfaces: auth, public checker abuse, protected-domain monitoring, Brand Risk findings, DMARC report ingestion, API keys, outbound webhooks, and billing webhooks.
+This threat model covers the current roadmap surfaces: auth foundations, API scan abuse, protected-domain monitoring, Brand Risk findings, DMARC report ingestion, API keys, outbound webhooks, and billing webhooks. Browser-facing flows are owned by `dmark-web`.
 
 ## Assets
 
@@ -11,8 +11,7 @@ This threat model covers the current roadmap surfaces: auth, public checker abus
 
 ## Trust Boundaries
 
-- Browser to public HTTP routes.
-- Browser session to authenticated app routes.
+- Browser frontend to backend API routes.
 - Public API clients to API-key authenticated routes.
 - External mailbox providers to DMARC report ingestion.
 - Billing provider to billing webhook receiver.
@@ -32,10 +31,10 @@ Controls:
 
 - Login tokens are random, hashed at rest, expire, and are single-use.
 - Successful callbacks renew the session token before setting user identity.
-- State-changing login and app routes require same-origin checks and CSRF tokens.
+- Browser auth/session routes are no longer served by this repository; future backend auth APIs must use explicit JSON contracts and CSRF or equivalent protections where cookies are involved.
 - Domain service and store methods accept user or organization scope for all sensitive operations.
 
-## Public Checker Abuse
+## API Scan Abuse
 
 Threats:
 
@@ -46,7 +45,7 @@ Threats:
 
 Controls:
 
-- Public check requests are body-limited, domain-length guarded, rate-limited per client address, and persistence-free by default.
+- API scan requests are authenticated, domain-length guarded, and persistence-free by default.
 - Scanner results carry resolver error classes and lookup timing for monitoring.
 - DKIM selector probes use bounded concurrency.
 - Sales-audit grading is safe to run in-process, but proof dispatch must remain behind verified ownership, strict rate limits, domain blocklists, explicit consent, and audit logging.

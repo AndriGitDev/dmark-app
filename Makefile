@@ -1,6 +1,6 @@
 DOCKER_COMPOSE ?= docker compose
 
-.PHONY: dev up down migrate migrate-clickhouse generate test lint security fuzz-smoke build templ-check generate-check qa-code qa-services qa load-checker load-api load-reporter load-scan-job
+.PHONY: dev up down migrate migrate-clickhouse generate test lint security fuzz-smoke build generate-check qa-code qa-services qa load-api load-reporter load-scan-job
 
 up:
 	$(DOCKER_COMPOSE) -f infra/coolify/docker-compose.dev.yml up -d
@@ -15,9 +15,7 @@ migrate-clickhouse:
 	go run ./cmd/meil migrate clickhouse up
 
 generate:
-	templ generate
 	sqlc generate
-	tailwindcss -i assets/css/input.css -o assets/css/output.css
 
 dev: up migrate generate
 	air
@@ -37,9 +35,6 @@ fuzz-smoke:
 	go test ./internal/scanner -run=^$$ -fuzz=FuzzParseTagRecord -fuzztime=$${FUZZTIME:-2s}
 	go test ./internal/ingest -run=^$$ -fuzz=FuzzParseAggregatePayload -fuzztime=$${FUZZTIME:-2s}
 
-load-checker:
-	go run ./scripts/load --scenario checker --base-url $${BASE_URL:-http://127.0.0.1:8080} --domain $${DOMAIN:-example.com} --requests $${REQUESTS:-50} --concurrency $${CONCURRENCY:-5}
-
 load-api:
 	go run ./scripts/load --scenario api-get --base-url $${BASE_URL:-http://127.0.0.1:8080} --path $${PATH:-/healthz} --requests $${REQUESTS:-50} --concurrency $${CONCURRENCY:-5}
 
@@ -52,33 +47,16 @@ load-scan-job:
 build:
 	CGO_ENABLED=0 go build -o bin/meil ./cmd/meil
 
-templ-check:
-	@tmp_dir=$$(mktemp -d); \
-	trap 'rm -rf "$$tmp_dir"' EXIT; \
-	cp internal/web/views/*_templ.go "$$tmp_dir"/; \
-	templ generate; \
-	for file in internal/web/views/*_templ.go; do \
-		base=$$(basename "$$file"); \
-		cmp -s "$$tmp_dir/$$base" "$$file" || { echo "$$file changed after templ generate"; exit 1; }; \
-	done
-
 generate-check:
 	@tmp_dir=$$(mktemp -d); \
 	trap 'rm -rf "$$tmp_dir"' EXIT; \
-	mkdir -p "$$tmp_dir/views" "$$tmp_dir/pg" "$$tmp_dir/css"; \
-	cp internal/web/views/*_templ.go "$$tmp_dir/views"/; \
+	mkdir -p "$$tmp_dir/pg"; \
 	cp internal/store/pg/*.sql.go internal/store/pg/db.go internal/store/pg/models.go "$$tmp_dir/pg"/; \
-	cp assets/css/output.css "$$tmp_dir/css"/; \
 	$(MAKE) generate; \
-	for file in internal/web/views/*_templ.go; do \
-		base=$$(basename "$$file"); \
-		cmp -s "$$tmp_dir/views/$$base" "$$file" || { echo "$$file changed after generate"; exit 1; }; \
-	done; \
 	for file in internal/store/pg/*.sql.go internal/store/pg/db.go internal/store/pg/models.go; do \
 		base=$$(basename "$$file"); \
 		cmp -s "$$tmp_dir/pg/$$base" "$$file" || { echo "$$file changed after generate"; exit 1; }; \
-	done; \
-	cmp -s "$$tmp_dir/css/output.css" assets/css/output.css || { echo "assets/css/output.css changed after generate"; exit 1; }
+	done
 
 qa-code: test
 	go test -race ./...

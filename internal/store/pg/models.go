@@ -314,6 +314,18 @@ type ProtectedBrand struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type SalesAuditClaim struct {
+	ID            pgtype.UUID
+	Domain        string
+	Email         string
+	Grade         string
+	Risk          string
+	Safe          bool
+	ProofEligible bool
+	Status        string
+	CreatedAt     pgtype.Timestamptz
+}
+
 type ScanJob struct {
 	ID             pgtype.UUID
 	DomainID       pgtype.UUID

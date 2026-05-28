@@ -9,15 +9,15 @@ It starts with public DNS, SPF, DKIM, DMARC, and BIMI posture checks. It then gr
 The repository already contains these working surfaces:
 
 - Single Go binary with `serve`, `scan`, `migrate`, `worker`, and `ingest` command boundaries.
-- App-first root route at `/` that sends visitors into sign-in or the protected-domain dashboard, with POST `/check` retained for scanner flows.
+- Backend-only HTTP surface; browser routes are handed off to `dmark-web`.
 - Scanner package for SPF, DMARC, BIMI, and common DKIM selector probing.
 - Passwordless auth service with hashed single-use login tokens.
 - Lettermint-backed magic-link email sender.
-- Authenticated `/app/domains` saved-domain page with add, list, recheck, and delete actions.
+- API foundations for protected domains, scanning, reporting, billing, teams, and admin operations.
 - Postgres schema for users, login tokens, domains, and domain check snapshots.
 - sqlc-generated Postgres query layer.
 - Coolify deployment assets and local Docker Compose development services.
-- Unit and handler tests for scanner, auth, domains, notifier, CLI scan output, and public web routes.
+- Unit and handler tests for scanner, auth, domains, notifier, CLI scan output, API routes, and frontend route handoff.
 
 The repository now includes package boundaries and implementation slices for drift detection, jobs, ingestion, attribution, ClickHouse storage, and web middleware.
 
@@ -31,9 +31,9 @@ The competitive 90-day SaaS roadmap lives in `docs/COMPETITIVE_ROADMAP.md`. That
 - Reporter features should be built on DMARC evidence and preserve raw source material for auditability.
 - The paid tier should unlock automation, history, attribution, collaboration, and higher-volume monitoring rather than hiding the basic checker.
 
-## Phase 1: Checker Reliability And UX
+## Phase 1: Scanner And API Reliability
 
-Goal: make the public checker trustworthy enough to share publicly and use as the top-of-funnel product.
+Goal: make the scanner and backend API trustworthy enough to back the `dmark-web` top-of-funnel product and operator workflows.
 
 Features:
 
@@ -45,22 +45,22 @@ Features:
 - Add clear remediation text and provider-neutral example records.
 - Add scanner result metadata: checked timestamp, DNS lookup duration, resolver error class, and record source name.
 - Add copyable CLI-friendly output and JSON output for `meil scan`.
-- Keep public checks persistence-free by default, with a clear "save this domain" path.
+- Keep one-off API checks persistence-free by default unless they are explicitly attached to a protected domain.
 
 Engineering:
 
 - Replace ad hoc scanner classification with parser-oriented helpers and table-driven tests.
 - Add bounded concurrency for DKIM selector probes.
-- Add request-level rate limiting and form-level abuse controls for public checks.
+- Add API-level abuse controls for scan requests.
 - Add structured scanner errors that distinguish not found, timeout, malformed record, and resolver failure.
-- Add accessible result components and responsive layouts for long DNS records.
+- Keep browser result components and responsive layouts in `dmark-web`.
 
 Definition of Done:
 
-- Public checker handles common valid and invalid DNS configurations without hanging.
-- `meil scan <domain>` and web checker share the same scanner engine and status semantics.
+- API scan handles common valid and invalid DNS configurations without hanging.
+- `meil scan <domain>` and API scan share the same scanner engine and status semantics.
 - Scanner package has table-driven unit coverage for SPF, DKIM, DMARC, BIMI, normalization, and timeout behavior.
-- Public checker UI is usable on mobile and long records do not break the layout.
+- `dmark-web` owns mobile/browser presentation for long records.
 
 ## Phase 2: Saved Domains Completion
 
@@ -227,8 +227,8 @@ Engineering:
 - CI gates for lint, tests, generated files, migrations, container build, and security checks.
 - Production observability: logs, metrics, traces, dashboards, and alerting.
 - Backup and restore drills for Postgres and ClickHouse.
-- Load tests for public checker, scan jobs, and report queries.
-- Threat model for auth, public checker abuse, report ingestion, and billing webhooks.
+- Load tests for API scan, scan jobs, and report queries.
+- Threat model for auth, API scan abuse, report ingestion, and billing webhooks.
 - Secrets management and environment validation.
 - Dependency update process and vulnerability triage.
 
