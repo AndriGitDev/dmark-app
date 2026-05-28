@@ -39,8 +39,8 @@ Phase 1, safe GA funnel:
 1. `dmark-web` runs the browser funnel and calls backend scanner/API flows as needed.
 2. `internal/salesaudit` converts the scan to a sales grade, risk level, and CTA.
 3. Vulnerable domains get a "claim this audit" prompt.
-4. Claimed audits send a passwordless magic link and persist a `sales_audit_claims` lead record.
-5. Verified claim callbacks attach the claimed domain to protected domains when the browser session is still available.
+4. Claimed audits call `POST /api/public/audit-claims`, verify matching work-email domain, and persist a `sales_audit_claims` lead record.
+5. Passwordless verification and protected-domain attachment are the next backend flow after the split; the browser UI for that flow belongs in `dmark-web`.
 
 Phase 2, controlled proof:
 
@@ -70,4 +70,4 @@ The first reusable implementation is in place locally. `internal/salesaudit` pro
 - CTA.
 - Evidence signals.
 
-`internal/salesaudit` remains the backend grading engine. The public checker, claim UI, and proof/demo funnel now belong in `dmark-web`; this repository should expose or back those flows through JSON/API endpoints rather than HTML form routes.
+`internal/salesaudit` remains the backend grading engine. The public checker, claim UI, and proof/demo funnel now belong in `dmark-web`; this repository backs those flows through `/api/public/scan` and `/api/public/audit-claims` JSON endpoints rather than HTML form routes.

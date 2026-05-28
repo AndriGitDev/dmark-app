@@ -628,6 +628,148 @@ func TestAPIScanReturnsJSON(t *testing.T) {
 	}
 }
 
+func TestPublicScanReturnsJSONWithoutAPIKey(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/public/scan?domain=example.com", nil)
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner: fakeScanner{result: scanner.Result{
+			Domain: "example.com",
+			SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
+			DMARC:  scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor"},
+			BIMI:   scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
+			DKIM:   scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
+		}},
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `"domain":"example.com"`) || !strings.Contains(body, `"audit"`) {
+		t.Fatalf("body missing public scan response: %s", body)
+	}
+}
+
+func TestPublicScanAcceptsPOSTBody(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/public/scan", strings.NewReader(`{"domain":"Example.COM"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner: fakeScanner{result: scanner.Result{Domain: "example.com"}},
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+func TestPublicScanRateLimitsByClient(t *testing.T) {
+	t.Parallel()
+
+	router := NewRouterWithDeps(Deps{
+		Scanner:               fakeScanner{result: scanner.Result{Domain: "example.com"}},
+		PublicChecksPerMinute: 1,
+	})
+	for i, want := range []int{http.StatusOK, http.StatusTooManyRequests} {
+		req := httptest.NewRequest(http.MethodGet, "/api/public/scan?domain=example.com", nil)
+		req.RemoteAddr = "203.0.113.10:12345"
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != want {
+			t.Fatalf("request %d status = %d, want %d; body=%s", i+1, rec.Code, want, rec.Body.String())
+		}
+	}
+}
+
+func TestPublicAuditClaimPersistsVerifiedWorkEmail(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{}
+	req := httptest.NewRequest(http.MethodPost, "/api/public/audit-claims", strings.NewReader(`{"domain":"example.com","email":"security@example.com"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner: fakeScanner{result: scanner.Result{
+			Domain: "example.com",
+			SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
+			DMARC:  scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none"},
+			BIMI:   scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
+			DKIM:   scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
+		}},
+		AuditClaims: store,
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if len(store.auditClaims) != 1 {
+		t.Fatalf("audit claims stored = %d, want 1", len(store.auditClaims))
+	}
+	claim := store.auditClaims[0]
+	if claim.Domain != "example.com" || claim.Email != "security@example.com" || claim.Status != salesaudit.ClaimMagicLinkSent {
+		t.Fatalf("claim = %+v, want normalized persisted claim", claim)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `"claim_id":"claim-1"`) || !strings.Contains(body, `"proof_eligible":true`) {
+		t.Fatalf("body missing claim response: %s", body)
+	}
+}
+
+func TestPublicAuditClaimRejectsMismatchedEmailDomain(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{}
+	req := httptest.NewRequest(http.MethodPost, "/api/public/audit-claims", strings.NewReader(`{"domain":"example.com","email":"security@other.com"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner: fakeScanner{result: scanner.Result{
+			Domain: "example.com",
+			SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
+			DMARC:  scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none"},
+		}},
+		AuditClaims: store,
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if len(store.auditClaims) != 0 {
+		t.Fatalf("audit claims stored = %d, want 0", len(store.auditClaims))
+	}
+	if !strings.Contains(rec.Body.String(), "work email domain must match") {
+		t.Fatalf("body missing email-domain error: %s", rec.Body.String())
+	}
+}
+
+func TestCORSAllowsConfiguredFrontendOrigin(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/public/scan", nil)
+	req.Header.Set("Origin", "https://dmark.is")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		FrontendOrigins: []string{"https://dmark.is"},
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://dmark.is" {
+		t.Fatalf("Access-Control-Allow-Origin = %q, want configured origin", got)
+	}
+}
+
 func TestAPIScanRejectsMissingScope(t *testing.T) {
 	t.Parallel()
 

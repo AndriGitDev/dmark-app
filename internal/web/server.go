@@ -162,6 +162,7 @@ type Deps struct {
 	Sender                 notifier.EmailSender
 	SessionManager         *scs.SessionManager
 	PublicBaseURL          string
+	FrontendOrigins        []string
 	PublicChecksPerMinute  int
 	LoginAttemptsPerMinute int
 }
@@ -195,8 +196,118 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(requestIDMiddleware)
 	r.Use(legacyHostRedirect)
+	r.Use(corsMiddleware(deps.FrontendOrigins))
 	r.Use(deps.SessionManager.LoadAndSave)
 	r.Use(backendOnlySurface)
+	publicLimiter := newPublicRateLimiter(deps.PublicChecksPerMinute)
+	r.Get("/api/public/scan", func(w http.ResponseWriter, r *http.Request) {
+		if !publicLimiter.allow(publicRateKey(r), time.Now()) {
+			writeAPIError(w, http.StatusTooManyRequests, "public scan rate limit exceeded")
+			return
+		}
+		domain, err := publicScanDomain(r)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		result, err := deps.Scanner.Scan(r.Context(), domain)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewScanResponse(result))
+	})
+	r.Post("/api/public/scan", func(w http.ResponseWriter, r *http.Request) {
+		if !publicLimiter.allow(publicRateKey(r), time.Now()) {
+			writeAPIError(w, http.StatusTooManyRequests, "public scan rate limit exceeded")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
+		domain, err := publicScanDomain(r)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		result, err := deps.Scanner.Scan(r.Context(), domain)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewScanResponse(result))
+	})
+	r.Post("/api/public/audit-claims", func(w http.ResponseWriter, r *http.Request) {
+		if !publicLimiter.allow(publicRateKey(r)+":claim", time.Now()) {
+			writeAPIError(w, http.StatusTooManyRequests, "public claim rate limit exceeded")
+			return
+		}
+		if deps.AuditClaims == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "audit claim storage is not configured")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
+		var payload struct {
+			Domain string `json:"domain"`
+			Email  string `json:"email"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		domain, err := scanner.NormalizeDomain(payload.Domain)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		email, err := normalizePublicEmail(payload.Email)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		result, err := deps.Scanner.Scan(r.Context(), domain)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		audit := salesaudit.Assess(result, salesaudit.Options{RequestedEmail: email})
+		if audit.BlockedReason != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error": audit.BlockedReason,
+				"audit": apicontracts.AuditResponse{
+					Grade:         audit.Grade,
+					Risk:          audit.Risk,
+					Safe:          audit.Safe,
+					ProofEligible: audit.ProofEligible,
+					Message:       audit.Message,
+					CTA:           audit.CTA,
+					BlockedReason: audit.BlockedReason,
+				},
+			})
+			return
+		}
+		claim, err := salesaudit.NewClaim(domain, email, audit, time.Now())
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		claim, err = deps.AuditClaims.CreateAuditClaim(r.Context(), claim)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "saving audit claim failed")
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{
+			"claim_id": claim.ID,
+			"status":   claim.Status,
+			"audit": apicontracts.AuditResponse{
+				Grade:         audit.Grade,
+				Risk:          audit.Risk,
+				Safe:          audit.Safe,
+				ProofEligible: audit.ProofEligible,
+				Message:       audit.Message,
+				CTA:           audit.CTA,
+				BlockedReason: audit.BlockedReason,
+			},
+		})
+	})
 	r.Post("/billing/webhook", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Billing == nil || strings.TrimSpace(deps.BillingWebhookSecret) == "" {
 			writeAPIError(w, http.StatusServiceUnavailable, "billing webhooks are not configured")

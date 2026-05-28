@@ -588,6 +588,7 @@ func newServeCommand() *cobra.Command {
 					Sender:                notifier.NewLettermintSender(cfg.LettermintBaseURL, cfg.LettermintToken, cfg.LettermintFrom),
 					SessionManager:        sessionManager,
 					PublicBaseURL:         cfg.PublicBaseURL,
+					FrontendOrigins:       cfg.FrontendOrigins,
 					PublicChecksPerMinute: cfg.PublicChecksPerMinute,
 				}),
 				ReadHeaderTimeout: 5 * time.Second,

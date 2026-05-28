@@ -26,6 +26,17 @@ make lint
 make build
 ```
 
+## Frontend Connection
+
+`dmark-web` can connect to this backend through the public JSON surface:
+
+```sh
+DMARK_SCAN_API_URL=https://dmark.kastro.is/api/public/scan
+DMARK_USE_MOCK=false
+```
+
+If browser code calls the backend directly, set `FRONTEND_ORIGINS` on this service to a comma-separated list of exact frontend origins, for example `https://dmark.is,https://www.dmark.is`.
+
 ## Coolify
 
 The current deployment target is `https://dmark.kastro.is` until `dmark.is` is purchased. The legacy hostname `https://recordmaster.kastro.is` should remain available as a redirect during the transition. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.

@@ -12,7 +12,7 @@ Existing tests cover:
 - Domain service add-and-scan behavior.
 - Lettermint request shape.
 - Frontend route shutdown coverage for `/`, `/login`, `/auth/callback`, `/check`, `/claim-audit`, `/app/*`, and `/assets/*`.
-- Backend `/healthz`, `/status`, `/security`, API, billing, webhook, admin, privacy, and status routes.
+- Backend `/healthz`, `/status`, `/security`, public frontend JSON, API, billing, webhook, admin, privacy, and status routes.
 - CLI scan argument validation, formatted output, JSON output, ingest command validation, and worker job listing.
 - Drift classification, alert lifecycle rules, job retry/dead-letter helpers, DMARC ingestion with sanitized provider/gateway fixtures, reporter summaries, attribution, risk, recommendations, DMARC enforcement journey states, monthly trust report models, billing, teams, entitlements, API-key helpers, webhooks, privacy, admin, status, and operations policy logic.
 - Defender lookalike candidate generation for typo and Icelandic-character homoglyph variants.
@@ -75,6 +75,8 @@ Handler and CLI tests:
 
 - GET `/api/v1/scan?domain=...` returns stable JSON for valid API keys.
 - GET `/api/v1/scan` returns `400` for missing or invalid domains.
+- GET/POST `/api/public/scan` returns stable JSON without an API key and enforces public rate limits.
+- POST `/api/public/audit-claims` validates matching work-email domains before persisting a sales-audit claim.
 - Frontend routes return JSON `404` because browser surfaces are served by `dmark-web`.
 - `meil scan <domain>` prints the same statuses as scanner results.
 - Future `meil scan --json <domain>` returns stable JSON suitable for scripts.

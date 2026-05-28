@@ -1,13 +1,42 @@
-# RecordMaster API And Webhooks
+# Dmark API And Webhooks
 
 This document defines the external API and webhook contracts for paid tiers. API access requires an API key with the required scope.
+
+## Public Frontend Endpoints
+
+The separate `dmark-web` frontend should use these JSON endpoints for public marketing flows:
+
+```http
+GET /api/public/scan?domain=example.com
+POST /api/public/scan
+POST /api/public/audit-claims
+```
+
+`GET /api/public/scan` and `POST /api/public/scan` are unauthenticated, rate-limited by client address, and return the same scan contract as `GET /api/v1/scan` without persisting the check. `POST /api/public/scan` accepts:
+
+```json
+{
+  "domain": "example.com"
+}
+```
+
+`POST /api/public/audit-claims` supports the claim/lead capture flow after a public scan. It validates that the work email domain matches the audited domain, scans the domain again, stores the audit claim, and returns the claim status plus audit result. It accepts:
+
+```json
+{
+  "domain": "example.com",
+  "email": "security@example.com"
+}
+```
+
+Allowed browser origins are configured with `FRONTEND_ORIGINS` as a comma-separated list of absolute origins such as `https://dmark.is,https://www.dmark.is`. If `dmark-web` keeps its Next.js API proxy, set `DMARK_SCAN_API_URL` to `/api/public/scan` on this backend and leave `DMARK_API_TOKEN` unset.
 
 ## Authentication
 
 Send API keys with the `Authorization` header:
 
 ```http
-Authorization: Bearer recordmaster_example
+Authorization: Bearer meil_example
 ```
 
 Keys are stored as hashes only. Revoke and rotate keys from organization settings.

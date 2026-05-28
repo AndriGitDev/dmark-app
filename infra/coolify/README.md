@@ -38,9 +38,10 @@ Optional environment variables:
 LETTERMINT_TOKEN=
 LETTERMINT_FROM=Dmark <login@dmark.kastro.is>
 BILLING_WEBHOOK_SECRET=
+FRONTEND_ORIGINS=https://dmark.is,https://www.dmark.is
 ```
 
-`LETTERMINT_TOKEN` and `LETTERMINT_FROM` are reserved for backend email flows. The browser login surface now belongs in `dmark-web`.
+`FRONTEND_ORIGINS` enables CORS for browser calls from `dmark-web`. It must contain exact origins, not paths. `LETTERMINT_TOKEN` and `LETTERMINT_FROM` are reserved for backend email flows. The browser login surface now belongs in `dmark-web`.
 
 DNS:
 
