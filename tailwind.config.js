@@ -1,6 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./internal/web/views/**/*.templ", "./internal/web/**/*.go"],
+  content: [
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./internal/web/views/**/*.templ",
+    "./internal/web/**/*.go",
+  ],
   theme: {
     extend: {
       colors: {
@@ -16,6 +21,10 @@ module.exports = {
         fail: "#EF4444",
         border: "#E2E8F0",
         ink: "#0F172A",
+        trust: "#2563EB",
+        "trust-hover": "#1D4ED8",
+        navy: "#0F172A",
+        "navy-soft": "#1E293B",
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],

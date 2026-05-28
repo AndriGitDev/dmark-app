@@ -2,3 +2,6 @@
 .env
 bin/
 tmp/
+node_modules/
+.next/
+out/
