@@ -4,6 +4,8 @@ Dmark is a DMARC, email-authentication, and brand-name risk defense product for 
 
 It starts with public DNS, SPF, DKIM, DMARC, and BIMI posture checks. It then grows into protected-domain monitoring, drift alerts, DMARC aggregate report ingestion, sender attribution, and brand-name risk defense for spoofing and impersonation risks.
 
+**Status:** the roadmap breadth documented here is implemented and audited. This file is now a historical product record; current browser/frontend work lives in `dmark-web` and the backend implementation evidence lives in `docs/ROADMAP_AUDIT.md`.
+
 ## Current Baseline
 
 The repository already contains these working surfaces:

@@ -29,6 +29,6 @@ Required gates:
 
 The current local environment can run the full automated gate after installing Go, QA tooling, Docker CLI, Docker Compose, and Colima, using writable temp directories for Go and golangci-lint caches. The latest local pass covers unit tests, race tests, vet, lint, `govulncheck`, fuzz smoke tests, generated-file idempotence, build, Docker image build, Postgres migrations, River migrations, and ClickHouse migrations.
 
-Browser QA and manual accessibility checks remain GA blockers in `dmark-web`. Backend load checks, backup/restore drills, rollback drills, and live-provider checks remain GA blockers here until completed or explicitly scoped out.
+Browser visual QA for the dashboard lives in `dmark-web` and was verified locally in mock mode during the latest frontend pass. Backend load checks, backup/restore drills, rollback drills, and live-provider checks remain the remaining operator-side release gates here until completed or explicitly scoped out.
 
 The active GA readiness tracker lives in `docs/GA_READINESS.md`.

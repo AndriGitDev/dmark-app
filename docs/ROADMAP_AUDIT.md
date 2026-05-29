@@ -4,10 +4,10 @@ This audit maps `docs/ROADMAP.md` to concrete repository artifacts. It is intent
 
 ## Audit Status
 
-- Implementation breadth: Phase 1 through Phase 7 now have code and documentation artifacts.
+- Implementation breadth: Phase 1 through Phase 7 have code and documentation artifacts in place.
 - Local verification: `make qa-code` passes using a temporary local Go 1.25.10 toolchain and covers unit tests, race tests, vet, lint, `govulncheck`, short fuzz smoke runs, generated-file idempotence for sqlc, and build.
-- Repository boundary: browser-facing checker/auth/app views and frontend build files moved to `dmark-web`; this repository is backend/API only.
-- Completion status: code and service-backed QA gates pass against the local dev Postgres and ClickHouse stack.
+- Repository boundary: browser-facing checker/auth/app views and frontend build files live in `dmark-web`; this repository is backend/API only.
+- Completion status: the backend roadmap items are implemented, and code plus service-backed QA gates pass against the local dev Postgres and ClickHouse stack.
 - Latest service-gate evidence:
   - `make qa-code` passes: unit tests, race tests, vet, golangci-lint, `govulncheck`, fuzz smoke runs, generated-file idempotence, and build.
   - `make qa-services` passes after starting `infra/coolify/docker-compose.dev.yml`: Docker image build, Postgres migrations through `00004_sales_audit_claims.sql`, River migrations, and ClickHouse migrations.
