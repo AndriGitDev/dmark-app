@@ -27,6 +27,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/reporter"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
+	"github.com/AndriGitDev/meil/internal/spfroutes"
 	"github.com/AndriGitDev/meil/internal/statuspage"
 	"github.com/AndriGitDev/meil/internal/teams"
 	"github.com/AndriGitDev/meil/internal/webhooks"
@@ -2166,6 +2167,302 @@ func (s *AppStore) CreateCheck(ctx context.Context, domainID string, result scan
 
 func domainFromParts(id pgtype.UUID, domain string, createdAt pgtype.Timestamptz) domains.Domain {
 	return domains.Domain{ID: uuidToString(id), Domain: domain, CreatedAt: createdAt.Time}
+}
+
+func (s *AppStore) EnsureSPFRoute(ctx context.Context, route spfroutes.Route) (spfroutes.Route, error) {
+	if strings.TrimSpace(route.DomainID) == "" {
+		return spfroutes.Route{}, fmt.Errorf("domain id is required")
+	}
+	if strings.TrimSpace(route.RouteLabel) == "" {
+		return spfroutes.Route{}, fmt.Errorf("route label is required")
+	}
+	if strings.TrimSpace(route.RouteFQDN) == "" {
+		return spfroutes.Route{}, fmt.Errorf("route FQDN is required")
+	}
+	if strings.TrimSpace(route.CustomerCNAMEName) == "" {
+		return spfroutes.Route{}, fmt.Errorf("customer CNAME name is required")
+	}
+	if strings.TrimSpace(route.CustomerCNAMETarget) == "" {
+		return spfroutes.Route{}, fmt.Errorf("customer CNAME target is required")
+	}
+	if route.MechanismPolicy == "" {
+		route.MechanismPolicy = spfroutes.PolicySoftfail
+	}
+	err := s.withTx(ctx, func(db DBTX) error {
+		if err := db.QueryRow(ctx, `
+INSERT INTO spf_routes (
+    organization_id,
+    domain_id,
+    route_label,
+    route_fqdn,
+    customer_cname_name,
+    customer_cname_target,
+    enabled,
+    mechanism_policy
+) VALUES (
+    COALESCE(NULLIF($1, '')::uuid, (SELECT organization_id FROM domains WHERE id = $2::uuid)),
+    $2::uuid,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8
+)
+ON CONFLICT (domain_id) DO UPDATE SET
+    organization_id = COALESCE(EXCLUDED.organization_id, spf_routes.organization_id),
+    route_label = EXCLUDED.route_label,
+    route_fqdn = EXCLUDED.route_fqdn,
+    customer_cname_name = EXCLUDED.customer_cname_name,
+    customer_cname_target = EXCLUDED.customer_cname_target,
+    enabled = EXCLUDED.enabled,
+    mechanism_policy = EXCLUDED.mechanism_policy,
+    updated_at = now()
+RETURNING id::text
+`, route.OrganizationID, route.DomainID, route.RouteLabel, route.RouteFQDN, route.CustomerCNAMEName, route.CustomerCNAMETarget, route.Enabled, string(route.MechanismPolicy)).Scan(&route.ID); err != nil {
+			return err
+		}
+		if route.Sources != nil {
+			if err := replaceSPFRouteSources(ctx, db, route.ID, route.Sources); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return spfroutes.Route{}, fmt.Errorf("ensuring SPF route: %w", err)
+	}
+	return s.GetSPFRoute(ctx, route.ID)
+}
+
+func (s *AppStore) GetSPFRoute(ctx context.Context, routeID string) (spfroutes.Route, error) {
+	route, err := s.scanSPFRoute(ctx, `
+SELECT
+    r.id::text,
+    COALESCE(r.organization_id::text, ''),
+    r.domain_id::text,
+    d.domain,
+    r.route_label,
+    r.route_fqdn,
+    r.customer_cname_name,
+    r.customer_cname_target,
+    r.enabled,
+    r.mechanism_policy,
+    r.bunny_record_id,
+    r.last_generated_spf,
+    r.last_published_spf,
+    r.last_sync_status,
+    r.last_sync_error,
+    r.last_synced_at
+FROM spf_routes r
+JOIN domains d ON d.id = r.domain_id
+WHERE r.id = $1::uuid
+`, routeID)
+	if err != nil {
+		return spfroutes.Route{}, err
+	}
+	return s.hydrateSPFRoute(ctx, route)
+}
+
+func (s *AppStore) GetSPFRouteByDomain(ctx context.Context, domainID string) (spfroutes.Route, error) {
+	route, err := s.scanSPFRoute(ctx, `
+SELECT
+    r.id::text,
+    COALESCE(r.organization_id::text, ''),
+    r.domain_id::text,
+    d.domain,
+    r.route_label,
+    r.route_fqdn,
+    r.customer_cname_name,
+    r.customer_cname_target,
+    r.enabled,
+    r.mechanism_policy,
+    r.bunny_record_id,
+    r.last_generated_spf,
+    r.last_published_spf,
+    r.last_sync_status,
+    r.last_sync_error,
+    r.last_synced_at
+FROM spf_routes r
+JOIN domains d ON d.id = r.domain_id
+WHERE r.domain_id = $1::uuid
+`, domainID)
+	if err != nil {
+		return spfroutes.Route{}, err
+	}
+	return s.hydrateSPFRoute(ctx, route)
+}
+
+func (s *AppStore) SaveSPFRouteSync(ctx context.Context, routeID string, update spfroutes.SyncUpdate) (spfroutes.Route, error) {
+	err := s.withTx(ctx, func(db DBTX) error {
+		tag, err := db.Exec(ctx, `
+UPDATE spf_routes
+SET last_generated_spf = $2,
+    last_published_spf = $3,
+    last_sync_status = $4,
+    last_sync_error = $5,
+    bunny_record_id = $6,
+    last_synced_at = now(),
+    updated_at = now()
+WHERE id = $1::uuid
+`, routeID, update.GeneratedSPF, update.PublishedSPF, string(update.Status), update.Error, update.BunnyRecordID)
+		if err != nil {
+			return fmt.Errorf("updating SPF route sync state: %w", err)
+		}
+		if tag.RowsAffected() != 1 {
+			return fmt.Errorf("updating SPF route sync state: route not found")
+		}
+		if _, err := db.Exec(ctx, `DELETE FROM spf_route_evidence WHERE spf_route_id = $1::uuid`, routeID); err != nil {
+			return fmt.Errorf("clearing SPF route evidence: %w", err)
+		}
+		for _, evidence := range update.Evidence {
+			if _, err := db.Exec(ctx, `
+INSERT INTO spf_route_evidence (spf_route_id, source_value, resolved_domain, mechanism, evidence_kind, message)
+VALUES ($1::uuid, $2, $3, $4, $5, $6)
+`, routeID, evidence.SourceValue, evidence.ResolvedDomain, evidence.Mechanism, evidence.Kind, evidence.Message); err != nil {
+				return fmt.Errorf("inserting SPF route evidence: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return spfroutes.Route{}, err
+	}
+	return s.GetSPFRoute(ctx, routeID)
+}
+
+func (s *AppStore) ListEnabledSPFRoutes(ctx context.Context) ([]spfroutes.Route, error) {
+	rows, err := s.queries.db.Query(ctx, `
+SELECT id::text FROM spf_routes WHERE enabled = true ORDER BY updated_at ASC
+`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var routes []spfroutes.Route
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		route, err := s.GetSPFRoute(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		routes = append(routes, route)
+	}
+	return routes, rows.Err()
+}
+
+func (s *AppStore) replaceSPFRouteSources(ctx context.Context, routeID string, sources []spfroutes.Source) error {
+	return s.withTx(ctx, func(db DBTX) error {
+		return replaceSPFRouteSources(ctx, db, routeID, sources)
+	})
+}
+
+func replaceSPFRouteSources(ctx context.Context, db DBTX, routeID string, sources []spfroutes.Source) error {
+	if _, err := db.Exec(ctx, `DELETE FROM spf_route_sources WHERE spf_route_id = $1::uuid`, routeID); err != nil {
+		return fmt.Errorf("clearing SPF route sources: %w", err)
+	}
+	for _, source := range sources {
+		if _, err := db.Exec(ctx, `
+INSERT INTO spf_route_sources (spf_route_id, kind, value, label, enabled)
+VALUES ($1::uuid, $2, $3, $4, $5)
+`, routeID, string(source.Kind), source.Value, source.Label, source.Enabled); err != nil {
+			return fmt.Errorf("inserting SPF route source: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *AppStore) withTx(ctx context.Context, fn func(DBTX) error) error {
+	beginner, ok := s.queries.db.(interface {
+		Begin(context.Context) (pgx.Tx, error)
+	})
+	if !ok {
+		return fn(s.queries.db)
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *AppStore) scanSPFRoute(ctx context.Context, query string, args ...any) (spfroutes.Route, error) {
+	var route spfroutes.Route
+	var lastSyncedAt pgtype.Timestamptz
+	err := s.queries.db.QueryRow(ctx, query, args...).Scan(
+		&route.ID,
+		&route.OrganizationID,
+		&route.DomainID,
+		&route.Domain,
+		&route.RouteLabel,
+		&route.RouteFQDN,
+		&route.CustomerCNAMEName,
+		&route.CustomerCNAMETarget,
+		&route.Enabled,
+		&route.MechanismPolicy,
+		&route.BunnyRecordID,
+		&route.LastGeneratedSPF,
+		&route.LastPublishedSPF,
+		&route.LastSyncStatus,
+		&route.LastSyncError,
+		&lastSyncedAt,
+	)
+	if err != nil {
+		return spfroutes.Route{}, err
+	}
+	if lastSyncedAt.Valid {
+		route.LastSyncedAt = lastSyncedAt.Time
+	}
+	return route, nil
+}
+
+func (s *AppStore) hydrateSPFRoute(ctx context.Context, route spfroutes.Route) (spfroutes.Route, error) {
+	sources, err := s.queries.db.Query(ctx, `
+SELECT id::text, kind, value, label, enabled
+FROM spf_route_sources
+WHERE spf_route_id = $1::uuid
+ORDER BY created_at ASC, id ASC
+`, route.ID)
+	if err != nil {
+		return spfroutes.Route{}, err
+	}
+	defer sources.Close()
+	for sources.Next() {
+		var source spfroutes.Source
+		if err := sources.Scan(&source.ID, &source.Kind, &source.Value, &source.Label, &source.Enabled); err != nil {
+			return spfroutes.Route{}, err
+		}
+		route.Sources = append(route.Sources, source)
+	}
+	if err := sources.Err(); err != nil {
+		return spfroutes.Route{}, err
+	}
+
+	evidenceRows, err := s.queries.db.Query(ctx, `
+SELECT source_value, resolved_domain, mechanism, evidence_kind, message
+FROM spf_route_evidence
+WHERE spf_route_id = $1::uuid
+ORDER BY created_at ASC, id ASC
+`, route.ID)
+	if err != nil {
+		return spfroutes.Route{}, err
+	}
+	defer evidenceRows.Close()
+	for evidenceRows.Next() {
+		var evidence spfroutes.Evidence
+		if err := evidenceRows.Scan(&evidence.SourceValue, &evidence.ResolvedDomain, &evidence.Mechanism, &evidence.Kind, &evidence.Message); err != nil {
+			return spfroutes.Route{}, err
+		}
+		route.Evidence = append(route.Evidence, evidence)
+	}
+	return route, evidenceRows.Err()
 }
 
 func uuidFromString(value string) (pgtype.UUID, error) {

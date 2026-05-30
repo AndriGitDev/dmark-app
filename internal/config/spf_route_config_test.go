@@ -15,6 +15,9 @@ func TestLoadSPFRouteBunnyDefaults(t *testing.T) {
 	if cfg.SPFRouteZone != "route.dmark.is" {
 		t.Fatalf("SPFRouteZone = %q, want route.dmark.is", cfg.SPFRouteZone)
 	}
+	if cfg.SPFDNSZone != "dmark.is" {
+		t.Fatalf("SPFDNSZone = %q, want dmark.is", cfg.SPFDNSZone)
+	}
 	if cfg.SPFRouteTTL != 300 {
 		t.Fatalf("SPFRouteTTL = %d, want 300", cfg.SPFRouteTTL)
 	}
@@ -32,6 +35,7 @@ func TestValidateSPFRouteBunnyConfig(t *testing.T) {
 		DMARCMaxReportBytes:   1024,
 		BunnyDNSAPIKey:        "secret-key",
 		BunnyDNSZoneID:        801471,
+		SPFDNSZone:            "dmark.is",
 		SPFRouteZone:          "route.dmark.is",
 		SPFRouteTTL:           300,
 	}
@@ -52,6 +56,7 @@ func TestValidateSPFRouteBunnyConfigAcceptsLegacyBunnyAPIKey(t *testing.T) {
 		DMARCMaxReportBytes:   1024,
 		BunnyAPIKey:           "legacy-secret-key",
 		BunnyDNSZoneID:        801471,
+		SPFDNSZone:            "dmark.is",
 		SPFRouteZone:          "route.dmark.is",
 		SPFRouteTTL:           300,
 	}

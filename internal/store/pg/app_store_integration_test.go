@@ -18,6 +18,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/auth"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
+	"github.com/AndriGitDev/meil/internal/spfroutes"
 )
 
 func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
@@ -154,6 +155,45 @@ func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
 		BIMI:  scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
 	}); err != nil {
 		t.Fatalf("create first check: %v", err)
+	}
+
+	spfRoute, err := store.EnsureSPFRoute(ctx, spfroutes.Route{
+		DomainID:            domain.ID,
+		RouteLabel:          "example-com",
+		RouteFQDN:           "example-com.route.dmark.is",
+		CustomerCNAMEName:   "_spf.example.com",
+		CustomerCNAMETarget: "example-com.route.dmark.is",
+		Enabled:             true,
+		MechanismPolicy:     spfroutes.PolicySoftfail,
+		Sources: []spfroutes.Source{
+			{Kind: spfroutes.SourceKindInclude, Value: "_spf.mailer.example", Label: "Mailer", Enabled: true},
+			{Kind: spfroutes.SourceKindIP4, Value: "198.51.100.5", Label: "Static gateway", Enabled: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ensure SPF route: %v", err)
+	}
+	if spfRoute.ID == "" || spfRoute.DomainID != domain.ID || len(spfRoute.Sources) != 2 {
+		t.Fatalf("SPF route = %+v, want persisted route with sources", spfRoute)
+	}
+	spfRoute, err = store.SaveSPFRouteSync(ctx, spfRoute.ID, spfroutes.SyncUpdate{
+		GeneratedSPF:  "v=spf1 ip4:198.51.100.5 ~all",
+		PublishedSPF:  "v=spf1 ip4:198.51.100.5 ~all",
+		Status:        spfroutes.StatusHealthy,
+		BunnyRecordID: 42,
+		Evidence: []spfroutes.Evidence{{
+			SourceValue:    "_spf.mailer.example",
+			ResolvedDomain: "_spf.mailer.example",
+			Mechanism:      "ip4:198.51.100.5",
+			Kind:           "ip4",
+			Message:        "resolved ip4 mechanism from SPF include",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("save SPF route sync: %v", err)
+	}
+	if spfRoute.LastSyncStatus != spfroutes.StatusHealthy || spfRoute.BunnyRecordID != 42 || len(spfRoute.Evidence) != 1 {
+		t.Fatalf("synced SPF route = %+v, want healthy record 42 with evidence", spfRoute)
 	}
 	time.Sleep(10 * time.Millisecond)
 	if err := store.CreateCheck(ctx, domain.ID, scanner.Result{

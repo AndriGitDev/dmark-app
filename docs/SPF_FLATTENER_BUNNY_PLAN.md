@@ -34,6 +34,7 @@ Backend environment variables:
 ```env
 BUNNY_DNS_API_KEY=...          # preferred; BUNNY_API_KEY is accepted as a backwards-compatible alias
 BUNNY_DNS_ZONE_ID=801471       # parent dmark.is Bunny zone
+DMARK_SPF_DNS_ZONE=dmark.is    # Bunny write-zone apex for BUNNY_DNS_ZONE_ID
 DMARK_SPF_ROUTE_ZONE=route.dmark.is
 DMARK_SPF_ROUTE_TTL=300
 ```
@@ -93,7 +94,13 @@ Recommended tables/fields:
   - `message`
   - `created_at`
 
-Keep migration names monotonic after the current latest migration, currently `migrations/postgres/00005_dashboard_api.sql`.
+Implemented first persistence/orchestration slice:
+
+- Migration `migrations/postgres/00006_spf_routes.sql` creates `spf_routes`, `spf_route_sources`, and `spf_route_evidence`.
+- `internal/spfroutes.Service` loads a persisted route, resolves enabled sources with `internal/spfflatten`, generates a deterministic SPF value, skips Bunny publication when the current published SPF already matches, publishes changed TXT values through the `internal/bunnydns` client interface, and persists status/evidence.
+- `internal/store/pg.AppStore` implements route creation/upsert, source replacement, route lookup, enabled-route listing, and sync-state/evidence persistence.
+
+Keep migration names monotonic after the current latest migration, currently `migrations/postgres/00006_spf_routes.sql`.
 
 ## Resolver Rules
 

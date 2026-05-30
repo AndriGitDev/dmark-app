@@ -31,6 +31,7 @@ type Config struct {
 	BunnyDNSAPIKey            string   `env:"BUNNY_DNS_API_KEY"`
 	BunnyAPIKey               string   `env:"BUNNY_API_KEY"`
 	BunnyDNSZoneID            int64    `env:"BUNNY_DNS_ZONE_ID"`
+	SPFDNSZone                string   `env:"DMARK_SPF_DNS_ZONE" envDefault:"dmark.is"`
 	SPFRouteZone              string   `env:"DMARK_SPF_ROUTE_ZONE" envDefault:"route.dmark.is"`
 	SPFRouteTTL               int      `env:"DMARK_SPF_ROUTE_TTL" envDefault:"300"`
 }
@@ -93,6 +94,9 @@ func (c Config) Validate() error {
 		}
 		if strings.TrimSpace(c.SPFRouteZone) == "" {
 			return fmt.Errorf("DMARK_SPF_ROUTE_ZONE is required when Bunny DNS is configured")
+		}
+		if strings.TrimSpace(c.SPFDNSZone) == "" {
+			return fmt.Errorf("DMARK_SPF_DNS_ZONE is required when Bunny DNS is configured")
 		}
 		if c.SPFRouteTTL <= 0 {
 			return fmt.Errorf("DMARK_SPF_ROUTE_TTL must be greater than zero when Bunny DNS is configured")
