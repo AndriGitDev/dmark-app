@@ -28,10 +28,22 @@ type Config struct {
 	BootstrapOrganizationName string   `env:"BOOTSTRAP_ORGANIZATION_NAME"`
 	BootstrapAPIKeyName       string   `env:"BOOTSTRAP_API_KEY_NAME" envDefault:"frontend-proxy"`
 	BootstrapAPIKeyToken      string   `env:"BOOTSTRAP_API_KEY_TOKEN"`
+	BunnyDNSAPIKey            string   `env:"BUNNY_DNS_API_KEY"`
+	BunnyAPIKey               string   `env:"BUNNY_API_KEY"`
+	BunnyDNSZoneID            int64    `env:"BUNNY_DNS_ZONE_ID"`
+	SPFRouteZone              string   `env:"DMARK_SPF_ROUTE_ZONE" envDefault:"route.dmark.is"`
+	SPFRouteTTL               int      `env:"DMARK_SPF_ROUTE_TTL" envDefault:"300"`
 }
 
 func Load() (Config, error) {
 	return env.ParseAs[Config]()
+}
+
+func (c Config) EffectiveBunnyDNSAPIKey() string {
+	if strings.TrimSpace(c.BunnyDNSAPIKey) != "" {
+		return c.BunnyDNSAPIKey
+	}
+	return c.BunnyAPIKey
 }
 
 func (c Config) Validate() error {
@@ -70,6 +82,21 @@ func (c Config) Validate() error {
 	}
 	if c.DMARCMaxReportBytes <= 0 {
 		return fmt.Errorf("DMARC_MAX_REPORT_BYTES must be greater than zero")
+	}
+	bunnyDNSAPIKey := strings.TrimSpace(c.EffectiveBunnyDNSAPIKey())
+	if bunnyDNSAPIKey != "" || c.BunnyDNSZoneID != 0 {
+		if bunnyDNSAPIKey == "" {
+			return fmt.Errorf("BUNNY_DNS_API_KEY is required when BUNNY_DNS_ZONE_ID is set")
+		}
+		if c.BunnyDNSZoneID <= 0 {
+			return fmt.Errorf("BUNNY_DNS_ZONE_ID is required when BUNNY_DNS_API_KEY is set")
+		}
+		if strings.TrimSpace(c.SPFRouteZone) == "" {
+			return fmt.Errorf("DMARK_SPF_ROUTE_ZONE is required when Bunny DNS is configured")
+		}
+		if c.SPFRouteTTL <= 0 {
+			return fmt.Errorf("DMARK_SPF_ROUTE_TTL must be greater than zero when Bunny DNS is configured")
+		}
 	}
 	return nil
 }

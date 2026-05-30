@@ -22,17 +22,18 @@ Use delegated customer SPF routes under a Dmark-controlled Bunny.net DNS zone.
 
 Founder/operator prep:
 
-1. Create a dedicated Bunny DNS zone for `route.dmark.is`.
-2. Delegate `route.dmark.is` from the primary `dmark.is` DNS host to Bunny using NS records.
-3. Generate a Bunny account API key with the minimum DNS permissions available.
-4. Store Bunny credentials only in backend/server-side environment variables.
-5. Capture and document the Bunny DNS zone ID for `route.dmark.is`.
+1. Use the existing Bunny DNS zone for `dmark.is` as the authoritative write target.
+2. Publish SPF route records as relative names under that parent zone, for example `customer-example.route` inside `dmark.is`, which resolves publicly as `customer-example.route.dmark.is`.
+3. Do not delegate `route.dmark.is` to the same Bunny nameservers while `dmark.is` is also on Bunny; testing showed same-provider child delegation produced lame delegation/SERVFAIL.
+4. Generate a Bunny account API key with the minimum DNS permissions available.
+5. Store Bunny credentials only in backend/server-side environment variables.
+6. Configure the Bunny DNS zone ID for the parent `dmark.is` zone.
 
 Backend environment variables:
 
 ```env
-BUNNY_DNS_API_KEY=...
-BUNNY_DNS_ZONE_ID=...
+BUNNY_DNS_API_KEY=...          # preferred; BUNNY_API_KEY is accepted as a backwards-compatible alias
+BUNNY_DNS_ZONE_ID=801471       # parent dmark.is Bunny zone
 DMARK_SPF_ROUTE_ZONE=route.dmark.is
 DMARK_SPF_ROUTE_TTL=300
 ```
@@ -166,6 +167,9 @@ Create payload shape:
 Implementation requirements:
 
 - Wrap Bunny API calls behind an interface and fake HTTP client in tests.
+- Convert a route label into the Bunny-relative record name for the configured write zone:
+  - `route.dmark.is` zone: `customer-example`
+  - `dmark.is` parent zone: `customer-example.route`
 - List records and find existing TXT record by route label.
 - Create the TXT record when absent.
 - Update the existing record only when generated SPF differs from the currently published value.

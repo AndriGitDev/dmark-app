@@ -42,6 +42,10 @@ FRONTEND_ORIGINS=https://dmark.is,https://www.dmark.is
 PUBLIC_CHECKS_PER_MINUTE=12
 AUTH_TOKEN_TTL_MINUTES=15
 DMARC_MAX_REPORT_BYTES=10485760
+BUNNY_DNS_API_KEY=
+BUNNY_DNS_ZONE_ID=801471
+DMARK_SPF_ROUTE_ZONE=route.dmark.is
+DMARK_SPF_ROUTE_TTL=300
 BOOTSTRAP_OWNER_EMAIL=owner@example.com
 BOOTSTRAP_ORGANIZATION_NAME=DMARK
 BOOTSTRAP_API_KEY_NAME=frontend-proxy
@@ -49,6 +53,8 @@ BOOTSTRAP_API_KEY_TOKEN=meil_generated-token-value
 ```
 
 `FRONTEND_ORIGINS` enables CORS for browser calls from `dmark-web`. It must contain exact origins, not paths. `LETTERMINT_TOKEN` and `LETTERMINT_FROM` are reserved for backend email flows. The browser login surface now belongs in `dmark-web`.
+
+`BUNNY_DNS_ZONE_ID` should point at the authoritative parent `dmark.is` Bunny zone (`801471`) so SPF route records are created as `customer.route` records inside the parent zone. `BUNNY_DNS_API_KEY` is preferred for new deployments; `BUNNY_API_KEY` remains accepted as a backwards-compatible alias for the existing Coolify secret. Do not store the raw Bunny key in code, docs, or logs.
 
 Set all four `BOOTSTRAP_*` variables together for first-run production setup. On startup after migrations, the backend idempotently creates/updates the owner user, the organization, owner membership, and a hashed API key for the frontend proxy. The raw `BOOTSTRAP_API_KEY_TOKEN` is never logged and is not stored in the database; only its SHA-256 hash is persisted. Use a generated `meil_...` token value and store the same raw token only in the frontend server-side environment variable that proxies dashboard API calls.
 
