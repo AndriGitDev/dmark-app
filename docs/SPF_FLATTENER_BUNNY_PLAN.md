@@ -224,8 +224,8 @@ Initial Icelandic-first provider registry:
 
 - ISNIC / `.is` domain management
 - 1984 Hosting
-- Premis
 - Opin Kerfi / hosted DNS where nameserver patterns are reliable
+- Origo / hosted DNS where nameserver patterns are reliable
 - Advania / hosted DNS where nameserver patterns are reliable
 - Cloudflare
 - Microsoft 365 delegated DNS, where applicable
