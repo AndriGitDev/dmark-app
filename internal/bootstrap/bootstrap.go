@@ -45,7 +45,7 @@ func Run(ctx context.Context, store Store, cfg Config) (Result, error) {
 	apiKeyName := strings.TrimSpace(cfg.APIKeyName)
 	apiKeyToken := strings.TrimSpace(cfg.APIKeyToken)
 
-	if ownerEmail == "" && organizationName == "" && apiKeyToken == "" && apiKeyName == "" {
+	if ownerEmail == "" && organizationName == "" && apiKeyToken == "" {
 		return Result{}, nil
 	}
 	if store == nil {

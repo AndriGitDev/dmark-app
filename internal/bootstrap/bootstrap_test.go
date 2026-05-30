@@ -44,6 +44,20 @@ func TestRunSkipsWhenUnconfigured(t *testing.T) {
 	}
 }
 
+func TestRunSkipsWhenOnlyDefaultAPIKeyNameIsConfigured(t *testing.T) {
+	store := &fakeStore{}
+	result, err := Run(context.Background(), store, Config{APIKeyName: "frontend-proxy"})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if store.calls != 0 {
+		t.Fatalf("store calls = %d, want 0", store.calls)
+	}
+	if result.Applied {
+		t.Fatalf("result applied = true, want false")
+	}
+}
+
 func TestRunValidatesCompleteConfiguration(t *testing.T) {
 	validToken, _, err := apikeys.New()
 	if err != nil {
