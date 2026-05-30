@@ -26,6 +26,7 @@ import (
 
 	"github.com/AndriGitDev/meil/internal/attribution"
 	"github.com/AndriGitDev/meil/internal/auth"
+	"github.com/AndriGitDev/meil/internal/bootstrap"
 	"github.com/AndriGitDev/meil/internal/config"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/ingest"
@@ -556,6 +557,23 @@ func newServeCommand() *cobra.Command {
 			defer pool.Close()
 
 			store := pg.NewAppStore(pg.New(pool))
+			bootstrapResult, err := bootstrap.Run(cmd.Context(), store, bootstrap.Config{
+				OwnerEmail:       cfg.BootstrapOwnerEmail,
+				OrganizationName: cfg.BootstrapOrganizationName,
+				APIKeyName:       cfg.BootstrapAPIKeyName,
+				APIKeyToken:      cfg.BootstrapAPIKeyToken,
+			})
+			if err != nil {
+				return fmt.Errorf("running bootstrap setup: %w", err)
+			}
+			if bootstrapResult.Applied {
+				logger.Info("bootstrap setup complete",
+					slog.String("user_id", bootstrapResult.UserID),
+					slog.String("organization_id", bootstrapResult.OrganizationID),
+					slog.String("api_key_name", bootstrapResult.APIKeyName),
+					slog.Bool("api_key_created", bootstrapResult.APIKeyCreated),
+				)
+			}
 			emailScanner := scanner.New(nil)
 			sessionManager := scs.New()
 			sessionManager.Lifetime = 24 * time.Hour

@@ -9,21 +9,25 @@ import (
 )
 
 type Config struct {
-	HTTPAddr              string   `env:"HTTP_ADDR" envDefault:":8080"`
-	PublicBaseURL         string   `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8080"`
-	DatabaseURL           string   `env:"DATABASE_URL" envDefault:"postgres://meil:meil@localhost:5432/meil?sslmode=disable"`
-	ClickHouseURL         string   `env:"CLICKHOUSE_URL" envDefault:"http://localhost:8123"`
-	ClickHouseDatabase    string   `env:"CLICKHOUSE_DATABASE" envDefault:"meil"`
-	ClickHouseUser        string   `env:"CLICKHOUSE_USER" envDefault:"meil"`
-	ClickHousePassword    string   `env:"CLICKHOUSE_PASSWORD" envDefault:"meil"`
-	LettermintBaseURL     string   `env:"LETTERMINT_BASE_URL" envDefault:"https://api.lettermint.co/v1"`
-	LettermintToken       string   `env:"LETTERMINT_TOKEN"`
-	LettermintFrom        string   `env:"LETTERMINT_FROM"`
-	AuthTokenTTL          int      `env:"AUTH_TOKEN_TTL_MINUTES" envDefault:"15"`
-	BillingWebhookSecret  string   `env:"BILLING_WEBHOOK_SECRET"`
-	FrontendOrigins       []string `env:"FRONTEND_ORIGINS" envSeparator:","`
-	PublicChecksPerMinute int      `env:"PUBLIC_CHECKS_PER_MINUTE" envDefault:"12"`
-	DMARCMaxReportBytes   int64    `env:"DMARC_MAX_REPORT_BYTES" envDefault:"10485760"`
+	HTTPAddr                  string   `env:"HTTP_ADDR" envDefault:":8080"`
+	PublicBaseURL             string   `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8080"`
+	DatabaseURL               string   `env:"DATABASE_URL" envDefault:"postgres://meil:meil@localhost:5432/meil?sslmode=disable"`
+	ClickHouseURL             string   `env:"CLICKHOUSE_URL" envDefault:"http://localhost:8123"`
+	ClickHouseDatabase        string   `env:"CLICKHOUSE_DATABASE" envDefault:"meil"`
+	ClickHouseUser            string   `env:"CLICKHOUSE_USER" envDefault:"meil"`
+	ClickHousePassword        string   `env:"CLICKHOUSE_PASSWORD" envDefault:"meil"`
+	LettermintBaseURL         string   `env:"LETTERMINT_BASE_URL" envDefault:"https://api.lettermint.co/v1"`
+	LettermintToken           string   `env:"LETTERMINT_TOKEN"`
+	LettermintFrom            string   `env:"LETTERMINT_FROM"`
+	AuthTokenTTL              int      `env:"AUTH_TOKEN_TTL_MINUTES" envDefault:"15"`
+	BillingWebhookSecret      string   `env:"BILLING_WEBHOOK_SECRET"`
+	FrontendOrigins           []string `env:"FRONTEND_ORIGINS" envSeparator:","`
+	PublicChecksPerMinute     int      `env:"PUBLIC_CHECKS_PER_MINUTE" envDefault:"12"`
+	DMARCMaxReportBytes       int64    `env:"DMARC_MAX_REPORT_BYTES" envDefault:"10485760"`
+	BootstrapOwnerEmail       string   `env:"BOOTSTRAP_OWNER_EMAIL"`
+	BootstrapOrganizationName string   `env:"BOOTSTRAP_ORGANIZATION_NAME"`
+	BootstrapAPIKeyName       string   `env:"BOOTSTRAP_API_KEY_NAME" envDefault:"frontend-proxy"`
+	BootstrapAPIKeyToken      string   `env:"BOOTSTRAP_API_KEY_TOKEN"`
 }
 
 func Load() (Config, error) {

@@ -19,6 +19,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/attribution"
 	"github.com/AndriGitDev/meil/internal/auth"
 	"github.com/AndriGitDev/meil/internal/billing"
+	"github.com/AndriGitDev/meil/internal/bootstrap"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
@@ -37,6 +38,76 @@ type AppStore struct {
 
 func NewAppStore(queries *Queries) *AppStore {
 	return &AppStore{queries: queries}
+}
+
+func (s *AppStore) EnsureBootstrapOrganizationAPIKey(ctx context.Context, ownerEmail string, organizationName string, apiKeyName string, apiKeyToken string, scopes []apikeys.Scope) (bootstrap.Result, error) {
+	hash, err := apikeys.Hash(apiKeyToken)
+	if err != nil {
+		return bootstrap.Result{}, err
+	}
+	scopeStrings := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		scope = apikeys.Scope(strings.TrimSpace(string(scope)))
+		if scope != "" {
+			scopeStrings = append(scopeStrings, string(scope))
+		}
+	}
+
+	user, err := s.queries.UpsertUserByEmail(ctx, ownerEmail)
+	if err != nil {
+		return bootstrap.Result{}, fmt.Errorf("upserting bootstrap owner user: %w", err)
+	}
+
+	var organizationID pgtype.UUID
+	err = s.queries.db.QueryRow(ctx, `
+SELECT id
+FROM organizations
+WHERE lower(name) = lower($1)
+ORDER BY created_at ASC
+LIMIT 1
+`, organizationName).Scan(&organizationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = s.queries.db.QueryRow(ctx, `
+INSERT INTO organizations (name, plan)
+VALUES ($1, 'pro')
+RETURNING id
+`, organizationName).Scan(&organizationID)
+	}
+	if err != nil {
+		return bootstrap.Result{}, fmt.Errorf("ensuring bootstrap organization: %w", err)
+	}
+
+	_, err = s.queries.db.Exec(ctx, `
+INSERT INTO organization_members (organization_id, user_id, role)
+VALUES ($1, $2, 'owner')
+ON CONFLICT (organization_id, user_id) DO UPDATE SET role = 'owner'
+`, organizationID, user.ID)
+	if err != nil {
+		return bootstrap.Result{}, fmt.Errorf("ensuring bootstrap owner membership: %w", err)
+	}
+
+	var apiKeyCreated bool
+	err = s.queries.db.QueryRow(ctx, `
+INSERT INTO api_keys (organization_id, name, token_hash, scopes)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (token_hash) DO UPDATE SET
+    organization_id = EXCLUDED.organization_id,
+    name = EXCLUDED.name,
+    scopes = EXCLUDED.scopes,
+    revoked_at = NULL
+RETURNING xmax = 0
+`, organizationID, apiKeyName, hash, scopeStrings).Scan(&apiKeyCreated)
+	if err != nil {
+		return bootstrap.Result{}, fmt.Errorf("ensuring bootstrap API key: %w", err)
+	}
+	return bootstrap.Result{
+		Applied:          true,
+		UserID:           uuidToString(user.ID),
+		OrganizationID:   uuidToString(organizationID),
+		APIKeyCreated:    apiKeyCreated,
+		APIKeyName:       apiKeyName,
+		ConfiguredScopes: scopes,
+	}, nil
 }
 
 func (s *AppStore) StoreEnrichmentCache(ctx context.Context, entry attribution.EnrichmentEntry) error {

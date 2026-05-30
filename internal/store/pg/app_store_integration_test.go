@@ -14,6 +14,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/auth"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
@@ -51,6 +52,33 @@ func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
 	defer pool.Close()
 
 	store := NewAppStore(New(pool))
+	token, _, err := apikeys.New()
+	if err != nil {
+		t.Fatalf("new bootstrap API key: %v", err)
+	}
+	bootstrapEmail := fmt.Sprintf("bootstrap-%d@example.com", time.Now().UnixNano())
+	bootstrapResult, err := store.EnsureBootstrapOrganizationAPIKey(ctx, bootstrapEmail, "DMARK Bootstrap Test", "frontend-proxy", token, []apikeys.Scope{apikeys.ScopeDomainRead, apikeys.ScopeDomainWrite})
+	if err != nil {
+		t.Fatalf("ensure bootstrap: %v", err)
+	}
+	if !bootstrapResult.Applied || !bootstrapResult.APIKeyCreated || bootstrapResult.UserID == "" || bootstrapResult.OrganizationID == "" {
+		t.Fatalf("bootstrap result = %+v, want applied created ids", bootstrapResult)
+	}
+	principal, err := store.AuthenticateAPIKey(ctx, token)
+	if err != nil {
+		t.Fatalf("authenticate bootstrap API key: %v", err)
+	}
+	if principal.OrganizationID != bootstrapResult.OrganizationID || !apikeys.Allows(principal, apikeys.ScopeDomainWrite) {
+		t.Fatalf("bootstrap principal = %+v, want org %s domain write", principal, bootstrapResult.OrganizationID)
+	}
+	bootstrapAgain, err := store.EnsureBootstrapOrganizationAPIKey(ctx, bootstrapEmail, "DMARK Bootstrap Test", "frontend-proxy", token, []apikeys.Scope{apikeys.ScopeDomainRead})
+	if err != nil {
+		t.Fatalf("ensure bootstrap idempotently: %v", err)
+	}
+	if bootstrapAgain.UserID != bootstrapResult.UserID || bootstrapAgain.OrganizationID != bootstrapResult.OrganizationID || bootstrapAgain.APIKeyCreated {
+		t.Fatalf("second bootstrap result = %+v, want same ids and existing API key", bootstrapAgain)
+	}
+
 	suffix := time.Now().UnixNano()
 	userEmail := fmt.Sprintf("pg-it-%d@example.com", suffix)
 	otherEmail := fmt.Sprintf("pg-it-other-%d@example.com", suffix)

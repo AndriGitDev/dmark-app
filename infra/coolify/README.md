@@ -42,9 +42,15 @@ FRONTEND_ORIGINS=https://dmark.is,https://www.dmark.is
 PUBLIC_CHECKS_PER_MINUTE=12
 AUTH_TOKEN_TTL_MINUTES=15
 DMARC_MAX_REPORT_BYTES=10485760
+BOOTSTRAP_OWNER_EMAIL=owner@example.com
+BOOTSTRAP_ORGANIZATION_NAME=DMARK
+BOOTSTRAP_API_KEY_NAME=frontend-proxy
+BOOTSTRAP_API_KEY_TOKEN=meil_generated-token-value
 ```
 
 `FRONTEND_ORIGINS` enables CORS for browser calls from `dmark-web`. It must contain exact origins, not paths. `LETTERMINT_TOKEN` and `LETTERMINT_FROM` are reserved for backend email flows. The browser login surface now belongs in `dmark-web`.
+
+Set all four `BOOTSTRAP_*` variables together for first-run production setup. On startup after migrations, the backend idempotently creates/updates the owner user, the organization, owner membership, and a hashed API key for the frontend proxy. The raw `BOOTSTRAP_API_KEY_TOKEN` is never logged and is not stored in the database; only its SHA-256 hash is persisted. Use a generated `meil_...` token value and store the same raw token only in the frontend server-side environment variable that proxies dashboard API calls.
 
 Dashboard API access for `dmark-web` should use server-side proxy routes with a backend API token stored only in Coolify environment variables for the frontend app. The token needs `domain:read`, `domain:write`, and `reporter:read` for the current dashboard read/recheck/Reporter/alert/settings flows. Do not expose that token to browser JavaScript.
 
