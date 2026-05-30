@@ -13,6 +13,7 @@ Minimum GA outcome:
 - Backend generates a deterministic flattened SPF TXT value with evidence.
 - Backend publishes the customer route TXT record through Bunny.net DNS.
 - Dashboard can show the customer CNAME delegation instruction and sync status.
+- Dashboard can auto-detect the customer's DNS provider from authoritative nameservers and show provider-specific, step-by-step DNS edit instructions instead of asking the user to choose a provider manually.
 - Failed, stale, oversized, or incomplete flattening states are visible and do not silently publish bad records.
 
 ## DNS Control Plane
@@ -205,6 +206,59 @@ Minimum response data:
 
 Visible UI copy must be operator-facing: "SPF Route", "Delegation", "Last sync", "Blocked because...". Avoid exposing Bunny/API implementation details in customer-facing UI.
 
+## Nameserver Provider Autopicker
+
+Use authoritative NS records to remove DNS-provider selection friction for Icelandic and international users.
+
+Minimum GA outcome:
+
+- Resolve authoritative NS records for the protected domain.
+- Normalize nameserver hostnames to lowercase FQDNs.
+- Match nameservers against a maintained provider pattern registry.
+- Return one of `detected`, `ambiguous`, or `unknown`.
+- When detected, show exact provider-specific instructions for the record being edited: DMARC TXT, SPF TXT, and SPF route CNAME.
+- When the provider supports stable console URLs, show a deep link to the DNS management surface.
+- When unknown or ambiguous, fall back to generic DNS-host instructions and let the operator manually select a provider.
+
+Initial Icelandic-first provider registry:
+
+- ISNIC / `.is` domain management
+- 1984 Hosting
+- Premis
+- Opin Kerfi / hosted DNS where nameserver patterns are reliable
+- Advania / hosted DNS where nameserver patterns are reliable
+- Cloudflare
+- Microsoft 365 delegated DNS, where applicable
+- Google Domains/Squarespace legacy mappings, where applicable
+- Route 53
+- Bunny DNS
+
+Implementation notes:
+
+- Keep provider detection in backend/server-side code so scan and dashboard results use the same source of truth.
+- Store the registry as code or data with tests for every pattern.
+- Never claim certainty when multiple providers match; expose the evidence nameservers in the response.
+- Deep links should prefer stable DNS-zone entry points. If a provider does not support a stable domain-specific URL, link to the provider DNS dashboard and show the exact domain/record name to search for.
+- Instruction copy should be localization-ready and written in plain operator language; Icelandic provider flows should be treated as first-class, not generic afterthoughts.
+
+Suggested API response fields:
+
+```json
+{
+  "status": "detected",
+  "provider_id": "isnic",
+  "provider_name": "ISNIC",
+  "confidence": "high",
+  "evidence_nameservers": ["ns1.isnic.is", "ns2.isnic.is"],
+  "dns_dashboard_url": "https://...",
+  "instructions": [
+    "Open DNS management for the domain.",
+    "Create a CNAME record named _spf.",
+    "Point it at customer-example.route.dmark.is."
+  ]
+}
+```
+
 ## TDD Implementation Phases
 
 Follow strict TDD for each production-code slice.
@@ -216,8 +270,9 @@ Follow strict TDD for each production-code slice.
 5. Sync service that combines resolver, generator, persistence, and Bunny publication.
 6. Worker/scheduler integration.
 7. Dashboard API contracts and mapper tests.
-8. Dashboard UI in `dmark-web` behind server-side proxy routes.
-9. Load/smoke checks against a test Bunny DNS zone.
+8. Nameserver provider autopicker with fixture-backed provider pattern tests and fallback handling.
+9. Dashboard UI in `dmark-web` behind server-side proxy routes.
+10. Load/smoke checks against a test Bunny DNS zone and representative provider-detection domains.
 
 Required test coverage:
 
@@ -230,6 +285,8 @@ Required test coverage:
 - Zero SPF and multiple SPF record errors.
 - Oversized generated SPF blocking.
 - Bunny create/update/no-op paths.
+- Nameserver provider detection for Icelandic provider patterns, global provider patterns, ambiguous matches, and unknown fallbacks.
+- Provider instruction rendering for DMARC TXT, SPF TXT, and SPF route CNAME records.
 - No publication when resolution has blocking errors.
 - Status persistence for healthy, stale, failed, and blocked routes.
 
@@ -243,5 +300,5 @@ For GA with SPF flattening included:
 - A test Bunny zone publishes and updates a real route TXT record successfully.
 - Re-running sync without changes makes no Bunny write.
 - A forced include-resolution failure blocks publication and surfaces an operator-visible error.
-- Dashboard shows CNAME instructions and sync status without exposing secrets.
-- Production runbook documents Bunny credentials, zone delegation, rollback, and failure handling.
+- Dashboard shows CNAME instructions, detected DNS provider guidance, provider deep links where stable, and sync status without exposing secrets.
+- Production runbook documents Bunny credentials, zone delegation, provider-guidance fallback behavior, rollback, and failure handling.

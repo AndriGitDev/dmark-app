@@ -11,7 +11,7 @@ Last full local verification: 2026-05-27. Frontend cleanup spot-check: 2026-05-2
 - Service-level readiness: passing locally after installing Docker CLI, Docker Compose, and Colima, then starting the dev Postgres, Mailpit, and ClickHouse services.
 - Product posture: broad backend implementation exists for scanning, saved-domain APIs, drift alerts, Reporter ingestion, attribution, billing/team foundations, API/webhooks, admin/privacy/abuse/status, observability definitions, and Coolify deployment. Browser-facing surfaces and frontend build checks now live in `dmark-web`.
 - Competitive posture: `docs/COMPETITIVE_ROADMAP.md` defines the Icelandic Dmarcian/EasyDMARC alternative strategy, including concierge DMARC enforcement, monthly trust reports, `.is` Defender coverage, and the Checkmate-style sales-audit funnel documented in `docs/CHECKMATE_INTEGRATION.md`. Backend grading and evidence primitives remain here; public funnel UX belongs in `dmark-web`.
-- GA posture: not ready to declare GA until `dmark-web` browser/manual QA, the Bunny.net-backed SPF flattening service, backend production operations drills, load checks, backup/restore and rollback drills, and live-provider checks are completed or explicitly scoped out.
+- GA posture: not ready to declare GA until `dmark-web` browser/manual QA, the Bunny.net-backed SPF flattening service, DNS nameserver/provider autopicker guidance, backend production operations drills, load checks, backup/restore and rollback drills, and live-provider checks are completed or explicitly scoped out.
 
 ## Verified Automated Gates
 
@@ -42,10 +42,11 @@ These must pass before a GA release candidate is promoted:
 1. Browser QA for public checker, auth, saved-domain dashboard, API-key/team/billing surfaces, and responsive layouts belongs in `dmark-web`.
 2. Manual accessibility pass for keyboard flow, focus states, screen reader labels, color contrast, and mobile layouts belongs in `dmark-web`.
 3. Bunny.net-backed SPF flattening service: delegated `route.dmark.is` DNS zone, backend resolver/generator/sync worker, Bunny DNS publication, dashboard status, and production runbook. See `docs/SPF_FLATTENER_BUNNY_PLAN.md`.
-4. Load checks for authenticated API health/read endpoints, Reporter reads, SPF flattener sync/status endpoints, and scan-job trigger endpoints.
-5. Backup and restore drill for Postgres and ClickHouse.
-6. Production rollback drill for Coolify app and worker roles, including SPF route publication rollback.
-7. Live-provider checks for Bunny.net DNS, Lettermint email, billing webhooks, enrichment/geolocation adapters, and DMARC mailbox/report forwarding.
+4. Nameserver/provider autopicker: detect the customer's DNS host from authoritative NS records, map common Icelandic and global DNS providers to step-by-step SPF/DMARC/CNAME instructions, and show deep links into the provider's DNS management surface when available.
+5. Load checks for authenticated API health/read endpoints, Reporter reads, SPF flattener sync/status endpoints, DNS-provider autopicker endpoints, and scan-job trigger endpoints.
+6. Backup and restore drill for Postgres and ClickHouse.
+7. Production rollback drill for Coolify app and worker roles, including SPF route publication rollback.
+8. Live-provider checks for Bunny.net DNS, Lettermint email, billing webhooks, enrichment/geolocation adapters, DNS provider detection, and DMARC mailbox/report forwarding.
 
 ## Immediate GA Workstream
 
@@ -53,9 +54,10 @@ Priority order:
 
 1. Keep dependency/security gates green.
 2. Implement the Bunny.net SPF flattening service as a GA blocker unless explicitly descoped from the public promise.
-3. Keep browser-level regression coverage for public and authenticated web surfaces in `dmark-web`.
-4. Deploy and smoke backend API/status/reporting/SPF route surfaces after the frontend handoff.
-5. Decide whether proof-email dispatch is GA scope; keep it isolated until ownership verification, rate limits, blocklists, consent, and audit logging are implemented.
-6. Execute and document load, backup/restore, and rollback drills.
-7. Decide which live-provider integrations are GA scope and which remain beta/operator-managed.
-8. Keep `make qa` reproducible in CI-equivalent infrastructure and document any local setup requirements.
+3. Add nameserver/provider autopicker guidance so users do not have to manually choose their DNS provider when Dmark can infer it from authoritative NS records.
+4. Keep browser-level regression coverage for public and authenticated web surfaces in `dmark-web`.
+5. Deploy and smoke backend API/status/reporting/SPF route/provider-guidance surfaces after the frontend handoff.
+6. Decide whether proof-email dispatch is GA scope; keep it isolated until ownership verification, rate limits, blocklists, consent, and audit logging are implemented.
+7. Execute and document load, backup/restore, and rollback drills.
+8. Decide which live-provider integrations are GA scope and which remain beta/operator-managed.
+9. Keep `make qa` reproducible in CI-equivalent infrastructure and document any local setup requirements.
