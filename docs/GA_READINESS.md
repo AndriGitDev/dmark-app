@@ -2,16 +2,18 @@
 
 This tracker records the current release posture for general availability prep. It should be updated whenever a release gate is run or a GA blocker is accepted, fixed, or moved out of scope.
 
-Last full local verification: 2026-05-27. Frontend cleanup spot-check: 2026-05-28.
+Current launch roadmap: `docs/GA_LAUNCH_ROADMAP.md`.
+
+Last full historical local verification: 2026-05-27. Frontend cleanup spot-check: 2026-05-28. SPF route persistence/orchestration slice verified and deployed after 2026-05-31 CI success.
 
 ## Current Status
 
-- Repository state: local `main` is backend-only after removing the stale in-repo frontend build files; `.DS_Store` remains untracked and should not be committed.
-- Code-level readiness: passing locally after installing Go and required QA tools.
-- Service-level readiness: passing locally after installing Docker CLI, Docker Compose, and Colima, then starting the dev Postgres, Mailpit, and ClickHouse services.
-- Product posture: broad backend implementation exists for scanning, saved-domain APIs, drift alerts, Reporter ingestion, attribution, billing/team foundations, API/webhooks, admin/privacy/abuse/status, observability definitions, and Coolify deployment. Browser-facing surfaces and frontend build checks now live in `dmark-web`.
+- Repository state: `dmark-app` is backend-only; browser-facing surfaces and frontend build checks live in `dmark-web`.
+- Code-level readiness: broad backend gates have historical passing evidence; the SPF route persistence/orchestration slice has recent Docker/CI verification and live backend smoke evidence.
+- Service-level readiness: Coolify auto-deploy is enabled for the project, and `https://dmark.kastro.is` returned healthy `/healthz`, `/status`, and `/api/public/scan?domain=kastro.is` responses after the latest SPF route slice.
+- Product posture: broad backend implementation exists for scanning, saved-domain APIs, drift alerts, Reporter ingestion, attribution, billing/team foundations, API/webhooks, admin/privacy/abuse/status, observability definitions, and Coolify deployment. SPF resolver/generator, Bunny DNS client, Postgres persistence, and sync orchestration are implemented; dashboard API endpoints, worker scheduling, live Bunny route proof, and frontend SPF route UI remain open.
 - Competitive posture: `docs/COMPETITIVE_ROADMAP.md` defines the Icelandic Dmarcian/EasyDMARC alternative strategy, including concierge DMARC enforcement, monthly trust reports, `.is` Defender coverage, and the Checkmate-style sales-audit funnel documented in `docs/CHECKMATE_INTEGRATION.md`. Backend grading and evidence primitives remain here; public funnel UX belongs in `dmark-web`.
-- GA posture: not ready to declare GA until `dmark-web` browser/manual QA, the Bunny.net-backed SPF flattening service, DNS nameserver/provider autopicker guidance, backend production operations drills, load checks, backup/restore and rollback drills, and live-provider checks are completed or explicitly scoped out.
+- GA posture: planned launch window is Friday 2026-06-05, not a hard date. Do not declare GA until the must-have gates in `docs/GA_LAUNCH_ROADMAP.md` pass or are explicitly descoped into a public-beta launch posture.
 
 ## Verified Automated Gates
 
@@ -37,27 +39,33 @@ Run from `/Users/andri/Documents/GitHub/meil` with Go caches pointed at writable
 
 ## Remaining GA Gates
 
-These must pass before a GA release candidate is promoted:
+These must pass before a GA release candidate is promoted. `docs/GA_LAUNCH_ROADMAP.md` is the current execution roadmap for these gates.
 
-1. Browser QA for public checker, auth, saved-domain dashboard, API-key/team/billing surfaces, and responsive layouts belongs in `dmark-web`.
-2. Manual accessibility pass for keyboard flow, focus states, screen reader labels, color contrast, and mobile layouts belongs in `dmark-web`.
-3. Bunny.net-backed SPF flattening service: delegated `route.dmark.is` DNS zone, backend resolver/generator/sync worker, Bunny DNS publication, dashboard status, and production runbook. See `docs/SPF_FLATTENER_BUNNY_PLAN.md`.
-4. Nameserver/provider autopicker: detect the customer's DNS host from authoritative NS records, map common Icelandic and global DNS providers to step-by-step SPF/DMARC/CNAME instructions, and show deep links into the provider's DNS management surface when available.
-5. Load checks for authenticated API health/read endpoints, Reporter reads, SPF flattener sync/status endpoints, DNS-provider autopicker endpoints, and scan-job trigger endpoints.
-6. Backup and restore drill for Postgres and ClickHouse.
-7. Production rollback drill for Coolify app and worker roles, including SPF route publication rollback.
-8. Live-provider checks for Bunny.net DNS, Lettermint email, billing webhooks, enrichment/geolocation adapters, DNS provider detection, and DMARC mailbox/report forwarding.
+1. SPF route dashboard API endpoints for route read/upsert/manual sync, with org/scope checks and frontend-ready response contracts.
+2. SPF route worker/scheduler integration for immediate sync after config changes and periodic enabled-route resync.
+3. Live Bunny DNS publication proof in the parent `dmark.is` zone, including create/update/no-op/blocking failure behaviour.
+4. `dmark-web` SPF route UI and provider-guidance UI through server-side dashboard proxy routes.
+5. Nameserver/provider autopicker surfacing: detect the customer's DNS host from authoritative NS records, map common Icelandic and global DNS providers to step-by-step SPF/DMARC/CNAME instructions, and show deep links into the provider's DNS management surface when available.
+6. Browser QA for public checker, auth, saved-domain dashboard, API-key/team/billing surfaces, SPF route UI, provider guidance, and responsive layouts in `dmark-web`.
+7. Manual accessibility pass for keyboard flow, focus states, screen reader labels, color contrast, and mobile layouts in `dmark-web`.
+8. Load checks for authenticated API health/read endpoints, Reporter reads, SPF flattener sync/status endpoints, DNS-provider autopicker endpoints, and scan-job trigger endpoints.
+9. Backup and restore drill for Postgres and ClickHouse.
+10. Production rollback drill for Coolify app and worker roles, including SPF route publication rollback.
+11. Live-provider checks for Bunny.net DNS, Lettermint email, billing webhooks if GA-scoped, enrichment/geolocation adapters if GA-scoped, DNS provider detection, and DMARC mailbox/report forwarding if Reporter is GA-scoped.
 
 ## Immediate GA Workstream
 
-Priority order:
+Priority order is now tracked in `docs/GA_LAUNCH_ROADMAP.md`:
 
-1. Keep dependency/security gates green.
-2. Implement the Bunny.net SPF flattening service as a GA blocker unless explicitly descoped from the public promise.
-3. Add nameserver/provider autopicker guidance so users do not have to manually choose their DNS provider when Dmark can infer it from authoritative NS records.
-4. Keep browser-level regression coverage for public and authenticated web surfaces in `dmark-web`.
-5. Deploy and smoke backend API/status/reporting/SPF route/provider-guidance surfaces after the frontend handoff.
-6. Decide whether proof-email dispatch is GA scope; keep it isolated until ownership verification, rate limits, blocklists, consent, and audit logging are implemented.
-7. Execute and document load, backup/restore, and rollback drills.
-8. Decide which live-provider integrations are GA scope and which remain beta/operator-managed.
-9. Keep `make qa` reproducible in CI-equivalent infrastructure and document any local setup requirements.
+1. Backend SPF route dashboard API.
+2. SPF worker/scheduled resync.
+3. Live Bunny publication proof.
+4. `dmark-web` SPF route UI.
+5. DNS provider guidance API/UI surfacing.
+6. Backend and frontend release-candidate gates.
+7. Live-provider checks.
+8. Backup/restore/rollback/DNS recovery drills.
+9. Observability confirmation.
+10. Final docs/release notes.
+
+Proof-email dispatch remains isolated unless explicitly pulled into GA scope with ownership verification, rate limits, blocklists, consent, and audit logging.
