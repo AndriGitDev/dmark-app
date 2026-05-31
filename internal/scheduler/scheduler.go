@@ -22,6 +22,19 @@ type DueScan struct {
 	Args         jobs.ScanDomainArgs
 }
 
+type SPFRouteSchedule struct {
+	RouteID      string
+	LastSyncedAt time.Time
+	Cadence      time.Duration
+	Enabled      bool
+}
+
+type DueSPFRouteSync struct {
+	RouteID      string
+	ScheduledFor time.Time
+	Args         jobs.SyncSPFRouteArgs
+}
+
 func NextCheck(lastCheckedAt time.Time, cadence time.Duration) time.Time {
 	if cadence <= 0 {
 		cadence = 24 * time.Hour
@@ -30,6 +43,16 @@ func NextCheck(lastCheckedAt time.Time, cadence time.Duration) time.Time {
 		return time.Time{}
 	}
 	return lastCheckedAt.UTC().Add(cadence)
+}
+
+func NextSPFRouteSync(lastSyncedAt time.Time, cadence time.Duration) time.Time {
+	if cadence <= 0 {
+		cadence = 12 * time.Hour
+	}
+	if lastSyncedAt.IsZero() {
+		return time.Time{}
+	}
+	return lastSyncedAt.UTC().Add(cadence)
 }
 
 func Due(now time.Time, schedules []DomainSchedule) []DueScan {
@@ -55,6 +78,33 @@ func Due(now time.Time, schedules []DomainSchedule) []DueScan {
 		due = append(due, DueScan{
 			DomainID:     schedule.DomainID,
 			Domain:       schedule.Domain,
+			ScheduledFor: scheduledFor,
+			Args:         args,
+		})
+	}
+	return due
+}
+
+func DueSPFRouteSyncs(now time.Time, schedules []SPFRouteSchedule) []DueSPFRouteSync {
+	now = now.UTC()
+	due := []DueSPFRouteSync{}
+	for _, schedule := range schedules {
+		if !schedule.Enabled || schedule.RouteID == "" {
+			continue
+		}
+		scheduledFor := NextSPFRouteSync(schedule.LastSyncedAt, schedule.Cadence)
+		if scheduledFor.IsZero() {
+			scheduledFor = now
+		}
+		if scheduledFor.After(now) {
+			continue
+		}
+		args := jobs.SyncSPFRouteArgs{
+			RouteID:      schedule.RouteID,
+			ScheduledFor: scheduledFor,
+		}
+		due = append(due, DueSPFRouteSync{
+			RouteID:      schedule.RouteID,
 			ScheduledFor: scheduledFor,
 			Args:         args,
 		})
