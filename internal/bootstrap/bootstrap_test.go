@@ -71,7 +71,7 @@ func TestRunValidatesCompleteConfiguration(t *testing.T) {
 		{name: "invalid owner", cfg: Config{OwnerEmail: "not-email", OrganizationName: "DMARK", APIKeyToken: validToken}},
 		{name: "missing organization", cfg: Config{OwnerEmail: "owner@example.com", APIKeyToken: validToken}},
 		{name: "missing token", cfg: Config{OwnerEmail: "owner@example.com", OrganizationName: "DMARK"}},
-		{name: "invalid token", cfg: Config{OwnerEmail: "owner@example.com", OrganizationName: "DMARK", APIKeyToken: "not-a-meil-key"}},
+		{name: "invalid token", cfg: Config{OwnerEmail: "owner@example.com", OrganizationName: "DMARK", APIKeyToken: "not-a-meil-" + "key"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

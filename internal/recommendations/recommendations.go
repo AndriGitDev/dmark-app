@@ -143,7 +143,7 @@ func dmarcChange(domain string, check scanner.CheckResult, journey dmarcjourney.
 		return DNSChange{}, false
 	}
 	recordName := "_dmarc." + domain
-	status := ChangeWaiting
+	var status ChangeStatus
 	recordText := check.Record
 	if recordText == "" {
 		recordText = "v=DMARC1; p=none; rua=mailto:dmarc@" + domain

@@ -89,7 +89,7 @@ func RecordName(label, routeZone, dnsZone string) (string, error) {
 
 func (c Client) UpsertTXT(ctx context.Context, zoneID int64, name, value string, ttl int) (UpsertResult, error) {
 	if zoneID <= 0 {
-		return UpsertResult{}, fmt.Errorf("Bunny DNS zone ID is required")
+		return UpsertResult{}, fmt.Errorf("bunny DNS zone ID is required")
 	}
 	name = normalizeNamePart(name)
 	if err := validateRecordNamePart(name); err != nil {
@@ -158,7 +158,7 @@ func (c Client) updateTXT(ctx context.Context, zoneID, recordID int64, name, val
 
 func (c Client) do(ctx context.Context, method, path string, body any, out any, wantStatuses ...int) error {
 	if strings.TrimSpace(c.AccessKey) == "" {
-		return fmt.Errorf("Bunny API access key is required")
+		return fmt.Errorf("bunny API access key is required")
 	}
 	baseURL := strings.TrimRight(c.BaseURL, "/")
 	if baseURL == "" {
@@ -190,13 +190,15 @@ func (c Client) do(ctx context.Context, method, path string, body any, out any, 
 	if err != nil {
 		return redact(c.AccessKey, fmt.Errorf("call Bunny DNS API: %w", err))
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
 		return fmt.Errorf("read Bunny DNS response: %w", err)
 	}
 	if !acceptedStatus(response.StatusCode, wantStatuses) {
-		return redact(c.AccessKey, fmt.Errorf("Bunny DNS API %s %s returned %d: %s", method, path, response.StatusCode, strings.TrimSpace(string(data))))
+		return redact(c.AccessKey, fmt.Errorf("bunny DNS API %s %s returned %d: %s", method, path, response.StatusCode, strings.TrimSpace(string(data))))
 	}
 	if out != nil && len(strings.TrimSpace(string(data))) > 0 {
 		if err := json.Unmarshal(data, out); err != nil {

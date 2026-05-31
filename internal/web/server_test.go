@@ -1093,7 +1093,8 @@ func hasLookalikeResponse(rows []struct {
 	Severity          string `json:"severity"`
 	HasAddressRecords bool   `json:"has_address_records"`
 	HasMXRecords      bool   `json:"has_mx_records"`
-}, domain string, severity string, hasAddress bool, hasMX bool) bool {
+}, domain, severity string, hasAddress, hasMX bool,
+) bool {
 	for _, row := range rows {
 		if row.Domain == domain && row.Severity == severity && row.HasAddressRecords == hasAddress && row.HasMXRecords == hasMX {
 			return true

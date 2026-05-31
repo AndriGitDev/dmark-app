@@ -2354,12 +2354,6 @@ SELECT id::text FROM spf_routes WHERE enabled = true ORDER BY updated_at ASC
 	return routes, rows.Err()
 }
 
-func (s *AppStore) replaceSPFRouteSources(ctx context.Context, routeID string, sources []spfroutes.Source) error {
-	return s.withTx(ctx, func(db DBTX) error {
-		return replaceSPFRouteSources(ctx, db, routeID, sources)
-	})
-}
-
 func replaceSPFRouteSources(ctx context.Context, db DBTX, routeID string, sources []spfroutes.Source) error {
 	if _, err := db.Exec(ctx, `DELETE FROM spf_route_sources WHERE spf_route_id = $1::uuid`, routeID); err != nil {
 		return fmt.Errorf("clearing SPF route sources: %w", err)

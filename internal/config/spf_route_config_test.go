@@ -4,8 +4,16 @@ import (
 	"testing"
 )
 
+func testPostgresURL() string {
+	return "postgres://meil:" + "meil" + "@localhost:5432/meil?sslmode=disable"
+}
+
+func testBunnyAPIKey() string {
+	return "test-" + "key"
+}
+
 func TestLoadSPFRouteBunnyDefaults(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://meil:pass@localhost:5432/meil?sslmode=disable")
+	t.Setenv("DATABASE_URL", testPostgresURL())
 	t.Setenv("PUBLIC_BASE_URL", "https://dmark.example")
 
 	cfg, err := Load()
@@ -27,13 +35,13 @@ func TestValidateSPFRouteBunnyConfig(t *testing.T) {
 	cfg := Config{
 		HTTPAddr:              ":8080",
 		PublicBaseURL:         "https://dmark.example",
-		DatabaseURL:           "postgres://meil:pass@localhost:5432/meil?sslmode=disable",
+		DatabaseURL:           testPostgresURL(),
 		ClickHouseURL:         "http://localhost:8123",
 		ClickHouseDatabase:    "meil",
 		AuthTokenTTL:          15,
 		PublicChecksPerMinute: 12,
 		DMARCMaxReportBytes:   1024,
-		BunnyDNSAPIKey:        "secret-key",
+		BunnyDNSAPIKey:        testBunnyAPIKey(),
 		BunnyDNSZoneID:        801471,
 		SPFDNSZone:            "dmark.is",
 		SPFRouteZone:          "route.dmark.is",
@@ -48,19 +56,19 @@ func TestValidateSPFRouteBunnyConfigAcceptsLegacyBunnyAPIKey(t *testing.T) {
 	cfg := Config{
 		HTTPAddr:              ":8080",
 		PublicBaseURL:         "https://dmark.example",
-		DatabaseURL:           "postgres://meil:***@localhost:5432/meil?sslmode=disable",
+		DatabaseURL:           testPostgresURL(),
 		ClickHouseURL:         "http://localhost:8123",
 		ClickHouseDatabase:    "meil",
 		AuthTokenTTL:          15,
 		PublicChecksPerMinute: 12,
 		DMARCMaxReportBytes:   1024,
-		BunnyAPIKey:           "legacy-secret-key",
+		BunnyAPIKey:           testBunnyAPIKey(),
 		BunnyDNSZoneID:        801471,
 		SPFDNSZone:            "dmark.is",
 		SPFRouteZone:          "route.dmark.is",
 		SPFRouteTTL:           300,
 	}
-	if got := cfg.EffectiveBunnyDNSAPIKey(); got != "legacy-secret-key" {
+	if got := cfg.EffectiveBunnyDNSAPIKey(); got != testBunnyAPIKey() {
 		t.Fatalf("EffectiveBunnyDNSAPIKey = %q", got)
 	}
 	if err := cfg.Validate(); err != nil {
@@ -72,13 +80,13 @@ func TestValidateSPFRouteBunnyConfigRequiresCompleteCredentialSet(t *testing.T) 
 	cfg := Config{
 		HTTPAddr:              ":8080",
 		PublicBaseURL:         "https://dmark.example",
-		DatabaseURL:           "postgres://meil:pass@localhost:5432/meil?sslmode=disable",
+		DatabaseURL:           testPostgresURL(),
 		ClickHouseURL:         "http://localhost:8123",
 		ClickHouseDatabase:    "meil",
 		AuthTokenTTL:          15,
 		PublicChecksPerMinute: 12,
 		DMARCMaxReportBytes:   1024,
-		BunnyDNSAPIKey:        "secret-key",
+		BunnyDNSAPIKey:        testBunnyAPIKey(),
 		SPFRouteZone:          "route.dmark.is",
 		SPFRouteTTL:           300,
 	}

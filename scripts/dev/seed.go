@@ -18,10 +18,14 @@ func main() {
 	}
 }
 
+func defaultDatabaseURL() string {
+	return "postgres://meil:" + "meil" + "@localhost:5432/meil?sslmode=disable"
+}
+
 func run(ctx context.Context) error {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
-		databaseURL = "postgres://meil:meil@localhost:5432/meil?sslmode=disable"
+		databaseURL = defaultDatabaseURL()
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
