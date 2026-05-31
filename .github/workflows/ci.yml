@@ -31,7 +31,7 @@ jobs:
         ports:
           - 8123:8123
         options: >-
-          --health-cmd "wget --spider -q http://localhost:8123/ping"
+          --health-cmd "clickhouse-client --user $CLICKHOUSE_USER --password $CLICKHOUSE_PASSWORD --query 'SELECT 1'"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
