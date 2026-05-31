@@ -44,14 +44,21 @@ These must pass before a GA release candidate is promoted. `docs/GA_LAUNCH_ROADM
 1. SPF route dashboard API endpoints for route read/upsert/manual sync, with org/scope checks and frontend-ready response contracts.
 2. SPF route periodic scheduler enqueueing for enabled-route resync every 12-24 hours.
 3. Live Bunny DNS publication proof in the parent `dmark.is` zone, including create/update/no-op/blocking failure behaviour.
-4. `dmark-web` SPF route UI and provider-guidance UI through server-side dashboard proxy routes.
-5. Nameserver/provider autopicker surfacing: detect the customer's DNS host from authoritative NS records, map common Icelandic and global DNS providers to step-by-step SPF/DMARC/CNAME instructions, and show deep links into the provider's DNS management surface when available.
-6. Browser QA for public checker, auth, saved-domain dashboard, API-key/team/billing surfaces, SPF route UI, provider guidance, and responsive layouts in `dmark-web`.
-7. Manual accessibility pass for keyboard flow, focus states, screen reader labels, color contrast, and mobile layouts in `dmark-web`.
-8. Load checks for authenticated API health/read endpoints, Reporter reads, SPF flattener sync/status endpoints, DNS-provider autopicker endpoints, and scan-job trigger endpoints.
-9. Backup and restore drill for Postgres and ClickHouse.
-10. Production rollback drill for Coolify app and worker roles, including SPF route publication rollback.
-11. Live-provider checks for Bunny.net DNS, Lettermint email, billing webhooks if GA-scoped, enrichment/geolocation adapters if GA-scoped, DNS provider detection, and DMARC mailbox/report forwarding if Reporter is GA-scoped.
+4. DNS publication audit command/protected admin endpoint plus synthetic monitoring for homepage, backend health, public scan, and Bunny route DNS behaviour.
+5. `dmark-web` SPF route UI and provider-guidance UI through server-side dashboard proxy routes.
+6. Nameserver/provider autopicker surfacing: detect the customer's DNS host from authoritative NS records, map common Icelandic and global DNS providers to step-by-step SPF/DMARC/CNAME instructions, and show deep links into the provider's DNS management surface when available.
+7. Evidence snapshots and durable operational events for scans, recommendations, SPF generation/publication, bootstrap, API-key use, and external-provider failures.
+8. Minimal admin/provider-health/version surfaces so operators can inspect orgs/domains, scans, SPF route state, provider health, recent events, deployed version, and manual scan/sync actions.
+9. Customer-facing explanation layer for scanner/recommendation output, including severity, confidence, exact DNS changes, provider instructions, propagation timing, and next action.
+10. Security/abuse pass for public scan and dashboard-adjacent endpoints: rate limits, strict domain normalization, DNS/internal-network guardrails where relevant, locked-down CORS, security headers, request IDs, and secret-safe logs.
+11. Known-good domain fixtures for regression tests and production smoke checks, including valid, broken, too-many-lookups, missing-DMARC, parked/no-MX, IDN, and route-published cases.
+12. Privacy-respecting funnel analytics for homepage visits, scan starts/completions, claim starts/completions, recommendation views, CTA clicks/bookings, and beta-lock/dashboard interactions.
+13. Browser QA for public checker, auth, saved-domain dashboard, API-key/team/billing surfaces, SPF route UI, provider guidance, and responsive layouts in `dmark-web`.
+14. Manual accessibility pass for keyboard flow, focus states, screen reader labels, color contrast, and mobile layouts in `dmark-web`.
+15. Load checks for authenticated API health/read endpoints, Reporter reads, SPF flattener sync/status endpoints, DNS-provider autopicker endpoints, and scan-job trigger endpoints.
+16. Backup and restore drill for Postgres and ClickHouse.
+17. Production rollback drill for Coolify app and worker roles, including SPF route publication rollback.
+18. Live-provider checks for Bunny.net DNS, Lettermint email, billing webhooks if GA-scoped, enrichment/geolocation adapters if GA-scoped, DNS provider detection, and DMARC mailbox/report forwarding if Reporter is GA-scoped.
 
 ## Immediate GA Workstream
 
@@ -60,12 +67,16 @@ Priority order is now tracked in `docs/GA_LAUNCH_ROADMAP.md`:
 1. Backend SPF route dashboard API.
 2. SPF worker/scheduled resync.
 3. Live Bunny publication proof.
-4. `dmark-web` SPF route UI.
-5. DNS provider guidance API/UI surfacing.
-6. Backend and frontend release-candidate gates.
-7. Live-provider checks.
-8. Backup/restore/rollback/DNS recovery drills.
-9. Observability confirmation.
-10. Final docs/release notes.
+4. DNS publication audit path and synthetic scanner/DNS monitoring.
+5. `dmark-web` SPF route UI.
+6. DNS provider guidance API/UI surfacing.
+7. Evidence snapshots, operational events, and customer-facing explanations.
+8. Minimal admin/provider-health/version surfaces.
+9. Security/abuse pass and privacy-respecting funnel analytics.
+10. Backend and frontend release-candidate gates.
+11. Live-provider checks.
+12. Backup/restore/rollback/DNS recovery drills.
+13. Observability confirmation.
+14. Final docs/release notes.
 
 Proof-email dispatch remains isolated unless explicitly pulled into GA scope with ownership verification, rate limits, blocklists, consent, and audit logging.

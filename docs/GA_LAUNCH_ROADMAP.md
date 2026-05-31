@@ -161,7 +161,116 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - Unknown providers fall back to generic instructions.
 - Icelandic providers are not treated as afterthoughts.
 
-### 6. Backend Release Candidate Gates
+### 6. Product Trust, Auditability, And Operator Control Plane
+
+**Goal:** Add the highest-leverage pre-GA surfaces that make Dmark operable, supportable, and trustworthy before broad launch.
+
+**Status:** New pre-GA hardening workstream added after roadmap review on 2026-05-31. Some primitives exist in logs, scans, provider detection, status, and dashboard contracts; the product/operator surfaces are not yet complete.
+
+**Tasks:**
+
+- Add synthetic monitoring for real public flows, not only liveness:
+  - `GET https://dmark.is`
+  - `GET https://dmark.kastro.is/healthz`
+  - `GET /api/public/scan?domain=kastro.is`
+  - authoritative/recursive DNS checks for Bunny route behaviour
+  - response schema/freshness checks where practical
+- Add a DNS publication audit command or protected admin endpoint that answers, for a domain/route:
+  - expected TXT/CNAME records
+  - current persisted route state and Bunny record IDs
+  - live authoritative DNS result
+  - live recursive DNS result
+  - propagation/drift status
+  - last publish attempt and last known good value
+- Add durable operational events in Postgres for important product/control-plane activity:
+  - scan started/completed
+  - recommendation generated
+  - SPF route generated
+  - DNS publish attempted/succeeded/failed/blocked/no-op
+  - customer/domain claimed
+  - API key used
+  - bootstrap ran/skipped
+  - external provider error
+- Add a minimal protected admin console, intentionally boring, for:
+  - org/domain lookup
+  - latest scans
+  - SPF route/DNS publication state
+  - provider health
+  - recent operational events/errors
+  - manual re-run scan
+  - manual SPF route sync/republish
+- Add a provider/dependency health page or endpoint covering:
+  - Bunny API reachability
+  - configured Bunny zone IDs
+  - Postgres reachability and migration version
+  - ClickHouse reachability/retention status if Reporter is GA-scoped
+  - outbound DNS resolver health
+  - public base URLs
+  - bootstrap configured/skipped state
+  - frontend proxy API-key auth health
+  - deployed version/build metadata
+- Add or expand version/build metadata exposed through `/status` or an internal status endpoint:
+  - git commit
+  - build time
+  - app version
+  - DB migration version
+  - environment name
+  - public base URL
+  - relevant feature flags
+  - worker/queue state
+- Store evidence snapshots for every scan/recommendation:
+  - DNS answers
+  - queried resolvers
+  - timestamps
+  - MX results
+  - SPF include chain
+  - DMARC record
+  - DKIM selector checks where applicable
+  - parser warnings
+  - recommendation inputs sufficient to audit why the result was produced
+- Add a customer-facing explanation layer for scanner/recommendation output:
+  - what the result means
+  - severity and confidence
+  - exact DNS record to add/change
+  - provider-specific instructions
+  - expected propagation timing
+  - clear next action/CTA
+- Add known-good domain fixtures for regression tests and production smoke checks:
+  - valid DMARC/SPF/DKIM domain
+  - broken SPF domain
+  - SPF-too-many-lookups domain
+  - missing DMARC domain
+  - parked/no-MX domain
+  - internationalized domain
+  - route-published customer fixture
+- Add a security/abuse pass for public scan and dashboard-adjacent endpoints:
+  - rate limits by IP/domain
+  - strict domain normalization
+  - DNS/internal-network guardrails for any network fetches
+  - locked-down CORS
+  - security headers
+  - request IDs throughout
+  - no secret-like values in logs
+- Add privacy-respecting funnel analytics sufficient to understand launch performance:
+  - homepage visits
+  - scan starts/completions
+  - claim starts/completions
+  - recommendation views
+  - CTA clicks/bookings
+  - dashboard/beta-lock interactions
+  - Prefer Plausible, Umami, self-hosted PostHog, or similarly privacy-conscious tracking over invasive analytics.
+- If scan/recommendation/route work starts stretching request lifecycles, introduce a simple Postgres-backed job table before adding new infrastructure:
+  - status, attempts, retry-after, idempotency key, locked-by/locked-at
+  - keep Redis or heavier queue infrastructure out until it is clearly needed.
+
+**Acceptance criteria:**
+
+- Operators can answer: what happened, what DNS should exist, what DNS actually exists, what changed, and how to recover.
+- Customers receive understandable, evidence-backed remediation guidance rather than raw scanner output.
+- Public flows have abuse controls and privacy-conscious measurement.
+- At least the synthetic scanner/DNS checks and DNS publication audit path are in place before calling the SPF route feature GA.
+
+### 7. Backend Release Candidate Gates
 
 **Goal:** Re-run the full backend release-candidate gate after final backend work lands.
 
@@ -186,7 +295,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - All gates pass from a clean checkout or CI-equivalent container.
 - Any local-tooling exception is documented with the exact workaround.
 
-### 7. dmark-web Release Candidate Gates And Browser QA
+### 8. dmark-web Release Candidate Gates And Browser QA
 
 **Goal:** Verify the public and dashboard browser experience before declaring GA.
 
@@ -209,7 +318,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - Public scanner and lead-capture flows work.
 - SPF/provider guidance UI is readable and actionable.
 
-### 8. Live Provider Checks
+### 9. Live Provider Checks
 
 **Goal:** Prove each GA-scoped provider integration works against a real provider or is explicitly scoped as beta/operator-managed.
 
@@ -231,7 +340,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - Release notes identify which integrations are GA, beta, or operator-managed.
 - No marketing or UI copy promises a provider integration that has not been proven.
 
-### 9. Backup, Restore, Rollback, And DNS Recovery Drills
+### 10. Backup, Restore, Rollback, And DNS Recovery Drills
 
 **Goal:** Make production recoverable before the launch window.
 
@@ -252,7 +361,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - Recovery steps are documented in `docs/OPERATIONS.md` or linked from there.
 - The team can roll back app code and recover last-good SPF DNS publication without guessing.
 
-### 10. Observability And Alerting
+### 11. Observability And Alerting
 
 **Goal:** Ensure operators notice user-visible failures before customers do.
 
@@ -270,7 +379,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - Operators can answer: what is broken, how many domains are affected, and what changed?
 - Alerts are actionable, not merely noisy.
 
-### 11. Documentation And Release Notes
+### 12. Documentation And Release Notes
 
 **Goal:** Keep the launch source of truth current as work lands.
 
@@ -297,13 +406,17 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 1. Backend SPF route dashboard API.
 2. SPF worker/scheduled resync.
 3. Live Bunny publication proof.
-4. dmark-web SPF route UI.
-5. DNS provider guidance API/UI surfacing.
-6. Backend and frontend release-candidate gates.
-7. Live-provider checks.
-8. Backup/restore/rollback/DNS recovery drills.
-9. Observability confirmation.
-10. Final docs/release notes.
+4. DNS publication audit path and synthetic scanner/DNS monitoring.
+5. dmark-web SPF route UI.
+6. DNS provider guidance API/UI surfacing.
+7. Evidence snapshots, operational events, and customer-facing explanations.
+8. Minimal admin/provider-health/version surfaces.
+9. Security/abuse pass and privacy-respecting funnel analytics.
+10. Backend and frontend release-candidate gates.
+11. Live-provider checks.
+12. Backup/restore/rollback/DNS recovery drills.
+13. Observability confirmation.
+14. Final docs/release notes.
 
 ## Daily Operating Rhythm Through Launch Week
 
