@@ -75,7 +75,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 
 **Goal:** Make SPF flattening continuous, not one-shot.
 
-**Status:** Sync service exists; worker/scheduler integration remains.
+**Status:** Sync service exists and the River worker kind is registered for queued/manual route syncs; periodic enqueue/scheduler wiring remains.
 
 **Tasks:**
 

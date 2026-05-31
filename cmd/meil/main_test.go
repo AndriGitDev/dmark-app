@@ -99,7 +99,7 @@ func TestWorkerCommandListsRegisteredJobs(t *testing.T) {
 	}
 
 	result := out.String()
-	for _, want := range []string{"scan_domain", "refresh_enrichment"} {
+	for _, want := range []string{"scan_domain", "refresh_enrichment", "sync_spf_route"} {
 		if !strings.Contains(result, want) {
 			t.Fatalf("output missing %q: %s", want, result)
 		}

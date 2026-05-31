@@ -99,6 +99,7 @@ Implemented first persistence/orchestration slice:
 - Migration `migrations/postgres/00006_spf_routes.sql` creates `spf_routes`, `spf_route_sources`, and `spf_route_evidence`.
 - `internal/spfroutes.Service` loads a persisted route, resolves enabled sources with `internal/spfflatten`, generates a deterministic SPF value, skips Bunny publication when the current published SPF already matches, publishes changed TXT values through the `internal/bunnydns` client interface, and persists status/evidence.
 - `internal/store/pg.AppStore` implements route creation/upsert, source replacement, route lookup, enabled-route listing, and sync-state/evidence persistence.
+- `internal/jobs.SyncSPFRouteWorker` registers a River job kind (`sync_spf_route`) that calls the route sync service with River retry semantics. Periodic enqueueing of enabled routes remains a follow-up GA work item.
 
 Keep migration names monotonic after the current latest migration, currently `migrations/postgres/00006_spf_routes.sql`.
 

@@ -11,7 +11,7 @@ Last full historical local verification: 2026-05-27. Frontend cleanup spot-check
 - Repository state: `dmark-app` is backend-only; browser-facing surfaces and frontend build checks live in `dmark-web`.
 - Code-level readiness: broad backend gates have historical passing evidence; the SPF route persistence/orchestration slice has recent Docker/CI verification and live backend smoke evidence.
 - Service-level readiness: Coolify auto-deploy is enabled for the project, and `https://dmark.kastro.is` returned healthy `/healthz`, `/status`, and `/api/public/scan?domain=kastro.is` responses after the latest SPF route slice.
-- Product posture: broad backend implementation exists for scanning, saved-domain APIs, drift alerts, Reporter ingestion, attribution, billing/team foundations, API/webhooks, admin/privacy/abuse/status, observability definitions, and Coolify deployment. SPF resolver/generator, Bunny DNS client, Postgres persistence, and sync orchestration are implemented; dashboard API endpoints, worker scheduling, live Bunny route proof, and frontend SPF route UI remain open.
+- Product posture: broad backend implementation exists for scanning, saved-domain APIs, drift alerts, Reporter primitives, attribution, billing/team foundations, API/webhooks, admin/privacy/abuse/status, observability definitions, and Coolify deployment. SPF resolver/generator, Bunny DNS client, Postgres persistence, sync orchestration, and queued River SPF route sync worker registration are implemented; dashboard API endpoints, periodic scheduler enqueueing, live Bunny route proof, and frontend SPF route UI remain open.
 - Competitive posture: `docs/COMPETITIVE_ROADMAP.md` defines the Icelandic Dmarcian/EasyDMARC alternative strategy, including concierge DMARC enforcement, monthly trust reports, `.is` Defender coverage, and the Checkmate-style sales-audit funnel documented in `docs/CHECKMATE_INTEGRATION.md`. Backend grading and evidence primitives remain here; public funnel UX belongs in `dmark-web`.
 - GA posture: planned launch window is Friday 2026-06-05, not a hard date. Do not declare GA until the must-have gates in `docs/GA_LAUNCH_ROADMAP.md` pass or are explicitly descoped into a public-beta launch posture.
 
@@ -42,7 +42,7 @@ Run from `/Users/andri/Documents/GitHub/meil` with Go caches pointed at writable
 These must pass before a GA release candidate is promoted. `docs/GA_LAUNCH_ROADMAP.md` is the current execution roadmap for these gates.
 
 1. SPF route dashboard API endpoints for route read/upsert/manual sync, with org/scope checks and frontend-ready response contracts.
-2. SPF route worker/scheduler integration for immediate sync after config changes and periodic enabled-route resync.
+2. SPF route periodic scheduler enqueueing for enabled-route resync every 12-24 hours.
 3. Live Bunny DNS publication proof in the parent `dmark.is` zone, including create/update/no-op/blocking failure behaviour.
 4. `dmark-web` SPF route UI and provider-guidance UI through server-side dashboard proxy routes.
 5. Nameserver/provider autopicker surfacing: detect the customer's DNS host from authoritative NS records, map common Icelandic and global DNS providers to step-by-step SPF/DMARC/CNAME instructions, and show deep links into the provider's DNS management surface when available.

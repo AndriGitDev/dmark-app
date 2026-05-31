@@ -133,7 +133,7 @@ func (w *ScanDomainWorker) Timeout(*river.Job[ScanDomainArgs]) time.Duration {
 func NewWorkers(store interface {
 	ScanDomainStore
 	EnrichmentCacheStore
-}, emailScanner ScanDomainScanner, refresher EnrichmentRefresher,
+}, emailScanner ScanDomainScanner, refresher EnrichmentRefresher, spfSyncers ...SPFRouteSyncer,
 ) (*river.Workers, error) {
 	workers := river.NewWorkers()
 	err := river.AddWorkerSafely(workers, &ScanDomainWorker{
@@ -151,6 +151,15 @@ func NewWorkers(store interface {
 	})
 	if err != nil {
 		return nil, err
+	}
+	if len(spfSyncers) > 0 && spfSyncers[0] != nil {
+		err = river.AddWorkerSafely(workers, &SyncSPFRouteWorker{
+			Syncer: spfSyncers[0],
+			Policy: DefaultRetryPolicy(),
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	return workers, nil
 }

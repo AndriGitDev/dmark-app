@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -27,12 +28,14 @@ import (
 	"github.com/AndriGitDev/meil/internal/attribution"
 	"github.com/AndriGitDev/meil/internal/auth"
 	"github.com/AndriGitDev/meil/internal/bootstrap"
+	"github.com/AndriGitDev/meil/internal/bunnydns"
 	"github.com/AndriGitDev/meil/internal/config"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/ingest"
 	"github.com/AndriGitDev/meil/internal/jobs"
 	"github.com/AndriGitDev/meil/internal/notifier"
 	"github.com/AndriGitDev/meil/internal/scanner"
+	"github.com/AndriGitDev/meil/internal/spfroutes"
 	"github.com/AndriGitDev/meil/internal/store/ch"
 	"github.com/AndriGitDev/meil/internal/store/pg"
 	"github.com/AndriGitDev/meil/internal/web"
@@ -74,7 +77,7 @@ func newWorkerCommand() *cobra.Command {
 			if err := cfg.Validate(); err != nil {
 				return fmt.Errorf("validating config: %w", err)
 			}
-			registered := []string{jobs.ScanDomainKind, jobs.RefreshEnrichmentKind}
+			registered := []string{jobs.ScanDomainKind, jobs.RefreshEnrichmentKind, jobs.SyncSPFRouteKind}
 			if listJobs {
 				for _, kind := range registered {
 					if _, err := fmt.Fprintln(cmd.OutOrStdout(), kind); err != nil {
@@ -91,7 +94,20 @@ func newWorkerCommand() *cobra.Command {
 
 			store := pg.NewAppStore(pg.New(pool))
 			enrichment := attribution.NewService(attribution.StaticEnricher{}, attribution.DefaultClassifier(), attribution.DefaultCachePolicy())
-			workers, err := jobs.NewWorkers(store, scanner.New(nil), enrichment)
+			spfSyncer := spfroutes.Service{
+				Store:    store,
+				Resolver: net.DefaultResolver,
+				Publisher: bunnydns.Client{
+					AccessKey: cfg.EffectiveBunnyDNSAPIKey(),
+				},
+				Config: spfroutes.Config{
+					BunnyZoneID: cfg.BunnyDNSZoneID,
+					DNSZone:     cfg.SPFDNSZone,
+					RouteZone:   cfg.SPFRouteZone,
+					TTL:         cfg.SPFRouteTTL,
+				},
+			}
+			workers, err := jobs.NewWorkers(store, scanner.New(nil), enrichment, spfSyncer)
 			if err != nil {
 				return fmt.Errorf("registering workers: %w", err)
 			}
