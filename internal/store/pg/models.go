@@ -278,6 +278,15 @@ type Organization struct {
 	UpdatedAt                pgtype.Timestamptz
 }
 
+type OrganizationDashboardSetting struct {
+	OrganizationID                      pgtype.UUID
+	RequireAlignmentBeforeReject        int32
+	PauseAutomationOnUnknownSenderSpike bool
+	AutoGenerateMonthlyExecutiveReports bool
+	NotificationChannels                []string
+	UpdatedAt                           pgtype.Timestamptz
+}
+
 type OrganizationInvitation struct {
 	ID             pgtype.UUID
 	OrganizationID pgtype.UUID
@@ -353,6 +362,48 @@ type SenderAttribution struct {
 	Ignored     bool
 	Suspicious  bool
 	UpdatedAt   pgtype.Timestamptz
+}
+
+type SpfRoute struct {
+	ID                  pgtype.UUID
+	OrganizationID      pgtype.UUID
+	DomainID            pgtype.UUID
+	RouteLabel          string
+	RouteFqdn           string
+	CustomerCnameName   string
+	CustomerCnameTarget string
+	Enabled             bool
+	MechanismPolicy     string
+	BunnyRecordID       int64
+	LastGeneratedSpf    string
+	LastPublishedSpf    string
+	LastSyncStatus      string
+	LastSyncError       string
+	LastSyncedAt        pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type SpfRouteEvidence struct {
+	ID             pgtype.UUID
+	SpfRouteID     pgtype.UUID
+	SourceValue    string
+	ResolvedDomain string
+	Mechanism      string
+	EvidenceKind   string
+	Message        string
+	CreatedAt      pgtype.Timestamptz
+}
+
+type SpfRouteSource struct {
+	ID         pgtype.UUID
+	SpfRouteID pgtype.UUID
+	Kind       string
+	Value      string
+	Label      string
+	Enabled    bool
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }
 
 type StatusComponent struct {
