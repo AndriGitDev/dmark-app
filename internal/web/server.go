@@ -365,13 +365,16 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			writeAPIError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		emailDomain := publicEmailDomain(email)
 		result, err := deps.Scanner.Scan(r.Context(), domain)
 		if err != nil {
-			writeAPIError(w, http.StatusBadRequest, err.Error())
+			recordPublicAuditClaimOperationalEvent(r, deps.APIOperations, domain, emailDomain, http.StatusBadRequest, "audit_claim.failed", ops.SeverityWarn, "audit claim failed", map[string]any{"error_class": "scanner_error"})
+			writeAPIError(w, http.StatusBadRequest, "audit claim scan failed")
 			return
 		}
 		audit := salesaudit.Assess(result, salesaudit.Options{RequestedEmail: email})
 		if audit.BlockedReason != "" {
+			recordPublicAuditClaimOperationalEvent(r, deps.APIOperations, domain, emailDomain, http.StatusBadRequest, "audit_claim.blocked", ops.SeverityWarn, "audit claim blocked", map[string]any{"blocked_reason": audit.BlockedReason})
 			writeJSON(w, http.StatusBadRequest, map[string]any{
 				"error": audit.BlockedReason,
 				"audit": apicontracts.AuditResponse{
@@ -396,6 +399,10 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			writeAPIError(w, http.StatusInternalServerError, "saving audit claim failed")
 			return
 		}
+		recordPublicAuditClaimOperationalEvent(r, deps.APIOperations, domain, emailDomain, http.StatusCreated, "audit_claim.created", ops.SeverityInfo, "audit claim created", map[string]any{
+			"claim_id":       claim.ID,
+			"proof_eligible": audit.ProofEligible,
+		})
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"claim_id": claim.ID,
 			"status":   claim.Status,

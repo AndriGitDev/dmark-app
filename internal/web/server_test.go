@@ -992,6 +992,7 @@ func TestPublicAuditClaimPersistsVerifiedWorkEmail(t *testing.T) {
 	store := &webDomainStore{}
 	req := httptest.NewRequest(http.MethodPost, "/api/public/audit-claims", strings.NewReader(`{"domain":"example.com","email":"security@example.com"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-ID", "req-claim-success")
 	rec := httptest.NewRecorder()
 
 	NewRouterWithDeps(Deps{
@@ -1002,7 +1003,8 @@ func TestPublicAuditClaimPersistsVerifiedWorkEmail(t *testing.T) {
 			BIMI:   scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
 			DKIM:   scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
 		}},
-		AuditClaims: store,
+		AuditClaims:   store,
+		APIOperations: store,
 	}).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusCreated {
@@ -1017,6 +1019,96 @@ func TestPublicAuditClaimPersistsVerifiedWorkEmail(t *testing.T) {
 	}
 	if body := rec.Body.String(); !strings.Contains(body, `"claim_id":"claim-1"`) || !strings.Contains(body, `"proof_eligible":true`) {
 		t.Fatalf("body missing claim response: %s", body)
+	}
+	if len(store.operationalEvents) != 1 {
+		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	}
+	event := store.operationalEvents[0]
+	if event.Kind != "audit_claim.created" || event.Severity != ops.SeverityInfo || event.Message != "audit claim created" {
+		t.Fatalf("event = %+v, want audit-claim created info event", event)
+	}
+	if event.Actor != "public" || event.Resource != "domain:example.com" {
+		t.Fatalf("event actor/resource = %q/%q, want public domain resource", event.Actor, event.Resource)
+	}
+	if event.Metadata["domain"] != "example.com" || event.Metadata["email_domain"] != "example.com" || event.Metadata["claim_id"] != "claim-1" || event.Metadata["proof_eligible"] != true || event.Metadata["request_id"] != "req-claim-success" {
+		t.Fatalf("event metadata = %+v, want sanitized audit claim metadata", event.Metadata)
+	}
+	serialized := fmt.Sprintf("%+v", event)
+	if strings.Contains(serialized, "security@example.com") {
+		t.Fatalf("operational event leaked raw claimant email: %+v", event)
+	}
+}
+
+func TestPublicAuditClaimRecordsBlockedOperationalEvent(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{}
+	req := httptest.NewRequest(http.MethodPost, "/api/public/audit-claims", strings.NewReader(`{"domain":"example.com","email":"security@other.com"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-ID", "req-claim-blocked")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner: fakeScanner{result: scanner.Result{
+			Domain: "example.com",
+			SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF ok"},
+			DMARC:  scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor", Record: "v=DMARC1; p=none"},
+		}},
+		AuditClaims:   store,
+		APIOperations: store,
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if len(store.operationalEvents) != 1 {
+		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	}
+	event := store.operationalEvents[0]
+	if event.Kind != "audit_claim.blocked" || event.Severity != ops.SeverityWarn || event.Message != "audit claim blocked" {
+		t.Fatalf("event = %+v, want blocked warn event", event)
+	}
+	if event.Metadata["domain"] != "example.com" || event.Metadata["email_domain"] != "other.com" || event.Metadata["blocked_reason"] != "work email domain must match the audited domain" || event.Metadata["request_id"] != "req-claim-blocked" {
+		t.Fatalf("event metadata = %+v, want sanitized blocked claim metadata", event.Metadata)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", event), "security@other.com") {
+		t.Fatalf("operational event leaked raw claimant email: %+v", event)
+	}
+}
+
+func TestPublicAuditClaimScannerErrorIsSanitizedAndRecorded(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{}
+	req := httptest.NewRequest(http.MethodPost, "/api/public/audit-claims", strings.NewReader(`{"domain":"example.com","email":"security@example.com"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-ID", "req-claim-failed")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner:       fakeScanner{err: errors.New("resolver failed with api_key=super-secret-token")},
+		AuditClaims:   store,
+		APIOperations: store,
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if body := rec.Body.String(); strings.Contains(body, "super-secret-token") || strings.Contains(body, "api_key") {
+		t.Fatalf("audit claim response leaked scanner error details: %s", body)
+	}
+	if len(store.operationalEvents) != 1 {
+		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	}
+	event := store.operationalEvents[0]
+	if event.Kind != "audit_claim.failed" || event.Severity != ops.SeverityWarn || event.Message != "audit claim failed" {
+		t.Fatalf("event = %+v, want failed warn event", event)
+	}
+	if event.Metadata["domain"] != "example.com" || event.Metadata["email_domain"] != "example.com" || event.Metadata["error_class"] != "scanner_error" || event.Metadata["request_id"] != "req-claim-failed" {
+		t.Fatalf("event metadata = %+v, want sanitized failed claim metadata", event.Metadata)
+	}
+	if serialized := fmt.Sprintf("%+v", event); strings.Contains(serialized, "super-secret-token") || strings.Contains(serialized, "api_key") || strings.Contains(serialized, "security@example.com") {
+		t.Fatalf("operational event leaked raw scanner/email details: %+v", event)
 	}
 }
 

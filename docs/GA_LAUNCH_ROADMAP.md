@@ -165,7 +165,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 
 **Goal:** Add the highest-leverage pre-GA surfaces that make Dmark operable, supportable, and trustworthy before broad launch.
 
-**Status:** New pre-GA hardening workstream added after roadmap review on 2026-05-31. Some primitives exist in logs, scans, provider detection, status, and dashboard contracts; the product/operator surfaces are not yet complete. Backend operator primitives now include owner-only operational/provider-health endpoints, SPF route publication audit, the `meil synthetic-check` public-flow/DNS monitoring command, and customer-facing remediation explanations on scan check responses.
+**Status:** New pre-GA hardening workstream added after roadmap review on 2026-05-31. Some primitives exist in logs, scans, provider detection, status, and dashboard contracts; the product/operator surfaces are not yet complete. Backend operator primitives now include owner-only operational/provider-health endpoints, SPF route publication audit, the `meil synthetic-check` public-flow/DNS monitoring command, customer-facing remediation explanations on scan check responses, durable public scan operational events, and sanitized audit-claim operational events for created/blocked/failed public claim flows.
 
 **Tasks:**
 

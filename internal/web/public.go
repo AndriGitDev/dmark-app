@@ -136,6 +136,43 @@ func normalizePublicEmail(raw string) (string, error) {
 	return email, nil
 }
 
+func publicEmailDomain(email string) string {
+	_, domain, ok := strings.Cut(strings.TrimSpace(strings.ToLower(email)), "@")
+	if !ok {
+		return ""
+	}
+	normalized, err := scanner.NormalizeDomain(domain)
+	if err != nil {
+		return ""
+	}
+	return normalized
+}
+
+func recordPublicAuditClaimOperationalEvent(r *http.Request, store OperationalEventStore, domain string, emailDomain string, status int, kind string, severity ops.Severity, message string, extra map[string]any) {
+	if store == nil {
+		return
+	}
+	metadata := map[string]any{
+		"domain":       domain,
+		"email_domain": emailDomain,
+		"method":       r.Method,
+		"path":         r.URL.Path,
+		"status":       status,
+		"request_id":   RequestID(r.Context()),
+	}
+	for key, value := range extra {
+		metadata[key] = value
+	}
+	event, err := ops.NewEvent(kind, severity, message, time.Now().UTC())
+	if err != nil {
+		return
+	}
+	event.Actor = "public"
+	event.Resource = "domain:" + domain
+	event.Metadata = metadata
+	_, _ = store.CreateOperationalEvent(r.Context(), event)
+}
+
 func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	allowed := map[string]struct{}{}
 	for _, origin := range allowedOrigins {
