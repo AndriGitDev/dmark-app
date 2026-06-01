@@ -209,10 +209,11 @@ If any of these are descoped before Friday, document the scope cut explicitly in
   - bootstrap configured/skipped state
   - frontend proxy API-key auth health
   - deployed version/build metadata
-- Add or expand version/build metadata exposed through `/status` or an internal status endpoint:
+- Keep `/status` non-secret build metadata trustworthy in production images:
   - git commit
   - build time
   - app version
+- Add internal-only operator status fields for:
   - DB migration version
   - environment name
   - public base URL
