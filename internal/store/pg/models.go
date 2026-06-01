@@ -264,6 +264,18 @@ type NotificationDispatch struct {
 	CreatedAt         pgtype.Timestamptz
 }
 
+type OperationalEvent struct {
+	ID         pgtype.UUID
+	Kind       string
+	Severity   string
+	Message    string
+	Actor      string
+	Resource   string
+	Metadata   []byte
+	OccurredAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}
+
 type Organization struct {
 	ID                       pgtype.UUID
 	Name                     string

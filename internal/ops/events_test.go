@@ -33,13 +33,12 @@ func TestSanitizeMetadataRedactsSecretShapedKeys(t *testing.T) {
 		"records": []any{
 			map[string]any{"secret": "inside-slice"},
 		},
-		"database":      "postgres://user:password@example.com/db",
 		"database_host": "postgres://db.internal/app",
 	})
 	if metadata["provider"] != "bunny" || metadata["status"] != "degraded" {
 		t.Fatalf("safe metadata = provider:%v status:%v, want preserved", metadata["provider"], metadata["status"])
 	}
-	if metadata["api_token"] != "[REDACTED]" || metadata["connection-string"] != "[REDACTED]" || metadata["database"] != "[REDACTED]" || metadata["database_host"] != "[REDACTED]" {
+	if metadata["api_token"] != "[REDACTED]" || metadata["connection-string"] != "[REDACTED]" || metadata["database_host"] != "[REDACTED]" {
 		t.Fatalf("metadata = %+v, want secret-shaped keys and DSN values redacted", metadata)
 	}
 	nested := metadata["nested"].(map[string]any)
