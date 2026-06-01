@@ -232,7 +232,7 @@ Rapid duplicate rechecks are coalesced per domain into the same five-minute idem
 }
 ```
 
-`PUT` accepts `route_fqdn`, `customer_cname_name`, `customer_cname_target`, `enabled`, `mechanism_policy` (`softfail`, `fail`, or `neutral`), and `sources` with `kind` (`include`, `ip4`, or `ip6`), `value`, `label`, and `enabled`. It returns the same route response after upsert.
+`PUT` accepts `route_fqdn`, `customer_cname_name`, `customer_cname_target`, `enabled`, `mechanism_policy` (`softfail`, `fail`, or `neutral`), and `sources` with `kind` (`include`, `ip4`, or `ip6`), `value`, `label`, and `enabled`. It stores the configuration, queues an immediate sync through the backend job dependency, and returns the same route response after upsert.
 
 `POST /sync` queues a manual sync through the backend job dependency and returns `202 Accepted`:
 

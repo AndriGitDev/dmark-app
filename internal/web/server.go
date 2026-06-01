@@ -568,8 +568,8 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		if !ok {
 			return
 		}
-		if deps.APISPFRoutes == nil {
-			writeAPIError(w, http.StatusServiceUnavailable, "SPF route API is not configured")
+		if deps.APISPFRoutes == nil || deps.APISPFRouteSyncs == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "SPF route sync queue is not configured")
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
@@ -581,6 +581,11 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		saved, err := deps.APISPFRoutes.UpsertOrganizationSPFRoute(r.Context(), principal.OrganizationID, route)
 		if err != nil {
 			writeAPIError(w, http.StatusInternalServerError, "saving SPF route failed")
+			return
+		}
+		now := time.Now().UTC()
+		if _, err := deps.APISPFRouteSyncs.QueueOrganizationSPFRouteSync(r.Context(), principal.OrganizationID, domain.ID, saved.ID, now); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "queueing SPF route sync failed")
 			return
 		}
 		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSPFRouteResponse(saved))

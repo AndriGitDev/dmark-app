@@ -1166,6 +1166,7 @@ func TestDashboardSPFRoutePutValidatesAndUpserts(t *testing.T) {
 		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
 		APIDomainChecker: store,
 		APISPFRoutes:     store,
+		APISPFRouteSyncs: store,
 	})
 
 	badReq := httptest.NewRequest(http.MethodPut, "/api/v1/dashboard/domains/domain-1/spf-route", strings.NewReader(`{"route_fqdn":""}`))
@@ -1186,6 +1187,9 @@ func TestDashboardSPFRoutePutValidatesAndUpserts(t *testing.T) {
 	}
 	if store.spfRoute.OrganizationID != "org-1" || store.spfRoute.DomainID != "domain-1" || len(store.spfRoute.Sources) != 1 {
 		t.Fatalf("route not upserted with tenant/domain: %+v", store.spfRoute)
+	}
+	if store.queuedSPFRouteID != store.spfRoute.ID {
+		t.Fatalf("route update did not queue immediate sync: queued=%q route=%q", store.queuedSPFRouteID, store.spfRoute.ID)
 	}
 }
 
