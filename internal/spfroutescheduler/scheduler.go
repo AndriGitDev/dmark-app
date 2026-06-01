@@ -27,6 +27,35 @@ type Result struct {
 	Queued  int
 }
 
+type AttentionReason string
+
+const (
+	ReasonStale   AttentionReason = "stale"
+	ReasonFailed  AttentionReason = "failed"
+	ReasonBlocked AttentionReason = "blocked"
+)
+
+type AuditResult struct {
+	Total     int             `json:"total"`
+	Enabled   int             `json:"enabled"`
+	Healthy   int             `json:"healthy"`
+	Failed    int             `json:"failed"`
+	Blocked   int             `json:"blocked"`
+	Pending   int             `json:"pending"`
+	Stale     int             `json:"stale"`
+	Attention []AttentionItem `json:"attention"`
+}
+
+type AttentionItem struct {
+	RouteID      string           `json:"route_id"`
+	Domain       string           `json:"domain"`
+	Status       spfroutes.Status `json:"status"`
+	Reason       AttentionReason  `json:"reason"`
+	LastError    string           `json:"last_error,omitempty"`
+	LastSyncedAt time.Time        `json:"last_synced_at,omitempty"`
+	NextSyncAt   time.Time        `json:"next_sync_at,omitempty"`
+}
+
 func SchedulesFromRoutes(routes []spfroutes.Route, cadence time.Duration) []scheduler.SPFRouteSchedule {
 	if cadence <= 0 {
 		cadence = DefaultCadence
@@ -41,6 +70,54 @@ func SchedulesFromRoutes(routes []spfroutes.Route, cadence time.Duration) []sche
 		})
 	}
 	return schedules
+}
+
+func Audit(now time.Time, cadence time.Duration, routes []spfroutes.Route) AuditResult {
+	if cadence <= 0 {
+		cadence = DefaultCadence
+	}
+	result := AuditResult{Total: len(routes)}
+	for _, route := range routes {
+		if !route.Enabled {
+			continue
+		}
+		result.Enabled++
+		switch route.LastSyncStatus {
+		case spfroutes.StatusHealthy:
+			result.Healthy++
+		case spfroutes.StatusFailed:
+			result.Failed++
+		case spfroutes.StatusBlocked:
+			result.Blocked++
+		default:
+			result.Pending++
+		}
+		nextSyncAt := scheduler.NextSPFRouteSync(route.LastSyncedAt, cadence)
+		isStale := !nextSyncAt.After(now)
+		if isStale {
+			result.Stale++
+			result.Attention = append(result.Attention, attentionItem(route, ReasonStale, nextSyncAt))
+		}
+		switch route.LastSyncStatus {
+		case spfroutes.StatusFailed:
+			result.Attention = append(result.Attention, attentionItem(route, ReasonFailed, nextSyncAt))
+		case spfroutes.StatusBlocked:
+			result.Attention = append(result.Attention, attentionItem(route, ReasonBlocked, nextSyncAt))
+		}
+	}
+	return result
+}
+
+func attentionItem(route spfroutes.Route, reason AttentionReason, nextSyncAt time.Time) AttentionItem {
+	return AttentionItem{
+		RouteID:      route.ID,
+		Domain:       route.Domain,
+		Status:       route.LastSyncStatus,
+		Reason:       reason,
+		LastError:    route.LastSyncError,
+		LastSyncedAt: route.LastSyncedAt,
+		NextSyncAt:   nextSyncAt,
+	}
 }
 
 func EnqueueDue(ctx context.Context, store RouteStore, enqueuer Enqueuer, now time.Time, cadence time.Duration) (Result, error) {

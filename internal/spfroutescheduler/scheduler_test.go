@@ -58,6 +58,39 @@ func TestEnqueueDueSurfacesStoreAndInsertErrors(t *testing.T) {
 	}
 }
 
+func TestAuditClassifiesFailedBlockedAndStaleRoutes(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 1, 4, 0, 0, 0, time.UTC)
+	audit := Audit(now, 12*time.Hour, []spfroutes.Route{
+		{ID: "healthy-fresh", Domain: "fresh.example", Enabled: true, LastSyncStatus: spfroutes.StatusHealthy, LastSyncedAt: now.Add(-time.Hour)},
+		{ID: "healthy-stale", Domain: "stale.example", Enabled: true, LastSyncStatus: spfroutes.StatusHealthy, LastSyncedAt: now.Add(-13 * time.Hour)},
+		{ID: "never-synced", Domain: "never.example", Enabled: true, LastSyncStatus: spfroutes.StatusPending},
+		{ID: "failed", Domain: "failed.example", Enabled: true, LastSyncStatus: spfroutes.StatusFailed, LastSyncError: "Bunny DNS timeout", LastSyncedAt: now.Add(-10 * time.Minute)},
+		{ID: "blocked", Domain: "blocked.example", Enabled: true, LastSyncStatus: spfroutes.StatusBlocked, LastSyncError: "lookup limit exceeded", LastSyncedAt: now.Add(-10 * time.Minute)},
+		{ID: "disabled", Domain: "disabled.example", Enabled: false, LastSyncStatus: spfroutes.StatusFailed, LastSyncedAt: now.Add(-24 * time.Hour)},
+	})
+
+	if audit.Total != 6 || audit.Enabled != 5 || audit.Healthy != 2 || audit.Failed != 1 || audit.Blocked != 1 || audit.Pending != 1 || audit.Stale != 2 {
+		t.Fatalf("audit counts = %+v", audit)
+	}
+	if len(audit.Attention) != 4 {
+		t.Fatalf("attention length = %d, want 4: %+v", len(audit.Attention), audit.Attention)
+	}
+	if audit.Attention[0].RouteID != "healthy-stale" || audit.Attention[0].Reason != ReasonStale {
+		t.Fatalf("first attention item = %+v, want stale route", audit.Attention[0])
+	}
+	if audit.Attention[1].RouteID != "never-synced" || audit.Attention[1].Reason != ReasonStale {
+		t.Fatalf("second attention item = %+v, want never-synced stale route", audit.Attention[1])
+	}
+	if audit.Attention[2].RouteID != "failed" || audit.Attention[2].Reason != ReasonFailed || audit.Attention[2].LastError != "Bunny DNS timeout" {
+		t.Fatalf("third attention item = %+v, want failed route with error", audit.Attention[2])
+	}
+	if audit.Attention[3].RouteID != "blocked" || audit.Attention[3].Reason != ReasonBlocked || audit.Attention[3].LastError != "lookup limit exceeded" {
+		t.Fatalf("fourth attention item = %+v, want blocked route with error", audit.Attention[3])
+	}
+}
+
 type fakeRouteStore struct {
 	routes []spfroutes.Route
 	err    error

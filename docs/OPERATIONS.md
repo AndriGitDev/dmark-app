@@ -51,6 +51,17 @@ Use `api-get`/`reporter-get` for authenticated API and Reporter read endpoints, 
 - Restore drills should validate users, domains, checks, drift events, reports, and audit logs.
 - Deployment rollback drills should record the current deploy artifact, promote a candidate, run smoke and service-backed QA gates, roll back to the previous artifact, and verify health, API scan, worker startup, and Reporter reads.
 
+## SPF Route Operations
+
+Use the backend CLI to inspect SPF route sync health from an environment with `DATABASE_URL` and the usual app configuration:
+
+```sh
+go run ./cmd/meil spf-route audit
+go run ./cmd/meil spf-route audit --json
+```
+
+The audit reports enabled route counts by sync status and highlights routes needing operator attention: stale routes past the scheduled resync cadence, failed publisher/resolver attempts, and blocked routes where flattening would be unsafe. The command reads route state only; it does not enqueue jobs or mutate Bunny DNS.
+
 ## Observability
 
 Track at minimum:

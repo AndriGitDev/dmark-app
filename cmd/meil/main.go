@@ -61,6 +61,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newIngestCommand())
 	root.AddCommand(newMigrateCommand())
 	root.AddCommand(newScanCommand())
+	root.AddCommand(newSPFRouteCommand())
 
 	return root
 }
@@ -176,6 +177,84 @@ func runSPFRouteScheduler(ctx context.Context, logger *slog.Logger, store spfrou
 			runOnce()
 		}
 	}
+}
+
+func newSPFRouteCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "spf-route",
+		Short: "Inspect and operate SPF route publishing",
+	}
+	cmd.AddCommand(newSPFRouteAuditCommand())
+	return cmd
+}
+
+func newSPFRouteAuditCommand() *cobra.Command {
+	var jsonOutput bool
+	cmd := &cobra.Command{
+		Use:   "audit",
+		Short: "Summarise enabled SPF routes that need operator attention",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
+			if err := cfg.Validate(); err != nil {
+				return fmt.Errorf("validating config: %w", err)
+			}
+			pool, err := pgxpool.New(cmd.Context(), cfg.DatabaseURL)
+			if err != nil {
+				return fmt.Errorf("connecting to database: %w", err)
+			}
+			defer pool.Close()
+
+			store := pg.NewAppStore(pg.New(pool))
+			routes, err := store.ListEnabledSPFRoutes(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("listing SPF routes: %w", err)
+			}
+			cadence := time.Duration(cfg.SPFRouteScheduledSyncCadenceHours) * time.Hour
+			audit := spfroutescheduler.Audit(time.Now().UTC(), cadence, routes)
+			if jsonOutput {
+				return printSPFRouteAuditJSON(cmd.OutOrStdout(), audit)
+			}
+			return printSPFRouteAudit(cmd.OutOrStdout(), audit)
+		},
+	}
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "write machine-readable JSON")
+	return cmd
+}
+
+func printSPFRouteAuditJSON(w io.Writer, audit spfroutescheduler.AuditResult) error {
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(audit)
+}
+
+func printSPFRouteAudit(w io.Writer, audit spfroutescheduler.AuditResult) error {
+	if _, err := fmt.Fprintf(w, "SPF routes: total=%d enabled=%d healthy=%d pending=%d failed=%d blocked=%d stale=%d\n", audit.Total, audit.Enabled, audit.Healthy, audit.Pending, audit.Failed, audit.Blocked, audit.Stale); err != nil {
+		return err
+	}
+	if len(audit.Attention) == 0 {
+		_, err := fmt.Fprintln(w, "No enabled SPF routes need operator attention.")
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "Attention:"); err != nil {
+		return err
+	}
+	for _, item := range audit.Attention {
+		domain := item.Domain
+		if domain == "" {
+			domain = item.RouteID
+		}
+		line := fmt.Sprintf("- %s reason=%s status=%s next_sync_at=%s", domain, item.Reason, item.Status, item.NextSyncAt.UTC().Format(time.RFC3339))
+		if item.LastError != "" {
+			line += " error=" + item.LastError
+		}
+		if _, err := fmt.Fprintln(w, line); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newMigrateCommand() *cobra.Command {

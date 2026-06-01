@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/AndriGitDev/meil/internal/scanner"
+	"github.com/AndriGitDev/meil/internal/spfroutes"
+	"github.com/AndriGitDev/meil/internal/spfroutescheduler"
 )
 
 func TestScanCommandRequiresDomain(t *testing.T) {
@@ -85,7 +87,7 @@ func TestIngestCommandReadsXMLFromStdin(t *testing.T) {
 func TestWorkerCommandListsRegisteredJobs(t *testing.T) {
 	t.Setenv("HTTP_ADDR", ":8080")
 	t.Setenv("PUBLIC_BASE_URL", "http://localhost:8080")
-	t.Setenv("DATABASE_URL", "postgres://meil:meil@localhost:5432/meil?sslmode=disable")
+	t.Setenv("DATABASE_URL", "postgres://meil:***@localhost:5432/meil?sslmode=disable")
 	t.Setenv("AUTH_TOKEN_TTL_MINUTES", "15")
 	t.Setenv("PUBLIC_CHECKS_PER_MINUTE", "12")
 	t.Setenv("DMARC_MAX_REPORT_BYTES", "10485760")
@@ -103,6 +105,51 @@ func TestWorkerCommandListsRegisteredJobs(t *testing.T) {
 		if !strings.Contains(result, want) {
 			t.Fatalf("output missing %q: %s", want, result)
 		}
+	}
+}
+
+func TestPrintSPFRouteAuditJSON(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	audit := spfroutescheduler.AuditResult{
+		Total:   2,
+		Enabled: 2,
+		Failed:  1,
+		Stale:   1,
+		Attention: []spfroutescheduler.AttentionItem{
+			{RouteID: "route-1", Domain: "example.com", Status: spfroutes.StatusFailed, Reason: spfroutescheduler.ReasonFailed, LastError: "publisher unavailable"},
+		},
+	}
+	if err := printSPFRouteAuditJSON(&out, audit); err != nil {
+		t.Fatalf("printSPFRouteAuditJSON returned error: %v", err)
+	}
+
+	var payload spfroutescheduler.AuditResult
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("JSON output did not parse: %v\n%s", err, out.String())
+	}
+	if payload.Total != 2 || payload.Enabled != 2 || payload.Failed != 1 || payload.Stale != 1 {
+		t.Fatalf("unexpected audit counts: %+v", payload)
+	}
+	if len(payload.Attention) != 1 || payload.Attention[0].RouteID != "route-1" || payload.Attention[0].LastError != "publisher unavailable" {
+		t.Fatalf("unexpected attention payload: %+v", payload.Attention)
+	}
+}
+
+func TestSPFRouteCommandIncludesAuditSubcommand(t *testing.T) {
+	t.Parallel()
+
+	cmd := newSPFRouteCommand()
+	found := false
+	for _, child := range cmd.Commands() {
+		if child.Name() == "audit" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("spf-route command missing audit subcommand")
 	}
 }
 
