@@ -155,6 +155,7 @@ type AdminCaseStore interface {
 }
 
 type OperationalEventStore interface {
+	CreateOperationalEvent(ctx context.Context, event ops.Event) (ops.Event, error)
 	ListOperationalEvents(ctx context.Context, severity string, limit int) ([]ops.Event, error)
 }
 
@@ -309,9 +310,11 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		}
 		result, err := deps.Scanner.Scan(r.Context(), domain)
 		if err != nil {
-			writeAPIError(w, http.StatusBadRequest, err.Error())
+			recordPublicScanOperationalEvent(r, deps.APIOperations, domain, http.StatusBadRequest, false)
+			writeAPIError(w, http.StatusBadRequest, "scan failed")
 			return
 		}
+		recordPublicScanOperationalEvent(r, deps.APIOperations, domain, http.StatusOK, true)
 		writeJSON(w, http.StatusOK, apicontracts.NewScanResponse(result))
 	})
 	r.Post("/api/public/scan", func(w http.ResponseWriter, r *http.Request) {
@@ -327,9 +330,11 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		}
 		result, err := deps.Scanner.Scan(r.Context(), domain)
 		if err != nil {
-			writeAPIError(w, http.StatusBadRequest, err.Error())
+			recordPublicScanOperationalEvent(r, deps.APIOperations, domain, http.StatusBadRequest, false)
+			writeAPIError(w, http.StatusBadRequest, "scan failed")
 			return
 		}
+		recordPublicScanOperationalEvent(r, deps.APIOperations, domain, http.StatusOK, true)
 		writeJSON(w, http.StatusOK, apicontracts.NewScanResponse(result))
 	})
 	r.Post("/api/public/audit-claims", func(w http.ResponseWriter, r *http.Request) {

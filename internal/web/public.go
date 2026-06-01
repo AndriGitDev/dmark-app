@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AndriGitDev/meil/internal/ops"
 	"github.com/AndriGitDev/meil/internal/scanner"
 )
 
@@ -90,6 +91,37 @@ func publicScanDomain(r *http.Request) (string, error) {
 		return "", fmt.Errorf("invalid JSON body")
 	}
 	return scanner.NormalizeDomain(payload.Domain)
+}
+
+func recordPublicScanOperationalEvent(r *http.Request, store OperationalEventStore, domain string, status int, completed bool) {
+	if store == nil {
+		return
+	}
+	kind := "public_scan.failed"
+	severity := ops.SeverityWarn
+	message := "public scan failed"
+	metadata := map[string]any{
+		"domain":     domain,
+		"method":     r.Method,
+		"path":       r.URL.Path,
+		"status":     status,
+		"request_id": RequestID(r.Context()),
+	}
+	if completed {
+		kind = "public_scan.completed"
+		severity = ops.SeverityInfo
+		message = "public scan completed"
+	} else {
+		metadata["error_class"] = "scanner_error"
+	}
+	event, err := ops.NewEvent(kind, severity, message, time.Now().UTC())
+	if err != nil {
+		return
+	}
+	event.Actor = "public"
+	event.Resource = "domain:" + domain
+	event.Metadata = metadata
+	_, _ = store.CreateOperationalEvent(r.Context(), event)
 }
 
 func normalizePublicEmail(raw string) (string, error) {

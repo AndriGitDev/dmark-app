@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -40,29 +41,30 @@ func (s fakeScanner) Scan(ctx context.Context, domain string) (scanner.Result, e
 }
 
 type webDomainStore struct {
-	domains           []domains.Domain
-	history           []domains.HistoryEntry
-	driftEvents       []drift.Event
-	reportSources     []reporter.DashboardRow
-	reportSenders     []reporter.InventoryEntry
-	reportHealth      reporter.HealthResult
-	dashboardAlerts   []alerts.DashboardAlert
-	dashboardSettings domains.DashboardSettings
-	queuedRecheck     domains.RecheckJob
-	webhookEndpoints  []webhooks.Endpoint
-	apiKeys           []apikeys.Key
-	invitations       []teams.Invitation
-	retention         privacy.RetentionRequest
-	auditClaims       []salesaudit.Claim
-	adminCases        []admin.Case
-	abuseDecisions    []admin.AbuseDecision
-	statusComponents  []statuspage.Component
-	statusIncidents   []statuspage.Incident
-	operationalEvents []ops.Event
-	spfRoute          spfroutes.Route
-	queuedSPFRouteID  string
-	deletedUserID     string
-	checkedDomain     string
+	domains             []domains.Domain
+	history             []domains.HistoryEntry
+	driftEvents         []drift.Event
+	reportSources       []reporter.DashboardRow
+	reportSenders       []reporter.InventoryEntry
+	reportHealth        reporter.HealthResult
+	dashboardAlerts     []alerts.DashboardAlert
+	dashboardSettings   domains.DashboardSettings
+	queuedRecheck       domains.RecheckJob
+	webhookEndpoints    []webhooks.Endpoint
+	apiKeys             []apikeys.Key
+	invitations         []teams.Invitation
+	retention           privacy.RetentionRequest
+	auditClaims         []salesaudit.Claim
+	adminCases          []admin.Case
+	abuseDecisions      []admin.AbuseDecision
+	statusComponents    []statuspage.Component
+	statusIncidents     []statuspage.Incident
+	operationalEvents   []ops.Event
+	operationalEventErr error
+	spfRoute            spfroutes.Route
+	queuedSPFRouteID    string
+	deletedUserID       string
+	checkedDomain       string
 }
 
 func (s *webDomainStore) GetSPFRoute(ctx context.Context, routeID string) (spfroutes.Route, error) {
@@ -424,6 +426,17 @@ func (s *webDomainStore) ListOperationalEvents(ctx context.Context, severity str
 		events = events[:limit]
 	}
 	return events, nil
+}
+
+func (s *webDomainStore) CreateOperationalEvent(ctx context.Context, event ops.Event) (ops.Event, error) {
+	if s.operationalEventErr != nil {
+		return ops.Event{}, s.operationalEventErr
+	}
+	if event.ID == "" {
+		event.ID = "op-event-1"
+	}
+	s.operationalEvents = append(s.operationalEvents, event)
+	return event, nil
 }
 
 func (s *webDomainStore) ListStatusComponents(ctx context.Context) ([]statuspage.Component, error) {
@@ -846,6 +859,94 @@ func TestPublicScanReturnsJSONWithoutAPIKey(t *testing.T) {
 	}
 	if body := rec.Body.String(); !strings.Contains(body, `"domain":"example.com"`) || !strings.Contains(body, `"audit"`) {
 		t.Fatalf("body missing public scan response: %s", body)
+	}
+}
+
+func TestPublicScanRecordsOperationalEventOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{}
+	req := httptest.NewRequest(http.MethodGet, "/api/public/scan?domain=Example.COM", nil)
+	req.Header.Set("X-Request-ID", "req-public-success")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner:       fakeScanner{result: scanner.Result{Domain: "example.com"}},
+		APIOperations: store,
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if len(store.operationalEvents) != 1 {
+		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	}
+	event := store.operationalEvents[0]
+	if event.Kind != "public_scan.completed" || event.Severity != ops.SeverityInfo || event.Message != "public scan completed" {
+		t.Fatalf("event = %+v, want completed info event", event)
+	}
+	if event.Actor != "public" || event.Resource != "domain:example.com" {
+		t.Fatalf("event actor/resource = %q/%q, want public domain resource", event.Actor, event.Resource)
+	}
+	if event.Metadata["domain"] != "example.com" || event.Metadata["method"] != http.MethodGet || event.Metadata["path"] != "/api/public/scan" || event.Metadata["status"] != http.StatusOK || event.Metadata["request_id"] != "req-public-success" {
+		t.Fatalf("event metadata = %+v, want sanitized public scan request metadata", event.Metadata)
+	}
+}
+
+func TestPublicScanRecordsSanitizedOperationalEventOnScannerError(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{}
+	providerErr := errors.New("provider failed with api_key=super-secret-token")
+	req := httptest.NewRequest(http.MethodPost, "/api/public/scan", strings.NewReader(`{"domain":"example.com"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-ID", "req-public-failed")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner:       fakeScanner{err: providerErr},
+		APIOperations: store,
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if len(store.operationalEvents) != 1 {
+		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	}
+	event := store.operationalEvents[0]
+	if event.Kind != "public_scan.failed" || event.Severity != ops.SeverityWarn || event.Message != "public scan failed" {
+		t.Fatalf("event = %+v, want failed warn event", event)
+	}
+	if event.Metadata["domain"] != "example.com" || event.Metadata["method"] != http.MethodPost || event.Metadata["status"] != http.StatusBadRequest || event.Metadata["error_class"] != "scanner_error" || event.Metadata["request_id"] != "req-public-failed" {
+		t.Fatalf("event metadata = %+v, want sanitized failure metadata", event.Metadata)
+	}
+	serialized := fmt.Sprintf("%+v", event)
+	if strings.Contains(serialized, "super-secret-token") || strings.Contains(serialized, "api_key") {
+		t.Fatalf("operational event leaked provider error details: %+v", event)
+	}
+	if body := rec.Body.String(); strings.Contains(body, "super-secret-token") || strings.Contains(body, "api_key") {
+		t.Fatalf("public scan response leaked provider error details: %s", body)
+	}
+}
+
+func TestPublicScanOperationalEventFailureDoesNotBreakScan(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{operationalEventErr: errors.New("event store unavailable")}
+	req := httptest.NewRequest(http.MethodGet, "/api/public/scan?domain=example.com", nil)
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner:       fakeScanner{result: scanner.Result{Domain: "example.com"}},
+		APIOperations: store,
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if len(store.operationalEvents) != 0 {
+		t.Fatalf("operational events stored = %d, want 0 after store failure", len(store.operationalEvents))
 	}
 }
 
