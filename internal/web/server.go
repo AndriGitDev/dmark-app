@@ -28,6 +28,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/billing"
 	"github.com/AndriGitDev/meil/internal/brand"
 	"github.com/AndriGitDev/meil/internal/brandrisk"
+	"github.com/AndriGitDev/meil/internal/buildinfo"
 	"github.com/AndriGitDev/meil/internal/dmarcjourney"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
@@ -1595,6 +1596,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"service": brand.ProductName,
 			"status":  "operational",
+			"version": buildinfo.Current(),
 			"components": []string{
 				"api",
 				"scanner",

@@ -2140,6 +2140,20 @@ func TestStatusEndpointReturnsJSON(t *testing.T) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
 	}
+
+	var payload struct {
+		Version struct {
+			Version   string `json:"version"`
+			Commit    string `json:"commit"`
+			BuildTime string `json:"build_time"`
+		} `json:"version"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("status body is not JSON: %v", err)
+	}
+	if payload.Version.Version == "" || payload.Version.Commit == "" || payload.Version.BuildTime == "" {
+		t.Fatalf("status response missing version metadata: %s", body)
+	}
 }
 
 func TestSecurityEndpointReturnsJSON(t *testing.T) {

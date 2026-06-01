@@ -10,7 +10,11 @@ The separate `dmark-web` frontend should use these backend-owned JSON endpoints 
 GET /api/public/scan?domain=example.com
 POST /api/public/scan
 POST /api/public/audit-claims
+GET /status
+GET /healthz
 ```
+
+`GET /status` is unauthenticated and returns the service name, operational status, component list, and non-secret build metadata (`version.version`, `version.commit`, and `version.build_time`) so operators can connect smoke-test evidence to the deployed artifact. `GET /healthz` remains the minimal liveness probe and returns `ok`.
 
 `GET /api/public/scan` and `POST /api/public/scan` are unauthenticated, rate-limited by client address, and return the same scan contract as `GET /api/v1/scan` without persisting the check. `POST /api/public/scan` accepts:
 
