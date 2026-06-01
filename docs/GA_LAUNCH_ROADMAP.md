@@ -140,7 +140,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 
 **Goal:** Make provider-specific DNS guidance visible and useful, especially for Icelandic operators.
 
-**Status:** Backend provider detection/instruction primitives exist; product API/UI surfacing remains.
+**Status:** Backend provider detection/instruction primitives exist. The dashboard API now exposes an authenticated `/api/v1/dashboard/domains/{id}/dns-guidance` contract with detected/ambiguous/unknown provider status, evidence nameservers, generic fallback instructions, and SPF route CNAME guidance when route data exists. Frontend rendering and broader representative-domain validation remain open.
 
 **Tasks:**
 

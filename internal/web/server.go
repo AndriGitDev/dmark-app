@@ -30,6 +30,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/brandrisk"
 	"github.com/AndriGitDev/meil/internal/buildinfo"
 	"github.com/AndriGitDev/meil/internal/dmarcjourney"
+	"github.com/AndriGitDev/meil/internal/dnsprovider"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
@@ -161,6 +162,16 @@ type AdminSPFRouteAuditStore interface {
 	GetSPFRoute(ctx context.Context, routeID string) (spfroutes.Route, error)
 }
 
+type DNSNameserverResolver interface {
+	LookupNS(ctx context.Context, name string) ([]*net.NS, error)
+}
+
+type netDNSNameserverResolver struct{}
+
+func (netDNSNameserverResolver) LookupNS(ctx context.Context, name string) ([]*net.NS, error) {
+	return net.DefaultResolver.LookupNS(ctx, name)
+}
+
 type DNSPublicationResolver interface {
 	LookupTXT(ctx context.Context, name string) ([]string, error)
 	LookupCNAME(ctx context.Context, name string) (string, error)
@@ -215,6 +226,8 @@ type Deps struct {
 	APIAdmin                     AdminCaseStore
 	APIOperations                OperationalEventStore
 	AdminSPFRouteAudits          AdminSPFRouteAuditStore
+	DNSNameserverResolver        DNSNameserverResolver
+	DNSNameserverTimeout         time.Duration
 	DNSPublicationResolver       DNSPublicationResolver
 	DNSPublicationTimeout        time.Duration
 	PrivacyDeletion              PrivacyDeletionStore
@@ -263,6 +276,12 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 	}
 	if deps.LoginAttemptsPerMinute <= 0 {
 		deps.LoginAttemptsPerMinute = 6
+	}
+	if deps.DNSNameserverResolver == nil {
+		deps.DNSNameserverResolver = netDNSNameserverResolver{}
+	}
+	if deps.DNSNameserverTimeout <= 0 {
+		deps.DNSNameserverTimeout = 2 * time.Second
 	}
 	if deps.DNSPublicationResolver == nil {
 		deps.DNSPublicationResolver = netDNSPublicationResolver{}
@@ -510,6 +529,21 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			Domain:  apicontracts.NewDashboardDomainResponse(domain, senders),
 			History: history,
 		})
+	})
+	r.Get("/api/v1/dashboard/domains/{id}/dns-guidance", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		domain, ok := dashboardDomainForAPI(w, r, deps, principal.OrganizationID)
+		if !ok {
+			return
+		}
+		response := dashboardDNSGuidanceResponse(r.Context(), deps, principal.OrganizationID, domain, time.Now().UTC())
+		writeJSON(w, http.StatusOK, response)
 	})
 	r.Post("/api/v1/dashboard/domains/{id}/recheck", func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
@@ -2058,6 +2092,55 @@ func dashboardDomainResponses(ctx context.Context, deps Deps, organizationID str
 		response = append(response, apicontracts.NewDashboardDomainResponse(domain, senders))
 	}
 	return response, nil
+}
+
+func dashboardDNSGuidanceResponse(ctx context.Context, deps Deps, organizationID string, domain domains.Domain, generatedAt time.Time) apicontracts.DashboardDNSGuidanceResponse {
+	detection, resolverError := dashboardDNSProviderDetection(ctx, deps, domain.Domain)
+	records := dashboardDNSGuidanceRecords(domain)
+	if deps.APISPFRoutes != nil {
+		if route, err := deps.APISPFRoutes.GetOrganizationSPFRoute(ctx, organizationID, domain.ID); err == nil {
+			if name := strings.TrimSpace(route.CustomerCNAMEName); name != "" {
+				if target := strings.Trim(strings.TrimSpace(route.CustomerCNAMETarget), "."); target != "" {
+					records = append(records, dnsprovider.RecordInstructionInput{Kind: dnsprovider.RecordSPFRouteCNAME, Name: name, Value: target, TTL: 300})
+				}
+			}
+		}
+	}
+	return apicontracts.NewDashboardDNSGuidanceResponse(domain, detection, resolverError, records, generatedAt)
+}
+
+func dashboardDNSProviderDetection(ctx context.Context, deps Deps, domainName string) (dnsprovider.Detection, string) {
+	lookupCtx, cancel := context.WithTimeout(ctx, deps.DNSNameserverTimeout)
+	defer cancel()
+	nsRecords, err := deps.DNSNameserverResolver.LookupNS(lookupCtx, domainName)
+	if err != nil {
+		return dnsprovider.Detection{Status: dnsprovider.StatusUnknown, Confidence: "low", EvidenceNameservers: []string{}}, "authoritative nameserver lookup failed"
+	}
+	nameservers := make([]string, 0, len(nsRecords))
+	for _, ns := range nsRecords {
+		if ns == nil {
+			continue
+		}
+		nameservers = append(nameservers, ns.Host)
+	}
+	return dnsprovider.Detect(nameservers), ""
+}
+
+func dashboardDNSGuidanceRecords(domain domains.Domain) []dnsprovider.RecordInstructionInput {
+	dmarcValue := "v=DMARC1; p=none; rua=mailto:dmarc@" + domain.Domain
+	spfValue := "v=spf1 ~all"
+	if domain.LatestCheck != nil {
+		if record := strings.TrimSpace(domain.LatestCheck.DMARC.Record); record != "" {
+			dmarcValue = record
+		}
+		if record := strings.TrimSpace(domain.LatestCheck.SPF.Record); record != "" {
+			spfValue = record
+		}
+	}
+	return []dnsprovider.RecordInstructionInput{
+		{Kind: dnsprovider.RecordDMARCTXT, Name: "_dmarc." + domain.Domain, Value: dmarcValue, TTL: 300},
+		{Kind: dnsprovider.RecordSPFTXT, Name: domain.Domain, Value: spfValue, TTL: 300},
+	}
 }
 
 func dashboardDomainForAPI(w http.ResponseWriter, r *http.Request, deps Deps, organizationID string) (domains.Domain, bool) {

@@ -11,6 +11,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/billing"
 	"github.com/AndriGitDev/meil/internal/brandrisk"
 	"github.com/AndriGitDev/meil/internal/dmarcjourney"
+	"github.com/AndriGitDev/meil/internal/dnsprovider"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/ops"
@@ -243,6 +244,78 @@ func dashboardSPFPreview(sources []spfroutes.Source, policy spfroutes.Policy) st
 		parts = append(parts, "~all")
 	}
 	return strings.Join(parts, " ")
+}
+
+type DashboardDNSGuidanceResponse struct {
+	DomainID      string                          `json:"domain_id"`
+	Domain        string                          `json:"domain"`
+	GeneratedAt   time.Time                       `json:"generated_at"`
+	Detection     DashboardDNSProviderDetection   `json:"detection"`
+	ResolverError string                          `json:"resolver_error,omitempty"`
+	Instructions  []DashboardDNSRecordInstruction `json:"instructions"`
+}
+
+type DashboardDNSProviderDetection struct {
+	Status              string   `json:"status"`
+	ProviderID          string   `json:"provider_id,omitempty"`
+	ProviderName        string   `json:"provider_name,omitempty"`
+	Confidence          string   `json:"confidence"`
+	EvidenceNameservers []string `json:"evidence_nameservers"`
+	DNSDashboardURL     string   `json:"dns_dashboard_url,omitempty"`
+}
+
+type DashboardDNSRecordInstruction struct {
+	Kind         string   `json:"kind"`
+	RecordName   string   `json:"record_name"`
+	RecordType   string   `json:"record_type"`
+	RecordValue  string   `json:"record_value"`
+	TTL          int      `json:"ttl"`
+	ProviderID   string   `json:"provider_id,omitempty"`
+	ProviderName string   `json:"provider_name"`
+	DashboardURL string   `json:"dashboard_url,omitempty"`
+	Steps        []string `json:"steps"`
+}
+
+func NewDashboardDNSGuidanceResponse(domain domains.Domain, detection dnsprovider.Detection, resolverError string, records []dnsprovider.RecordInstructionInput, generatedAt time.Time) DashboardDNSGuidanceResponse {
+	instructions := make([]DashboardDNSRecordInstruction, 0, len(records))
+	for _, record := range records {
+		built := dnsprovider.BuildInstructions(detection, record)
+		instructions = append(instructions, DashboardDNSRecordInstruction{
+			Kind:         string(record.Kind),
+			RecordName:   record.Name,
+			RecordType:   dashboardDNSRecordType(record.Kind),
+			RecordValue:  record.Value,
+			TTL:          record.TTL,
+			ProviderID:   built.ProviderID,
+			ProviderName: built.ProviderName,
+			DashboardURL: built.DashboardURL,
+			Steps:        built.Steps,
+		})
+	}
+	return DashboardDNSGuidanceResponse{
+		DomainID:    domain.ID,
+		Domain:      domain.Domain,
+		GeneratedAt: generatedAt.UTC(),
+		Detection: DashboardDNSProviderDetection{
+			Status:              string(detection.Status),
+			ProviderID:          detection.ProviderID,
+			ProviderName:        detection.ProviderName,
+			Confidence:          detection.Confidence,
+			EvidenceNameservers: append([]string(nil), detection.EvidenceNameservers...),
+			DNSDashboardURL:     detection.DNSDashboardURL,
+		},
+		ResolverError: resolverError,
+		Instructions:  instructions,
+	}
+}
+
+func dashboardDNSRecordType(kind dnsprovider.RecordKind) string {
+	switch kind {
+	case dnsprovider.RecordSPFRouteCNAME:
+		return "CNAME"
+	default:
+		return "TXT"
+	}
 }
 
 type DashboardChangePlanResponse struct {

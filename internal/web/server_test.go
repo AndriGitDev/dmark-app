@@ -565,6 +565,26 @@ func (r webLookalikeResolver) LookupMX(ctx context.Context, name string) ([]*net
 	return nil, errors.New("not found")
 }
 
+type webDNSNameserverResolver struct {
+	ns    map[string][]*net.NS
+	err   error
+	block bool
+}
+
+func (r webDNSNameserverResolver) LookupNS(ctx context.Context, name string) ([]*net.NS, error) {
+	if r.block {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	if values := r.ns[name]; len(values) > 0 {
+		return values, nil
+	}
+	return nil, errors.New("not found")
+}
+
 type webDNSPublicationResolver struct {
 	txt      map[string][]string
 	cname    map[string]string
@@ -1175,6 +1195,156 @@ func TestDashboardSPFRouteGetReturnsFrontendSafeContract(t *testing.T) {
 	lowerBody := strings.ToLower(rec.Body.String())
 	if strings.Contains(lowerBody, "bunny") || strings.Contains(lowerBody, "zone_id") || strings.Contains(lowerBody, "api_key") || strings.Contains(lowerBody, "801471") {
 		t.Fatalf("response leaked provider details: %s", rec.Body.String())
+	}
+}
+
+func TestDashboardDNSGuidanceReturnsProviderInstructionsAndSPFRoute(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{
+		domains: []domains.Domain{{
+			ID:     "domain-1",
+			Domain: "example.com",
+			LatestCheck: &domains.Check{
+				CheckedAt: time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC),
+				SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Record: "v=spf1 include:_spf.example.net ~all"},
+				DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Record: "v=DMARC1; p=none; rua=mailto:dmarc@example.com"},
+			},
+		}},
+		spfRoute: spfroutes.Route{
+			ID:                  "route-1",
+			OrganizationID:      "org-1",
+			DomainID:            "domain-1",
+			Domain:              "example.com",
+			CustomerCNAMEName:   "example.com",
+			CustomerCNAMETarget: "example-com.route.dmark.is",
+		},
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:               &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIDomainChecker:      store,
+		APISPFRoutes:          store,
+		DNSNameserverResolver: webDNSNameserverResolver{ns: map[string][]*net.NS{"example.com": {{Host: "alice.ns.cloudflare.com."}, {Host: "bob.ns.cloudflare.com."}}}},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/dns-guidance", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body struct {
+		DomainID  string `json:"domain_id"`
+		Domain    string `json:"domain"`
+		Detection struct {
+			Status              string   `json:"status"`
+			ProviderID          string   `json:"provider_id"`
+			ProviderName        string   `json:"provider_name"`
+			DNSDashboardURL     string   `json:"dns_dashboard_url"`
+			EvidenceNameservers []string `json:"evidence_nameservers"`
+		} `json:"detection"`
+		Instructions []struct {
+			Kind         string   `json:"kind"`
+			RecordName   string   `json:"record_name"`
+			RecordType   string   `json:"record_type"`
+			RecordValue  string   `json:"record_value"`
+			DashboardURL string   `json:"dashboard_url"`
+			Steps        []string `json:"steps"`
+		} `json:"instructions"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if body.DomainID != "domain-1" || body.Domain != "example.com" {
+		t.Fatalf("domain mapping mismatch: %+v", body)
+	}
+	if body.Detection.Status != "detected" || body.Detection.ProviderID != "cloudflare" || body.Detection.ProviderName != "Cloudflare" || body.Detection.DNSDashboardURL == "" {
+		t.Fatalf("provider detection mismatch: %+v", body.Detection)
+	}
+	if len(body.Detection.EvidenceNameservers) != 2 || body.Detection.EvidenceNameservers[0] != "alice.ns.cloudflare.com" {
+		t.Fatalf("nameserver evidence mismatch: %+v", body.Detection.EvidenceNameservers)
+	}
+	if len(body.Instructions) != 3 {
+		t.Fatalf("instructions length = %d, want 3: %+v", len(body.Instructions), body.Instructions)
+	}
+	wantKinds := []string{"dmarc_txt", "spf_txt", "spf_route_cname"}
+	for i, wantKind := range wantKinds {
+		if body.Instructions[i].Kind != wantKind || body.Instructions[i].DashboardURL == "" || len(body.Instructions[i].Steps) == 0 {
+			t.Fatalf("instruction %d mismatch: %+v", i, body.Instructions[i])
+		}
+	}
+	if body.Instructions[0].RecordName != "_dmarc.example.com" || body.Instructions[0].RecordType != "TXT" || body.Instructions[0].RecordValue != "v=DMARC1; p=none; rua=mailto:dmarc@example.com" {
+		t.Fatalf("DMARC instruction mismatch: %+v", body.Instructions[0])
+	}
+	if body.Instructions[1].RecordName != "example.com" || body.Instructions[1].RecordType != "TXT" || body.Instructions[1].RecordValue != "v=spf1 include:_spf.example.net ~all" {
+		t.Fatalf("SPF instruction mismatch: %+v", body.Instructions[1])
+	}
+	if body.Instructions[2].RecordName != "example.com" || body.Instructions[2].RecordType != "CNAME" || body.Instructions[2].RecordValue != "example-com.route.dmark.is" {
+		t.Fatalf("SPF route instruction mismatch: %+v", body.Instructions[2])
+	}
+	lowerBody := strings.ToLower(rec.Body.String())
+	if strings.Contains(lowerBody, "api_key") || strings.Contains(lowerBody, "bunny") || strings.Contains(lowerBody, "zone_id") {
+		t.Fatalf("DNS guidance leaked secret/provider internals: %s", rec.Body.String())
+	}
+}
+
+func TestDashboardDNSGuidanceUsesUnknownFallbackAndSanitizesResolverErrors(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:               &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIDomainChecker:      store,
+		DNSNameserverResolver: webDNSNameserverResolver{err: errors.New("resolver failed with api_key=super-secret zone_id=801471 bunny token")},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/dns-guidance", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body struct {
+		Detection struct {
+			Status              string   `json:"status"`
+			ProviderID          string   `json:"provider_id"`
+			ProviderName        string   `json:"provider_name"`
+			DNSDashboardURL     string   `json:"dns_dashboard_url"`
+			EvidenceNameservers []string `json:"evidence_nameservers"`
+		} `json:"detection"`
+		ResolverError string `json:"resolver_error"`
+		Instructions  []struct {
+			Kind         string `json:"kind"`
+			RecordName   string `json:"record_name"`
+			RecordValue  string `json:"record_value"`
+			ProviderName string `json:"provider_name"`
+			DashboardURL string `json:"dashboard_url"`
+		} `json:"instructions"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if body.Detection.Status != "unknown" || body.Detection.ProviderID != "" || body.Detection.ProviderName != "" || body.Detection.DNSDashboardURL != "" || len(body.Detection.EvidenceNameservers) != 0 {
+		t.Fatalf("unknown detection mismatch: %+v", body.Detection)
+	}
+	if body.ResolverError != "authoritative nameserver lookup failed" {
+		t.Fatalf("resolver error was not sanitized: %q", body.ResolverError)
+	}
+	if len(body.Instructions) != 2 || body.Instructions[0].Kind != "dmarc_txt" || body.Instructions[1].Kind != "spf_txt" {
+		t.Fatalf("fallback instructions mismatch: %+v", body.Instructions)
+	}
+	for _, instruction := range body.Instructions {
+		if instruction.ProviderName != "Generic DNS" || instruction.DashboardURL != "" || instruction.RecordName == "" || instruction.RecordValue == "" {
+			t.Fatalf("fallback instruction not generic/frontend-ready: %+v", instruction)
+		}
+	}
+	lowerBody := strings.ToLower(rec.Body.String())
+	if strings.Contains(lowerBody, "super-secret") || strings.Contains(lowerBody, "api_key") || strings.Contains(lowerBody, "zone_id") || strings.Contains(lowerBody, "801471") || strings.Contains(lowerBody, "bunny") {
+		t.Fatalf("resolver response leaked sensitive internals: %s", rec.Body.String())
 	}
 }
 
