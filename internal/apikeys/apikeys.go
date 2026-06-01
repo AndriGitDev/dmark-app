@@ -33,6 +33,7 @@ type Principal struct {
 	OrganizationID string
 	Scopes         []Scope
 	Revoked        bool
+	GlobalAdmin    bool
 }
 
 type Key struct {

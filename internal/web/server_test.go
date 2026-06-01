@@ -1729,7 +1729,7 @@ func TestAPIAdminCasesListCreateAndResolve(t *testing.T) {
 	}}}
 	router := NewRouterWithDeps(Deps{
 		APIKeys: &webAPIKeyAuth{
-			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}},
+			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true},
 		},
 		APIAdmin: store,
 	})
@@ -1792,6 +1792,28 @@ func TestAPIAdminCasesRequireManageScope(t *testing.T) {
 	}
 }
 
+func TestAPIAdminCasesRequireGlobalAdminPrincipal(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/cases", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		APIKeys: &webAPIKeyAuth{
+			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}},
+		},
+		APIAdmin: &webDomainStore{},
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+	if !strings.Contains(rec.Body.String(), "global admin") {
+		t.Fatalf("body missing global admin error: %s", rec.Body.String())
+	}
+}
+
 func TestAPIAdminAbuseDecisionsListAndCreate(t *testing.T) {
 	t.Parallel()
 
@@ -1804,7 +1826,7 @@ func TestAPIAdminAbuseDecisionsListAndCreate(t *testing.T) {
 	}}}
 	router := NewRouterWithDeps(Deps{
 		APIKeys: &webAPIKeyAuth{
-			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}},
+			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true},
 		},
 		APIAdmin: store,
 	})
@@ -1844,7 +1866,7 @@ func TestAPIStatusComponentsListAndUpsert(t *testing.T) {
 	}}}
 	router := NewRouterWithDeps(Deps{
 		APIKeys: &webAPIKeyAuth{
-			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}},
+			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true},
 		},
 		APIStatus: store,
 	})
@@ -1885,7 +1907,7 @@ func TestAPIStatusIncidentsListCreateAndResolve(t *testing.T) {
 	}}}
 	router := NewRouterWithDeps(Deps{
 		APIKeys: &webAPIKeyAuth{
-			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}},
+			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true},
 		},
 		APIStatus: store,
 	})

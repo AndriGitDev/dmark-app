@@ -1688,6 +1688,10 @@ func authorizeAPI(w http.ResponseWriter, r *http.Request, authenticator APIKeyAu
 		writeAPIError(w, http.StatusForbidden, "API key does not have the required scope")
 		return apikeys.Principal{}, false
 	}
+	if required == apikeys.ScopeAdminManage && !principal.GlobalAdmin {
+		writeAPIError(w, http.StatusForbidden, "global admin principal is required")
+		return apikeys.Principal{}, false
+	}
 	return principal, true
 }
 
