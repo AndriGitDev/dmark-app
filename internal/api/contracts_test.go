@@ -108,10 +108,10 @@ func TestNewScanResponseTreatsNotFoundMissingAsMediumConfidence(t *testing.T) {
 
 	response := NewScanResponse(scanner.Result{
 		Domain: "example.com",
-		SPF:   scanner.CheckResult{Name: "SPF", Status: scanner.StatusMissing, Message: "No SPF record found", ErrorClass: "not_found"},
-		DKIM:  scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass},
-		DMARC: scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass, Record: "v=DMARC1; p=reject"},
-		BIMI:  scanner.CheckResult{Name: "BIMI", Status: scanner.StatusPass},
+		SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusMissing, Message: "No SPF record found", ErrorClass: "not_found"},
+		DKIM:   scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass},
+		DMARC:  scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass, Record: "v=DMARC1; p=reject"},
+		BIMI:   scanner.CheckResult{Name: "BIMI", Status: scanner.StatusPass},
 	})
 
 	if response.Checks[0].Explanation == nil {
