@@ -13,6 +13,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/dmarcjourney"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
+	"github.com/AndriGitDev/meil/internal/ops"
 	"github.com/AndriGitDev/meil/internal/recommendations"
 	"github.com/AndriGitDev/meil/internal/reporter"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
@@ -869,6 +870,49 @@ func NewAbuseDecisionResponse(decision admin.AbuseDecision) AbuseDecisionRespons
 		response.ExpiresAt = &expiresAt
 	}
 	return response
+}
+
+type OperationalEventResponse struct {
+	ID         string         `json:"id"`
+	Kind       string         `json:"kind"`
+	Severity   string         `json:"severity"`
+	Message    string         `json:"message"`
+	Actor      string         `json:"actor,omitempty"`
+	Resource   string         `json:"resource,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+	OccurredAt time.Time      `json:"occurred_at"`
+}
+
+func NewOperationalEventResponse(event ops.Event) OperationalEventResponse {
+	response := OperationalEventResponse{
+		ID:         event.ID,
+		Kind:       event.Kind,
+		Severity:   string(event.Severity),
+		Message:    event.Message,
+		Actor:      event.Actor,
+		Resource:   event.Resource,
+		OccurredAt: event.OccurredAt.UTC(),
+	}
+	if metadata := ops.SanitizeMetadata(event.Metadata); len(metadata) > 0 {
+		response.Metadata = metadata
+	}
+	return response
+}
+
+type ProviderHealthResponse struct {
+	GeneratedAt                  time.Time `json:"generated_at"`
+	PublicBaseURLConfigured      bool      `json:"public_base_url_configured"`
+	BunnyDNSConfigured           bool      `json:"bunny_dns_configured"`
+	BunnyDNSZoneIDConfigured     bool      `json:"bunny_dns_zone_id_configured"`
+	BootstrapConfigured          bool      `json:"bootstrap_configured"`
+	BootstrapPartiallyConfigured bool      `json:"bootstrap_partially_configured"`
+	BootstrapSkipped             bool      `json:"bootstrap_skipped"`
+	SPFRouteSchedulerEnabled     bool      `json:"spf_route_scheduler_enabled"`
+	SPFRouteSchedulerInterval    string    `json:"spf_route_scheduler_interval,omitempty"`
+	SPFRouteScheduledSyncCadence string    `json:"spf_route_scheduled_sync_cadence,omitempty"`
+	Version                      string    `json:"version"`
+	Commit                       string    `json:"commit"`
+	BuildTime                    string    `json:"build_time"`
 }
 
 type StatusComponentResponse struct {

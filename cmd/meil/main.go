@@ -35,6 +35,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/ingest"
 	"github.com/AndriGitDev/meil/internal/jobs"
 	"github.com/AndriGitDev/meil/internal/notifier"
+	"github.com/AndriGitDev/meil/internal/ops"
 	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/spfroutes"
 	"github.com/AndriGitDev/meil/internal/spfroutescheduler"
@@ -705,45 +706,78 @@ func newServeCommand() *cobra.Command {
 					slog.Bool("api_key_created", bootstrapResult.APIKeyCreated),
 				)
 			}
+			bootstrapEvent := ops.Event{
+				Kind:       "bootstrap.skipped",
+				Severity:   ops.SeverityInfo,
+				Message:    "bootstrap configuration was not complete; setup skipped",
+				Resource:   "bootstrap",
+				OccurredAt: time.Now().UTC(),
+			}
+			if bootstrapResult.Applied {
+				bootstrapEvent.Kind = "bootstrap.ran"
+				bootstrapEvent.Message = "bootstrap setup completed"
+				bootstrapEvent.Metadata = map[string]any{
+					"api_key_created": bootstrapResult.APIKeyCreated,
+					"api_key_name":    bootstrapResult.APIKeyName,
+				}
+			}
+			if _, err := store.CreateOperationalEvent(cmd.Context(), bootstrapEvent); err != nil {
+				logger.Warn("recording bootstrap operational event failed", slog.String("error", err.Error()))
+			}
 			emailScanner := scanner.New(nil)
 			sessionManager := scs.New()
 			sessionManager.Lifetime = 24 * time.Hour
 			apiKeyAuthenticator := apikeys.NewOwnerAdminTokenAuthenticator(cfg.OwnerAdminAPIToken, store)
+			bootstrapOwnerEmailConfigured := strings.TrimSpace(cfg.BootstrapOwnerEmail) != ""
+			bootstrapOrganizationConfigured := strings.TrimSpace(cfg.BootstrapOrganizationName) != ""
+			bootstrapAPIKeyConfigured := strings.TrimSpace(cfg.BootstrapAPIKeyToken) != ""
+			bootstrapConfigured := bootstrapOwnerEmailConfigured && bootstrapOrganizationConfigured && bootstrapAPIKeyConfigured
+			bootstrapPartiallyConfigured := !bootstrapConfigured && (bootstrapOwnerEmailConfigured || bootstrapOrganizationConfigured || bootstrapAPIKeyConfigured)
 
 			server := &http.Server{
 				Addr: cfg.HTTPAddr,
 				Handler: web.NewRouterWithDeps(web.Deps{
-					Scanner:               emailScanner,
-					APIKeys:               apiKeyAuthenticator,
-					APIDomains:            store,
-					APIDomainCreator:      store,
-					APIDomainChecker:      store,
-					APIDomainRechecks:     store,
-					APIDomainHistory:      store,
-					APIDomainDrift:        store,
-					APIReporter:           store,
-					APIDashboardAlerts:    store,
-					APIDashboardSettings:  store,
-					UserReporter:          store,
-					AuditClaims:           store,
-					APIWebhooks:           store,
-					Billing:               store,
-					BillingCancellation:   store,
-					BillingWebhookSecret:  cfg.BillingWebhookSecret,
-					APIKeyManagement:      store,
-					APITeams:              store,
-					APIPrivacy:            store,
-					APIAdmin:              store,
-					APIStatus:             store,
-					PrivacyDeletion:       store,
-					Auth:                  auth.NewService(store, time.Duration(cfg.AuthTokenTTL)*time.Minute),
-					Domains:               domains.NewService(store, emailScanner),
-					Alerts:                store,
-					Sender:                notifier.NewLettermintSender(cfg.LettermintBaseURL, cfg.LettermintToken, cfg.LettermintFrom),
-					SessionManager:        sessionManager,
-					PublicBaseURL:         cfg.PublicBaseURL,
-					FrontendOrigins:       cfg.FrontendOrigins,
-					PublicChecksPerMinute: cfg.PublicChecksPerMinute,
+					Scanner:                      emailScanner,
+					APIKeys:                      apiKeyAuthenticator,
+					APIDomains:                   store,
+					APIDomainCreator:             store,
+					APIDomainChecker:             store,
+					APIDomainRechecks:            store,
+					APIDomainHistory:             store,
+					APIDomainDrift:               store,
+					APIReporter:                  store,
+					APIDashboardAlerts:           store,
+					APIDashboardSettings:         store,
+					UserReporter:                 store,
+					AuditClaims:                  store,
+					APIWebhooks:                  store,
+					Billing:                      store,
+					BillingCancellation:          store,
+					BillingWebhookSecret:         cfg.BillingWebhookSecret,
+					APIKeyManagement:             store,
+					APITeams:                     store,
+					APIPrivacy:                   store,
+					APIAdmin:                     store,
+					APIOperations:                store,
+					APIStatus:                    store,
+					PrivacyDeletion:              store,
+					Auth:                         auth.NewService(store, time.Duration(cfg.AuthTokenTTL)*time.Minute),
+					Domains:                      domains.NewService(store, emailScanner),
+					Alerts:                       store,
+					Sender:                       notifier.NewLettermintSender(cfg.LettermintBaseURL, cfg.LettermintToken, cfg.LettermintFrom),
+					SessionManager:               sessionManager,
+					PublicBaseURL:                cfg.PublicBaseURL,
+					PublicBaseURLConfigured:      strings.TrimSpace(cfg.PublicBaseURL) != "",
+					FrontendOrigins:              cfg.FrontendOrigins,
+					PublicChecksPerMinute:        cfg.PublicChecksPerMinute,
+					BunnyDNSConfigured:           strings.TrimSpace(cfg.EffectiveBunnyDNSAPIKey()) != "",
+					BunnyDNSZoneIDConfigured:     cfg.BunnyDNSZoneID > 0,
+					BootstrapConfigured:          bootstrapConfigured,
+					BootstrapPartiallyConfigured: bootstrapPartiallyConfigured,
+					BootstrapSkipped:             !bootstrapResult.Applied,
+					SPFRouteSchedulerEnabled:     cfg.SPFRouteSchedulerEnabled,
+					SPFRouteSchedulerInterval:    time.Duration(cfg.SPFRouteSchedulerIntervalSeconds) * time.Second,
+					SPFRouteScheduledSyncEvery:   time.Duration(cfg.SPFRouteScheduledSyncCadenceHours) * time.Hour,
 				}),
 				ReadHeaderTimeout: 5 * time.Second,
 			}

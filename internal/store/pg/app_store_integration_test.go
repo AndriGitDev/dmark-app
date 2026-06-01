@@ -16,6 +16,7 @@ import (
 
 	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/auth"
+	"github.com/AndriGitDev/meil/internal/ops"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/spfroutes"
@@ -53,6 +54,28 @@ func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
 	defer pool.Close()
 
 	store := NewAppStore(New(pool))
+	operationalEvent, err := store.CreateOperationalEvent(ctx, ops.Event{
+		Kind:       "integration.provider_failed",
+		Severity:   ops.SeverityError,
+		Message:    "provider failed during integration test",
+		Actor:      "test",
+		Resource:   "bunny",
+		Metadata:   map[string]any{"provider": "bunny", "api_token": "should-redact"},
+		OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("create operational event: %v", err)
+	}
+	if operationalEvent.ID == "" || operationalEvent.Metadata["api_token"] != "[REDACTED]" {
+		t.Fatalf("operational event = %+v, want id and redacted metadata", operationalEvent)
+	}
+	operationalEvents, err := store.ListOperationalEvents(ctx, string(ops.SeverityError), 1)
+	if err != nil {
+		t.Fatalf("list operational events: %v", err)
+	}
+	if len(operationalEvents) != 1 || operationalEvents[0].ID != operationalEvent.ID || operationalEvents[0].Metadata["api_token"] != "[REDACTED]" {
+		t.Fatalf("operational events = %+v, want created redacted event", operationalEvents)
+	}
 	token, _, err := apikeys.New()
 	if err != nil {
 		t.Fatalf("new bootstrap API key: %v", err)

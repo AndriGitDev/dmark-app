@@ -19,6 +19,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
+	"github.com/AndriGitDev/meil/internal/ops"
 	"github.com/AndriGitDev/meil/internal/privacy"
 	"github.com/AndriGitDev/meil/internal/reporter"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
@@ -56,6 +57,7 @@ type webDomainStore struct {
 	abuseDecisions    []admin.AbuseDecision
 	statusComponents  []statuspage.Component
 	statusIncidents   []statuspage.Incident
+	operationalEvents []ops.Event
 	deletedUserID     string
 	checkedDomain     string
 }
@@ -369,6 +371,19 @@ func (s *webDomainStore) CreateAbuseDecision(ctx context.Context, identifier str
 	decision.CreatedAt = time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC)
 	s.abuseDecisions = append(s.abuseDecisions, decision)
 	return decision, nil
+}
+
+func (s *webDomainStore) ListOperationalEvents(ctx context.Context, severity string, limit int) ([]ops.Event, error) {
+	events := []ops.Event{}
+	for _, event := range s.operationalEvents {
+		if severity == "" || string(event.Severity) == severity {
+			events = append(events, event)
+		}
+	}
+	if limit > 0 && len(events) > limit {
+		events = events[:limit]
+	}
+	return events, nil
 }
 
 func (s *webDomainStore) ListStatusComponents(ctx context.Context) ([]statuspage.Component, error) {
@@ -1901,6 +1916,159 @@ func TestAPIAdminAbuseDecisionsListAndCreate(t *testing.T) {
 	}
 	if body := createRec.Body.String(); !strings.Contains(body, `"abuse-1"`) || !strings.Contains(body, `"198.51.100.4"`) {
 		t.Fatalf("create body missing abuse decision: %s", body)
+	}
+}
+
+func TestAPIAdminOperationalEventsListRequiresOwnerAdminAndFiltersSeverity(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{operationalEvents: []ops.Event{
+		{
+			ID:         "event-error",
+			Kind:       "billing.webhook_failed",
+			Severity:   ops.SeverityError,
+			Message:    "billing webhook failed",
+			Resource:   "billing",
+			Metadata:   map[string]any{"provider": "stripe"},
+			OccurredAt: time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC),
+		},
+		{
+			ID:         "event-info",
+			Kind:       "bootstrap.skipped",
+			Severity:   ops.SeverityInfo,
+			Message:    "bootstrap skipped",
+			OccurredAt: time.Date(2026, 5, 16, 11, 0, 0, 0, time.UTC),
+		},
+	}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys: &webAPIKeyAuth{
+			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true},
+		},
+		APIOperations: store,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/operational-events?severity=error&limit=1", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"event-error"`) || strings.Contains(body, `"event-info"`) || !strings.Contains(body, `"metadata":{"provider":"stripe"}`) {
+		t.Fatalf("body missing filtered operational event: %s", body)
+	}
+}
+
+func TestAPIAdminOperationalEndpointsRequireOwnerGlobalAdmin(t *testing.T) {
+	t.Parallel()
+
+	endpoints := []string{
+		"/api/v1/admin/operational-events",
+		"/api/v1/admin/provider-health",
+	}
+	for _, endpoint := range endpoints {
+		endpoint := endpoint
+		for _, tt := range []struct {
+			name       string
+			header     string
+			auth       *webAPIKeyAuth
+			wantStatus int
+		}{
+			{
+				name:       "missing bearer token",
+				auth:       &webAPIKeyAuth{principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true}},
+				wantStatus: http.StatusUnauthorized,
+			},
+			{
+				name:       "invalid bearer token",
+				header:     "Bearer meil_test",
+				auth:       &webAPIKeyAuth{err: errors.New("invalid token")},
+				wantStatus: http.StatusUnauthorized,
+			},
+			{
+				name:       "non admin scope",
+				header:     "Bearer meil_test",
+				auth:       &webAPIKeyAuth{principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}, GlobalAdmin: true}},
+				wantStatus: http.StatusForbidden,
+			},
+			{
+				name:       "admin scope without global admin",
+				header:     "Bearer meil_test",
+				auth:       &webAPIKeyAuth{principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: false}},
+				wantStatus: http.StatusForbidden,
+			},
+		} {
+			tt := tt
+			t.Run(endpoint+" "+tt.name, func(t *testing.T) {
+				t.Parallel()
+				router := NewRouterWithDeps(Deps{
+					APIKeys:       tt.auth,
+					APIOperations: &webDomainStore{},
+				})
+				req := httptest.NewRequest(http.MethodGet, endpoint, nil)
+				if tt.header != "" {
+					req.Header.Set("Authorization", tt.header)
+				}
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, req)
+				if rec.Code != tt.wantStatus {
+					t.Fatalf("status = %d, want %d; body=%s", rec.Code, tt.wantStatus, rec.Body.String())
+				}
+			})
+		}
+	}
+}
+
+func TestAPIAdminProviderHealthReturnsSafeConfiguredState(t *testing.T) {
+	t.Parallel()
+
+	router := NewRouterWithDeps(Deps{
+		APIKeys: &webAPIKeyAuth{
+			principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true},
+		},
+		PublicBaseURL:                "https://dmark.example",
+		PublicBaseURLConfigured:      true,
+		BunnyDNSConfigured:           true,
+		BunnyDNSZoneIDConfigured:     true,
+		BootstrapConfigured:          false,
+		BootstrapPartiallyConfigured: true,
+		BootstrapSkipped:             true,
+		SPFRouteSchedulerEnabled:     true,
+		SPFRouteSchedulerInterval:    15 * time.Minute,
+		SPFRouteScheduledSyncEvery:   12 * time.Hour,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/provider-health", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`"bunny_dns_configured":true`,
+		`"bunny_dns_zone_id_configured":true`,
+		`"public_base_url_configured":true`,
+		`"bootstrap_configured":false`,
+		`"bootstrap_partially_configured":true`,
+		`"bootstrap_skipped":true`,
+		`"version":`,
+		`"commit":`,
+		`"build_time":`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %s: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "https://dmark.example") || strings.Contains(body, `"public_base_url"`) {
+		t.Fatalf("provider health leaked raw public base URL: %s", body)
+	}
+	if strings.Contains(strings.ToLower(body), "token") || strings.Contains(strings.ToLower(body), "api_key") || strings.Contains(strings.ToLower(body), "password") {
+		t.Fatalf("provider health leaked secret-shaped keys: %s", body)
 	}
 }
 

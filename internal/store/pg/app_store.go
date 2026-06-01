@@ -23,6 +23,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
+	"github.com/AndriGitDev/meil/internal/ops"
 	"github.com/AndriGitDev/meil/internal/privacy"
 	"github.com/AndriGitDev/meil/internal/reporter"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
@@ -176,6 +177,65 @@ WHERE token_hash = $1
 		principal.Scopes = append(principal.Scopes, apikeys.Scope(scope))
 	}
 	return principal, nil
+}
+
+func (s *AppStore) CreateOperationalEvent(ctx context.Context, event ops.Event) (ops.Event, error) {
+	if event.OccurredAt.IsZero() {
+		event.OccurredAt = time.Now().UTC()
+	}
+	metadata, err := json.Marshal(ops.SanitizeMetadata(event.Metadata))
+	if err != nil {
+		return ops.Event{}, fmt.Errorf("encoding operational event metadata: %w", err)
+	}
+	var id pgtype.UUID
+	err = s.queries.db.QueryRow(ctx, `
+INSERT INTO operational_events (kind, severity, message, actor, resource, metadata, occurred_at)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+RETURNING id, occurred_at
+`, strings.TrimSpace(event.Kind), string(event.Severity), strings.TrimSpace(event.Message), strings.TrimSpace(event.Actor), strings.TrimSpace(event.Resource), string(metadata), event.OccurredAt.UTC()).Scan(&id, &event.OccurredAt)
+	if err != nil {
+		return ops.Event{}, err
+	}
+	event.ID = uuidToString(id)
+	event.Metadata = ops.SanitizeMetadata(event.Metadata)
+	return event, nil
+}
+
+func (s *AppStore) ListOperationalEvents(ctx context.Context, severity string, limit int) ([]ops.Event, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	severity = strings.TrimSpace(severity)
+	rows, err := s.queries.db.Query(ctx, `
+SELECT id, kind, severity, message, actor, resource, metadata, occurred_at
+FROM operational_events
+WHERE ($1 = '' OR severity = $1)
+ORDER BY occurred_at DESC, id DESC
+LIMIT $2
+`, severity, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	events := []ops.Event{}
+	for rows.Next() {
+		var event ops.Event
+		var id pgtype.UUID
+		var metadata []byte
+		if err := rows.Scan(&id, &event.Kind, &event.Severity, &event.Message, &event.Actor, &event.Resource, &metadata, &event.OccurredAt); err != nil {
+			return nil, err
+		}
+		event.ID = uuidToString(id)
+		if len(metadata) > 0 {
+			if err := json.Unmarshal(metadata, &event.Metadata); err != nil {
+				return nil, fmt.Errorf("decoding operational event metadata: %w", err)
+			}
+		}
+		event.Metadata = ops.SanitizeMetadata(event.Metadata)
+		events = append(events, event)
+	}
+	return events, rows.Err()
 }
 
 func (s *AppStore) ApplyBillingWebhook(ctx context.Context, event billing.WebhookEvent) (bool, error) {

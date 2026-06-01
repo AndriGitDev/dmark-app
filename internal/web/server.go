@@ -34,6 +34,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
 	"github.com/AndriGitDev/meil/internal/notifier"
+	"github.com/AndriGitDev/meil/internal/ops"
 	"github.com/AndriGitDev/meil/internal/privacy"
 	"github.com/AndriGitDev/meil/internal/reporter"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
@@ -142,6 +143,10 @@ type AdminCaseStore interface {
 	CreateAbuseDecision(ctx context.Context, identifier string, action admin.AbuseAction, reason string, duration time.Duration) (admin.AbuseDecision, error)
 }
 
+type OperationalEventStore interface {
+	ListOperationalEvents(ctx context.Context, severity string, limit int) ([]ops.Event, error)
+}
+
 type PrivacyDeletionStore interface {
 	DeleteAccountData(ctx context.Context, userID string, email string) (privacy.DeletionPlan, error)
 }
@@ -155,39 +160,49 @@ type StatusAdminStore interface {
 }
 
 type Deps struct {
-	Scanner                EmailScanner
-	APIKeys                APIKeyAuthenticator
-	APIDomains             OrganizationDomainLister
-	APIDomainCreator       OrganizationDomainCreator
-	APIDomainChecker       OrganizationDomainChecker
-	APIDomainRechecks      OrganizationDomainRecheckQueue
-	APIDomainHistory       OrganizationDomainHistoryStore
-	APIDomainDrift         OrganizationDomainDriftStore
-	APIReporter            OrganizationReporterStore
-	APIDashboardAlerts     OrganizationDashboardAlertStore
-	APIDashboardSettings   OrganizationDashboardSettingsStore
-	BrandRiskResolver      brandrisk.LookalikeResolver
-	UserReporter           UserReporterStore
-	AuditClaims            AuditClaimStore
-	APIWebhooks            OrganizationWebhookStore
-	Billing                BillingWebhookStore
-	BillingCancellation    BillingCancellationStore
-	BillingWebhookSecret   string
-	APIKeyManagement       OrganizationAPIKeyStore
-	APITeams               OrganizationTeamStore
-	APIPrivacy             OrganizationPrivacyStore
-	APIAdmin               AdminCaseStore
-	PrivacyDeletion        PrivacyDeletionStore
-	APIStatus              StatusAdminStore
-	Auth                   *auth.Service
-	Domains                *domains.Service
-	Alerts                 alerts.Store
-	Sender                 notifier.EmailSender
-	SessionManager         *scs.SessionManager
-	PublicBaseURL          string
-	FrontendOrigins        []string
-	PublicChecksPerMinute  int
-	LoginAttemptsPerMinute int
+	Scanner                      EmailScanner
+	APIKeys                      APIKeyAuthenticator
+	APIDomains                   OrganizationDomainLister
+	APIDomainCreator             OrganizationDomainCreator
+	APIDomainChecker             OrganizationDomainChecker
+	APIDomainRechecks            OrganizationDomainRecheckQueue
+	APIDomainHistory             OrganizationDomainHistoryStore
+	APIDomainDrift               OrganizationDomainDriftStore
+	APIReporter                  OrganizationReporterStore
+	APIDashboardAlerts           OrganizationDashboardAlertStore
+	APIDashboardSettings         OrganizationDashboardSettingsStore
+	BrandRiskResolver            brandrisk.LookalikeResolver
+	UserReporter                 UserReporterStore
+	AuditClaims                  AuditClaimStore
+	APIWebhooks                  OrganizationWebhookStore
+	Billing                      BillingWebhookStore
+	BillingCancellation          BillingCancellationStore
+	BillingWebhookSecret         string
+	APIKeyManagement             OrganizationAPIKeyStore
+	APITeams                     OrganizationTeamStore
+	APIPrivacy                   OrganizationPrivacyStore
+	APIAdmin                     AdminCaseStore
+	APIOperations                OperationalEventStore
+	PrivacyDeletion              PrivacyDeletionStore
+	APIStatus                    StatusAdminStore
+	Auth                         *auth.Service
+	Domains                      *domains.Service
+	Alerts                       alerts.Store
+	Sender                       notifier.EmailSender
+	SessionManager               *scs.SessionManager
+	PublicBaseURL                string
+	PublicBaseURLConfigured      bool
+	FrontendOrigins              []string
+	PublicChecksPerMinute        int
+	LoginAttemptsPerMinute       int
+	BunnyDNSConfigured           bool
+	BunnyDNSZoneIDConfigured     bool
+	BootstrapConfigured          bool
+	BootstrapPartiallyConfigured bool
+	BootstrapSkipped             bool
+	SPFRouteSchedulerEnabled     bool
+	SPFRouteSchedulerInterval    time.Duration
+	SPFRouteScheduledSyncEvery   time.Duration
 }
 
 func NewRouter() http.Handler {
@@ -1373,6 +1388,57 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusCreated, apicontracts.NewAbuseDecisionResponse(decision))
+	})
+	r.Get("/api/v1/admin/operational-events", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+			return
+		}
+		if deps.APIOperations == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "operational event API is not configured")
+			return
+		}
+		limit, err := apiLimit(r.URL.Query().Get("limit"), 50, 200)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		severity := strings.TrimSpace(r.URL.Query().Get("severity"))
+		events, err := deps.APIOperations.ListOperationalEvents(r.Context(), severity, limit)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "loading operational events failed")
+			return
+		}
+		response := make([]apicontracts.OperationalEventResponse, 0, len(events))
+		for _, event := range events {
+			response = append(response, apicontracts.NewOperationalEventResponse(event))
+		}
+		writeJSON(w, http.StatusOK, map[string][]apicontracts.OperationalEventResponse{"events": response})
+	})
+	r.Get("/api/v1/admin/provider-health", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+			return
+		}
+		build := buildinfo.Current()
+		response := apicontracts.ProviderHealthResponse{
+			GeneratedAt:                  time.Now().UTC(),
+			PublicBaseURLConfigured:      deps.PublicBaseURLConfigured,
+			BunnyDNSConfigured:           deps.BunnyDNSConfigured,
+			BunnyDNSZoneIDConfigured:     deps.BunnyDNSZoneIDConfigured,
+			BootstrapConfigured:          deps.BootstrapConfigured,
+			BootstrapPartiallyConfigured: deps.BootstrapPartiallyConfigured,
+			BootstrapSkipped:             deps.BootstrapSkipped,
+			SPFRouteSchedulerEnabled:     deps.SPFRouteSchedulerEnabled,
+			Version:                      build.Version,
+			Commit:                       build.Commit,
+			BuildTime:                    build.BuildTime,
+		}
+		if deps.SPFRouteSchedulerInterval > 0 {
+			response.SPFRouteSchedulerInterval = deps.SPFRouteSchedulerInterval.String()
+		}
+		if deps.SPFRouteScheduledSyncEvery > 0 {
+			response.SPFRouteScheduledSyncCadence = deps.SPFRouteScheduledSyncEvery.String()
+		}
+		writeJSON(w, http.StatusOK, response)
 	})
 	r.Get("/api/v1/status/components", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
