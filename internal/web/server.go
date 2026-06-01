@@ -157,6 +157,25 @@ type OperationalEventStore interface {
 	ListOperationalEvents(ctx context.Context, severity string, limit int) ([]ops.Event, error)
 }
 
+type AdminSPFRouteAuditStore interface {
+	GetSPFRoute(ctx context.Context, routeID string) (spfroutes.Route, error)
+}
+
+type DNSPublicationResolver interface {
+	LookupTXT(ctx context.Context, name string) ([]string, error)
+	LookupCNAME(ctx context.Context, name string) (string, error)
+}
+
+type netDNSPublicationResolver struct{}
+
+func (netDNSPublicationResolver) LookupTXT(ctx context.Context, name string) ([]string, error) {
+	return net.DefaultResolver.LookupTXT(ctx, name)
+}
+
+func (netDNSPublicationResolver) LookupCNAME(ctx context.Context, name string) (string, error) {
+	return net.DefaultResolver.LookupCNAME(ctx, name)
+}
+
 type PrivacyDeletionStore interface {
 	DeleteAccountData(ctx context.Context, userID string, email string) (privacy.DeletionPlan, error)
 }
@@ -195,6 +214,9 @@ type Deps struct {
 	APIPrivacy                   OrganizationPrivacyStore
 	APIAdmin                     AdminCaseStore
 	APIOperations                OperationalEventStore
+	AdminSPFRouteAudits          AdminSPFRouteAuditStore
+	DNSPublicationResolver       DNSPublicationResolver
+	DNSPublicationTimeout        time.Duration
 	PrivacyDeletion              PrivacyDeletionStore
 	APIStatus                    StatusAdminStore
 	Auth                         *auth.Service
@@ -241,6 +263,12 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 	}
 	if deps.LoginAttemptsPerMinute <= 0 {
 		deps.LoginAttemptsPerMinute = 6
+	}
+	if deps.DNSPublicationResolver == nil {
+		deps.DNSPublicationResolver = netDNSPublicationResolver{}
+	}
+	if deps.DNSPublicationTimeout <= 0 {
+		deps.DNSPublicationTimeout = 2 * time.Second
 	}
 
 	r := chi.NewRouter()
@@ -1538,6 +1566,26 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, response)
 	})
+	r.Get("/api/v1/admin/spf-routes/{routeID}/publication-audit", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+			return
+		}
+		if deps.AdminSPFRouteAudits == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "SPF route audit API is not configured")
+			return
+		}
+		routeID := strings.TrimSpace(chi.URLParam(r, "routeID"))
+		if routeID == "" {
+			writeAPIError(w, http.StatusBadRequest, "route ID is required")
+			return
+		}
+		route, err := deps.AdminSPFRouteAudits.GetSPFRoute(r.Context(), routeID)
+		if err != nil {
+			writeAPIError(w, http.StatusNotFound, "SPF route not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, adminSPFRoutePublicationAuditResponse(r.Context(), route, deps.DNSPublicationResolver, deps.DNSPublicationTimeout))
+	})
 	r.Get("/api/v1/status/components", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
 			return
@@ -1889,6 +1937,108 @@ func requireOrganizationAPI(w http.ResponseWriter, principal apikeys.Principal) 
 		return false
 	}
 	return true
+}
+
+func adminSPFRoutePublicationAuditResponse(ctx context.Context, route spfroutes.Route, resolver DNSPublicationResolver, lookupTimeout time.Duration) apicontracts.AdminSPFRoutePublicationAuditResponse {
+	expectedTXTValue := strings.TrimSpace(route.LastPublishedSPF)
+	if expectedTXTValue == "" {
+		expectedTXTValue = strings.TrimSpace(route.LastGeneratedSPF)
+	}
+	response := apicontracts.AdminSPFRoutePublicationAuditResponse{
+		RouteID:          route.ID,
+		DomainID:         route.DomainID,
+		Domain:           route.Domain,
+		BunnyRecordID:    route.BunnyRecordID,
+		LastGeneratedSPF: route.LastGeneratedSPF,
+		LastPublishedSPF: route.LastPublishedSPF,
+		LastKnownGoodSPF: route.LastPublishedSPF,
+		LastSyncStatus:   string(route.LastSyncStatus),
+		LastSyncError:    adminSafeSPFRouteSyncError(route.LastSyncError),
+		Expected: apicontracts.DNSPublicationExpected{
+			TXT:   apicontracts.DNSExpectedTXT{Name: route.RouteFQDN, Value: expectedTXTValue},
+			CNAME: apicontracts.DNSExpectedCNAME{Name: route.CustomerCNAMEName, Target: route.CustomerCNAMETarget},
+		},
+		Recursive: apicontracts.DNSPublicationLive{
+			TXT:   apicontracts.DNSPublicationRecord{Values: []string{}, Status: "not_configured"},
+			CNAME: apicontracts.DNSPublicationRecord{Values: []string{}, Status: "not_configured"},
+		},
+		Authoritative:     apicontracts.DNSPublicationStatus{Status: "not_configured"},
+		PropagationStatus: "unknown",
+	}
+	if !route.LastSyncedAt.IsZero() {
+		lastSyncedAt := route.LastSyncedAt.UTC()
+		response.LastSyncedAt = &lastSyncedAt
+	}
+	if resolver != nil {
+		lookupCtx, cancel := context.WithTimeout(ctx, lookupTimeout)
+		defer cancel()
+		response.Recursive.TXT = lookupPublicationTXT(lookupCtx, resolver, route.RouteFQDN, expectedTXTValue)
+		response.Recursive.CNAME = lookupPublicationCNAME(lookupCtx, resolver, route.CustomerCNAMEName, route.CustomerCNAMETarget)
+	}
+	response.PropagationStatus = propagationStatus(response.Recursive.TXT.Status, response.Recursive.CNAME.Status)
+	return response
+}
+
+func lookupPublicationTXT(ctx context.Context, resolver DNSPublicationResolver, name, expected string) apicontracts.DNSPublicationRecord {
+	if strings.TrimSpace(name) == "" || strings.TrimSpace(expected) == "" {
+		return apicontracts.DNSPublicationRecord{Values: []string{}, Status: "not_configured"}
+	}
+	values, err := resolver.LookupTXT(ctx, name)
+	if err != nil {
+		return apicontracts.DNSPublicationRecord{Values: []string{}, Status: "missing", Error: "dns_lookup_failed"}
+	}
+	status := "drift"
+	for _, value := range values {
+		if strings.TrimSpace(value) == strings.TrimSpace(expected) {
+			status = "match"
+			break
+		}
+	}
+	return apicontracts.DNSPublicationRecord{Values: values, Status: status}
+}
+
+func lookupPublicationCNAME(ctx context.Context, resolver DNSPublicationResolver, name, expected string) apicontracts.DNSPublicationRecord {
+	if strings.TrimSpace(name) == "" || strings.TrimSpace(expected) == "" {
+		return apicontracts.DNSPublicationRecord{Values: []string{}, Status: "not_configured"}
+	}
+	value, err := resolver.LookupCNAME(ctx, name)
+	if err != nil {
+		return apicontracts.DNSPublicationRecord{Values: []string{}, Status: "missing", Error: "dns_lookup_failed"}
+	}
+	status := "drift"
+	if normalizeDNSName(value) == normalizeDNSName(expected) {
+		status = "match"
+	}
+	return apicontracts.DNSPublicationRecord{Values: []string{value}, Status: status}
+}
+
+func propagationStatus(statuses ...string) string {
+	matched := false
+	for _, status := range statuses {
+		switch status {
+		case "drift":
+			return "drift"
+		case "missing":
+			return "propagating"
+		case "match":
+			matched = true
+		}
+	}
+	if matched {
+		return "match"
+	}
+	return "unknown"
+}
+
+func normalizeDNSName(value string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(value)), ".")
+}
+
+func adminSafeSPFRouteSyncError(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return "SPF route sync failed; see operational events for operator details"
 }
 
 func dashboardDomainResponses(ctx context.Context, deps Deps, organizationID string, includeReporter bool) ([]apicontracts.DashboardDomainResponse, error) {

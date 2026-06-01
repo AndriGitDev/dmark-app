@@ -1026,6 +1026,54 @@ type ProviderHealthResponse struct {
 	BuildTime                    string    `json:"build_time"`
 }
 
+type AdminSPFRoutePublicationAuditResponse struct {
+	RouteID           string                 `json:"route_id"`
+	DomainID          string                 `json:"domain_id"`
+	Domain            string                 `json:"domain"`
+	Expected          DNSPublicationExpected `json:"expected"`
+	BunnyRecordID     int64                  `json:"bunny_record_id"`
+	LastGeneratedSPF  string                 `json:"last_generated_spf"`
+	LastPublishedSPF  string                 `json:"last_published_spf"`
+	LastKnownGoodSPF  string                 `json:"last_known_good_spf,omitempty"`
+	LastSyncStatus    string                 `json:"last_sync_status"`
+	LastSyncError     string                 `json:"last_sync_error,omitempty"`
+	LastSyncedAt      *time.Time             `json:"last_synced_at,omitempty"`
+	Recursive         DNSPublicationLive     `json:"recursive"`
+	Authoritative     DNSPublicationStatus   `json:"authoritative"`
+	PropagationStatus string                 `json:"propagation_status"`
+}
+
+type DNSPublicationExpected struct {
+	TXT   DNSExpectedTXT   `json:"txt"`
+	CNAME DNSExpectedCNAME `json:"cname"`
+}
+
+type DNSExpectedTXT struct {
+	Name  string `json:"name,omitempty"`
+	Value string `json:"value,omitempty"`
+}
+
+type DNSExpectedCNAME struct {
+	Name   string `json:"name,omitempty"`
+	Target string `json:"target,omitempty"`
+}
+
+type DNSPublicationLive struct {
+	TXT   DNSPublicationRecord `json:"txt"`
+	CNAME DNSPublicationRecord `json:"cname"`
+}
+
+type DNSPublicationRecord struct {
+	Values []string `json:"values"`
+	Status string   `json:"status"`
+	Error  string   `json:"error,omitempty"`
+}
+
+type DNSPublicationStatus struct {
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
 type StatusComponentResponse struct {
 	ID        string                     `json:"id"`
 	Name      string                     `json:"name"`

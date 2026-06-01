@@ -65,6 +65,13 @@ type webDomainStore struct {
 	checkedDomain     string
 }
 
+func (s *webDomainStore) GetSPFRoute(ctx context.Context, routeID string) (spfroutes.Route, error) {
+	if s.spfRoute.ID == "" || s.spfRoute.ID != routeID {
+		return spfroutes.Route{}, errors.New("SPF route not found")
+	}
+	return s.spfRoute, nil
+}
+
 func (s *webDomainStore) CreateDomain(ctx context.Context, userID string, domain string) (domains.Domain, error) {
 	saved := domains.Domain{ID: "domain-" + domain, Domain: domain}
 	s.domains = append(s.domains, saved)
@@ -556,6 +563,42 @@ func (r webLookalikeResolver) LookupMX(ctx context.Context, name string) ([]*net
 		return values, nil
 	}
 	return nil, errors.New("not found")
+}
+
+type webDNSPublicationResolver struct {
+	txt      map[string][]string
+	cname    map[string]string
+	txtErr   error
+	cnameErr error
+	block    bool
+}
+
+func (r webDNSPublicationResolver) LookupTXT(ctx context.Context, name string) ([]string, error) {
+	if r.block {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	if r.txtErr != nil {
+		return nil, r.txtErr
+	}
+	if values := r.txt[name]; len(values) > 0 {
+		return values, nil
+	}
+	return nil, errors.New("not found")
+}
+
+func (r webDNSPublicationResolver) LookupCNAME(ctx context.Context, name string) (string, error) {
+	if r.block {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+	if r.cnameErr != nil {
+		return "", r.cnameErr
+	}
+	if value := r.cname[name]; value != "" {
+		return value, nil
+	}
+	return "", errors.New("not found")
 }
 
 func TestBrowserRoutesAreHandedOff(t *testing.T) {
@@ -2213,12 +2256,182 @@ func TestAPIAdminOperationalEventsListRequiresOwnerAdminAndFiltersSeverity(t *te
 	}
 }
 
+func TestAPIAdminSPFRoutePublicationAuditReturnsPropagationAndDrift(t *testing.T) {
+	t.Parallel()
+
+	syncedAt := time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC)
+	store := &webDomainStore{spfRoute: spfroutes.Route{
+		ID:                  "route-1",
+		OrganizationID:      "org-1",
+		DomainID:            "domain-1",
+		Domain:              "example.com",
+		RouteFQDN:           "example-com.route.dmark.is",
+		CustomerCNAMEName:   "example.com",
+		CustomerCNAMETarget: "example-com.route.dmark.is",
+		BunnyRecordID:       4242,
+		LastGeneratedSPF:    "v=spf1 include:_spf.mailgun.org ~all",
+		LastPublishedSPF:    "v=spf1 include:_spf.mailgun.org ~all",
+		LastSyncStatus:      spfroutes.StatusHealthy,
+		LastSyncError:       "",
+		LastSyncedAt:        syncedAt,
+	}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:             &webAPIKeyAuth{principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true}},
+		AdminSPFRouteAudits: store,
+		DNSPublicationResolver: webDNSPublicationResolver{
+			txt: map[string][]string{
+				"example-com.route.dmark.is": {"v=spf1 include:_spf.mailgun.org ~all"},
+			},
+			cname: map[string]string{
+				"example.com": "stale.route.dmark.is.",
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/spf-routes/route-1/publication-audit", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`"route_id":"route-1"`,
+		`"domain_id":"domain-1"`,
+		`"domain":"example.com"`,
+		`"bunny_record_id":4242`,
+		`"last_generated_spf":"v=spf1 include:_spf.mailgun.org ~all"`,
+		`"last_published_spf":"v=spf1 include:_spf.mailgun.org ~all"`,
+		`"last_sync_status":"healthy"`,
+		`"txt":{"name":"example-com.route.dmark.is","value":"v=spf1 include:_spf.mailgun.org ~all"}`,
+		`"cname":{"name":"example.com","target":"example-com.route.dmark.is"}`,
+		`"recursive":{"txt":{"values":["v=spf1 include:_spf.mailgun.org ~all"],"status":"match"},"cname":{"values":["stale.route.dmark.is."],"status":"drift"}}`,
+		`"propagation_status":"drift"`,
+		`"authoritative":{"status":"not_configured"}`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %s: %s", want, body)
+		}
+	}
+}
+
+func TestAPIAdminSPFRoutePublicationAuditSanitizesDNSLookupErrors(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{spfRoute: spfroutes.Route{
+		ID:                  "route-1",
+		DomainID:            "domain-1",
+		Domain:              "example.com",
+		RouteFQDN:           "example-com.route.dmark.is",
+		CustomerCNAMEName:   "example.com",
+		CustomerCNAMETarget: "example-com.route.dmark.is",
+		LastPublishedSPF:    "v=spf1 include:_spf.mailgun.org ~all",
+		LastSyncStatus:      spfroutes.StatusFailed,
+		LastSyncError:       "provider token expired: token=[REDACTED]",
+	}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:             &webAPIKeyAuth{principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true}},
+		AdminSPFRouteAudits: store,
+		DNSPublicationResolver: webDNSPublicationResolver{
+			txtErr:   errors.New("lookup failed via resolver 10.0.0.53: token=should-not-leak"),
+			cnameErr: errors.New("lookup failed via resolver 10.0.0.53: secret=should-not-leak"),
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/spf-routes/route-1/publication-audit", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"error":"dns_lookup_failed"`) || !strings.Contains(body, `"last_sync_error":"SPF route sync failed; see operational events for operator details"`) {
+		t.Fatalf("body missing sanitized DNS/sync errors: %s", body)
+	}
+	for _, leaked := range []string{"10.0.0.53", "should-not-leak", "token=", "secret="} {
+		if strings.Contains(body, leaked) {
+			t.Fatalf("body leaked %q: %s", leaked, body)
+		}
+	}
+}
+
+func TestAPIAdminSPFRoutePublicationAuditBoundsDNSLookupTime(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{spfRoute: spfroutes.Route{
+		ID:                  "route-1",
+		DomainID:            "domain-1",
+		Domain:              "example.com",
+		RouteFQDN:           "example-com.route.dmark.is",
+		CustomerCNAMEName:   "example.com",
+		CustomerCNAMETarget: "example-com.route.dmark.is",
+		LastPublishedSPF:    "v=spf1 include:_spf.mailgun.org ~all",
+	}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:                &webAPIKeyAuth{principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true}},
+		AdminSPFRouteAudits:    store,
+		DNSPublicationResolver: webDNSPublicationResolver{block: true},
+		DNSPublicationTimeout:  10 * time.Millisecond,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/spf-routes/route-1/publication-audit", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+	started := time.Now()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("publication audit took %s, want bounded DNS timeout", elapsed)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `"error":"dns_lookup_failed"`) || !strings.Contains(body, `"propagation_status":"propagating"`) {
+		t.Fatalf("body missing timeout-safe DNS failure: %s", body)
+	}
+}
+
+func TestAPIAdminSPFRoutePublicationAuditRequiresOwnerGlobalAdmin(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name       string
+		header     string
+		auth       *webAPIKeyAuth
+		wantStatus int
+	}{
+		{name: "missing bearer token", auth: &webAPIKeyAuth{principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: true}}, wantStatus: http.StatusUnauthorized},
+		{name: "non admin scope", header: "Bearer meil_test", auth: &webAPIKeyAuth{principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}, GlobalAdmin: true}}, wantStatus: http.StatusForbidden},
+		{name: "admin scope without global admin", header: "Bearer meil_test", auth: &webAPIKeyAuth{principal: apikeys.Principal{Scopes: []apikeys.Scope{apikeys.ScopeAdminManage}, GlobalAdmin: false}}, wantStatus: http.StatusForbidden},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			router := NewRouterWithDeps(Deps{APIKeys: tt.auth, AdminSPFRouteAudits: &webDomainStore{spfRoute: spfroutes.Route{ID: "route-1"}}})
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/spf-routes/route-1/publication-audit", nil)
+			if tt.header != "" {
+				req.Header.Set("Authorization", tt.header)
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%s", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestAPIAdminOperationalEndpointsRequireOwnerGlobalAdmin(t *testing.T) {
 	t.Parallel()
 
 	endpoints := []string{
 		"/api/v1/admin/operational-events",
 		"/api/v1/admin/provider-health",
+		"/api/v1/admin/spf-routes/route-1/publication-audit",
 	}
 	for _, endpoint := range endpoints {
 		endpoint := endpoint

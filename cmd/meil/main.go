@@ -784,6 +784,7 @@ func newServeCommand() *cobra.Command {
 					APIPrivacy:                   store,
 					APIAdmin:                     store,
 					APIOperations:                store,
+					AdminSPFRouteAudits:          store,
 					APIStatus:                    store,
 					PrivacyDeletion:              store,
 					Auth:                         auth.NewService(store, time.Duration(cfg.AuthTokenTTL)*time.Minute),
