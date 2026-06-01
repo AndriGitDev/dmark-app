@@ -153,8 +153,13 @@ func NewWorkers(store interface {
 		return nil, err
 	}
 	if len(spfSyncers) > 0 && spfSyncers[0] != nil {
+		var events SPFRouteOperationalEventStore
+		if operationalEvents, ok := store.(SPFRouteOperationalEventStore); ok {
+			events = operationalEvents
+		}
 		err = river.AddWorkerSafely(workers, &SyncSPFRouteWorker{
 			Syncer: spfSyncers[0],
+			Events: events,
 			Policy: DefaultRetryPolicy(),
 		})
 		if err != nil {
