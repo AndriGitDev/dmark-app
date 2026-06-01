@@ -34,6 +34,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/ingest"
 	"github.com/AndriGitDev/meil/internal/jobs"
+	"github.com/AndriGitDev/meil/internal/monitoring"
 	"github.com/AndriGitDev/meil/internal/notifier"
 	"github.com/AndriGitDev/meil/internal/ops"
 	"github.com/AndriGitDev/meil/internal/scanner"
@@ -83,8 +84,51 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newMigrateCommand())
 	root.AddCommand(newScanCommand())
 	root.AddCommand(newSPFRouteCommand())
+	root.AddCommand(newSyntheticCheckCommand())
 
 	return root
+}
+
+func newSyntheticCheckCommand() *cobra.Command {
+	var cfg monitoring.SyntheticConfig
+	var jsonOutput bool
+	cmd := &cobra.Command{
+		Use:   "synthetic-check",
+		Short: "Run synthetic public-flow and DNS monitoring checks",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runner := monitoring.SyntheticRunner{
+				HTTPClient: &http.Client{Timeout: cfg.Timeout},
+				Resolver:   net.DefaultResolver,
+			}
+			report := runner.Run(cmd.Context(), cfg)
+			if jsonOutput {
+				if err := printSyntheticCheckJSON(cmd.OutOrStdout(), report); err != nil {
+					return err
+				}
+			}
+			if report.Failed {
+				return fmt.Errorf("synthetic checks failed")
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&cfg.FrontendURL, "frontend-url", "https://dmark.is", "public frontend base URL to GET")
+	cmd.Flags().StringVar(&cfg.BackendURL, "backend-url", "https://dmark.kastro.is", "public backend base URL for /healthz and /api/public/scan")
+	cmd.Flags().StringVar(&cfg.ScanDomain, "scan-domain", "kastro.is", "domain used for public scan freshness/schema check")
+	cmd.Flags().DurationVar(&cfg.MaxScanAge, "max-scan-age", 5*time.Minute, "maximum acceptable age for public scan checked_at")
+	cmd.Flags().StringVar(&cfg.RouteTXTName, "route-txt-name", "", "optional DNS TXT name to check")
+	cmd.Flags().StringVar(&cfg.RouteTXTWanted, "route-txt-want", "", "expected substring for optional DNS TXT record")
+	cmd.Flags().StringVar(&cfg.RouteCNAMEName, "route-cname-name", "", "optional DNS CNAME name to check")
+	cmd.Flags().StringVar(&cfg.RouteCNAMEWant, "route-cname-want", "", "expected target for optional DNS CNAME record")
+	cmd.Flags().DurationVar(&cfg.Timeout, "timeout", 10*time.Second, "overall synthetic check timeout")
+	cmd.Flags().BoolVar(&jsonOutput, "json", true, "write machine-readable JSON")
+	return cmd
+}
+
+func printSyntheticCheckJSON(w io.Writer, report monitoring.SyntheticReport) error {
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(report)
 }
 
 func newWorkerCommand() *cobra.Command {

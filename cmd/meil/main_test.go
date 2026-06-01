@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AndriGitDev/meil/internal/monitoring"
 	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/spfroutes"
 	"github.com/AndriGitDev/meil/internal/spfroutescheduler"
@@ -150,6 +151,48 @@ func TestSPFRouteCommandIncludesAuditSubcommand(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("spf-route command missing audit subcommand")
+	}
+}
+
+func TestRootCommandIncludesSyntheticCheckSubcommand(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCommand()
+	found := false
+	for _, child := range cmd.Commands() {
+		if child.Name() == "synthetic-check" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("root command missing synthetic-check subcommand")
+	}
+}
+
+func TestPrintSyntheticCheckJSON(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	payload := monitoring.SyntheticReport{
+		Failed: false,
+		Checks: []monitoring.SyntheticCheckResult{{Name: "frontend_homepage", Status: monitoring.SyntheticStatusPass, Target: "https://example.test"}},
+	}
+	if err := printSyntheticCheckJSON(&out, payload); err != nil {
+		t.Fatalf("printSyntheticCheckJSON returned error: %v", err)
+	}
+	var decoded struct {
+		Failed bool `json:"failed"`
+		Checks []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("JSON output did not parse: %v\n%s", err, out.String())
+	}
+	if decoded.Failed || len(decoded.Checks) != 1 || decoded.Checks[0].Name != "frontend_homepage" || decoded.Checks[0].Status != "pass" {
+		t.Fatalf("unexpected payload: %+v", decoded)
 	}
 }
 
