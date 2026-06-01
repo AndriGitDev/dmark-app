@@ -63,6 +63,7 @@ type webDomainStore struct {
 	operationalEventErr error
 	spfRoute            spfroutes.Route
 	queuedSPFRouteID    string
+	spfRouteSyncErr     error
 	deletedUserID       string
 	checkedDomain       string
 }
@@ -180,6 +181,9 @@ func (s *webDomainStore) UpsertOrganizationSPFRoute(ctx context.Context, organiz
 }
 
 func (s *webDomainStore) QueueOrganizationSPFRouteSync(ctx context.Context, organizationID string, domainID string, routeID string, at time.Time) (string, error) {
+	if s.spfRouteSyncErr != nil {
+		return "", s.spfRouteSyncErr
+	}
 	if s.spfRoute.ID == "" || s.spfRoute.OrganizationID != organizationID || s.spfRoute.DomainID != domainID || s.spfRoute.ID != routeID {
 		return "", errors.New("SPF route not found")
 	}
@@ -862,6 +866,20 @@ func TestPublicScanReturnsJSONWithoutAPIKey(t *testing.T) {
 	}
 }
 
+func assertNoDashboardOperationalSecretLeak(t *testing.T, event ops.Event) {
+	t.Helper()
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal operational event returned error: %v", err)
+	}
+	lower := strings.ToLower(string(encoded))
+	for _, marker := range []string{"bearer", "authorization", "meil_test", "api_key", "secret", "password", "raw request", "bunny dns zone"} {
+		if strings.Contains(lower, marker) {
+			t.Fatalf("operational event leaked sensitive marker %q: %+v", marker, event)
+		}
+	}
+}
+
 func TestPublicScanRecordsOperationalEventOnSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -1313,6 +1331,72 @@ func TestDashboardRecheckQueuesJob(t *testing.T) {
 	}
 }
 
+func TestDashboardRecheckQueuesJobRecordsOperationalEvent(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:           &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
+		APIDomainChecker:  store,
+		APIDomainRechecks: store,
+		APIOperations:     store,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/dashboard/domains/domain-1/recheck", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	req.Header.Set("X-Request-ID", "req-recheck-queued")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+	if len(store.operationalEvents) != 1 {
+		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	}
+	event := store.operationalEvents[0]
+	if event.Kind != "dashboard.recheck.queued" || event.Severity != ops.SeverityInfo || event.Actor != "organization:org-1" || event.Resource != "domain:domain-1" {
+		t.Fatalf("unexpected operational event: %+v", event)
+	}
+	if event.Metadata["organization_id"] != "org-1" || event.Metadata["domain_id"] != "domain-1" || event.Metadata["domain"] != "example.com" || event.Metadata["job_id"] != "job-1" || event.Metadata["http_status"] != http.StatusAccepted || event.Metadata["request_id"] != "req-recheck-queued" {
+		t.Fatalf("unexpected operational metadata: %+v", event.Metadata)
+	}
+	assertNoDashboardOperationalSecretLeak(t, event)
+}
+
+func TestDashboardRecheckCompletedRecordsOperationalEvent(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
+		APIDomainChecker: store,
+		APIOperations:    store,
+		Scanner:          fakeScanner{result: scanner.Result{Domain: "example.com"}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/dashboard/domains/domain-1/recheck", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	req.Header.Set("X-Request-ID", "req-recheck-completed")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+	if len(store.operationalEvents) != 1 {
+		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	}
+	event := store.operationalEvents[0]
+	if event.Kind != "dashboard.recheck.completed" || event.Severity != ops.SeverityInfo || event.Actor != "organization:org-1" || event.Resource != "domain:domain-1" {
+		t.Fatalf("unexpected operational event: %+v", event)
+	}
+	if event.Metadata["organization_id"] != "org-1" || event.Metadata["domain_id"] != "domain-1" || event.Metadata["domain"] != "example.com" || event.Metadata["status"] != "completed" || event.Metadata["http_status"] != http.StatusAccepted || event.Metadata["request_id"] != "req-recheck-completed" {
+		t.Fatalf("unexpected operational metadata: %+v", event.Metadata)
+	}
+	assertNoDashboardOperationalSecretLeak(t, event)
+}
+
 func TestDashboardSPFRouteGetReturnsFrontendSafeContract(t *testing.T) {
 	t.Parallel()
 
@@ -1599,6 +1683,49 @@ func TestDashboardSPFRoutePutValidatesAndUpserts(t *testing.T) {
 	}
 }
 
+func TestDashboardSPFRoutePutRecordsOperationalEvents(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
+		APIDomainChecker: store,
+		APISPFRoutes:     store,
+		APISPFRouteSyncs: store,
+		APIOperations:    store,
+	})
+	payload := `{"route_fqdn":"example-com.route.dmark.is","customer_cname_name":"example.com","customer_cname_target":"example-com.route.dmark.is","enabled":true,"mechanism_policy":"softfail","sources":[{"kind":"include","value":"_spf.mailgun.org","label":"Mailgun","enabled":true},{"kind":"ip4","value":"192.0.2.0/24","label":"Legacy","enabled":false}]}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/dashboard/domains/domain-1/spf-route", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer meil_test")
+	req.Header.Set("X-Request-ID", "req-spf-upsert")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if len(store.operationalEvents) != 2 {
+		t.Fatalf("operational events stored = %d, want 2: %+v", len(store.operationalEvents), store.operationalEvents)
+	}
+	upserted := store.operationalEvents[0]
+	if upserted.Kind != "dashboard.spf_route.upserted" || upserted.Severity != ops.SeverityInfo || upserted.Resource != "spf_route:route-1" {
+		t.Fatalf("unexpected SPF upsert event: %+v", upserted)
+	}
+	if upserted.Metadata["organization_id"] != "org-1" || upserted.Metadata["domain_id"] != "domain-1" || upserted.Metadata["domain"] != "example.com" || upserted.Metadata["route_id"] != "route-1" || upserted.Metadata["sources_count"] != 2 || upserted.Metadata["http_status"] != http.StatusOK || upserted.Metadata["request_id"] != "req-spf-upsert" {
+		t.Fatalf("unexpected SPF upsert metadata: %+v", upserted.Metadata)
+	}
+	syncQueued := store.operationalEvents[1]
+	if syncQueued.Kind != "dashboard.spf_route.sync_queued" || syncQueued.Severity != ops.SeverityInfo || syncQueued.Resource != "spf_route:route-1" {
+		t.Fatalf("unexpected SPF sync event: %+v", syncQueued)
+	}
+	if syncQueued.Metadata["job_id"] != "spf-sync-job-1" || syncQueued.Metadata["route_id"] != "route-1" || syncQueued.Metadata["http_status"] != http.StatusOK || syncQueued.Metadata["request_id"] != "req-spf-upsert" {
+		t.Fatalf("unexpected SPF sync metadata: %+v", syncQueued.Metadata)
+	}
+	assertNoDashboardOperationalSecretLeak(t, upserted)
+	assertNoDashboardOperationalSecretLeak(t, syncQueued)
+}
+
 func TestDashboardSPFRouteSyncQueuesManualJob(t *testing.T) {
 	t.Parallel()
 
@@ -1624,6 +1751,78 @@ func TestDashboardSPFRouteSyncQueuesManualJob(t *testing.T) {
 	if store.queuedSPFRouteID != "route-1" || !strings.Contains(rec.Body.String(), `"job_id":"spf-sync-job-1"`) || !strings.Contains(rec.Body.String(), `"status":"queued"`) {
 		t.Fatalf("manual sync not queued; route=%q body=%s", store.queuedSPFRouteID, rec.Body.String())
 	}
+}
+
+func TestDashboardSPFRouteSyncRecordsOperationalEvent(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{
+		domains:  []domains.Domain{{ID: "domain-1", Domain: "example.com"}},
+		spfRoute: spfroutes.Route{ID: "route-1", OrganizationID: "org-1", DomainID: "domain-1", Domain: "example.com", RouteFQDN: "example-com.route.dmark.is", Sources: []spfroutes.Source{{Kind: spfroutes.SourceKindInclude, Value: "_spf.mailgun.org", Enabled: true}}},
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
+		APIDomainChecker: store,
+		APISPFRoutes:     store,
+		APISPFRouteSyncs: store,
+		APIOperations:    store,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/dashboard/domains/domain-1/spf-route/sync", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	req.Header.Set("X-Request-ID", "req-spf-sync")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+	if len(store.operationalEvents) != 1 {
+		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	}
+	event := store.operationalEvents[0]
+	if event.Kind != "dashboard.spf_route.sync_queued" || event.Severity != ops.SeverityInfo || event.Actor != "organization:org-1" || event.Resource != "spf_route:route-1" {
+		t.Fatalf("unexpected operational event: %+v", event)
+	}
+	if event.Metadata["organization_id"] != "org-1" || event.Metadata["domain_id"] != "domain-1" || event.Metadata["domain"] != "example.com" || event.Metadata["route_id"] != "route-1" || event.Metadata["job_id"] != "spf-sync-job-1" || event.Metadata["sources_count"] != 1 || event.Metadata["http_status"] != http.StatusAccepted || event.Metadata["request_id"] != "req-spf-sync" {
+		t.Fatalf("unexpected operational metadata: %+v", event.Metadata)
+	}
+	assertNoDashboardOperationalSecretLeak(t, event)
+}
+
+func TestDashboardSPFRouteSyncFailureRecordsSanitizedOperationalEvent(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{
+		domains:         []domains.Domain{{ID: "domain-1", Domain: "example.com"}},
+		spfRoute:        spfroutes.Route{ID: "route-1", OrganizationID: "org-1", DomainID: "domain-1", Domain: "example.com", RouteFQDN: "example-com.route.dmark.is"},
+		spfRouteSyncErr: errors.New("Bunny DNS zone 801471 request failed with api_key=secret"),
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
+		APIDomainChecker: store,
+		APISPFRoutes:     store,
+		APISPFRouteSyncs: store,
+		APIOperations:    store,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/dashboard/domains/domain-1/spf-route/sync", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	req.Header.Set("X-Request-ID", "req-spf-sync-fail")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+	if len(store.operationalEvents) != 1 {
+		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	}
+	event := store.operationalEvents[0]
+	if event.Kind != "dashboard.spf_route.sync_failed" || event.Severity != ops.SeverityError || event.Metadata["error_class"] != "queue_error" || event.Metadata["http_status"] != http.StatusInternalServerError {
+		t.Fatalf("unexpected operational event: %+v", event)
+	}
+	assertNoDashboardOperationalSecretLeak(t, event)
 }
 
 func TestDashboardSPFRouteEndpointsRequireExpectedScopes(t *testing.T) {

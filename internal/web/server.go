@@ -578,9 +578,11 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		if deps.APIDomainRechecks != nil {
 			job, err := deps.APIDomainRechecks.QueueOrganizationDomainRecheck(r.Context(), principal.OrganizationID, domain.ID, now)
 			if err != nil {
+				recordDashboardRecheckOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, http.StatusTooManyRequests, "dashboard.recheck.failed", ops.SeverityWarn, "dashboard recheck queue failed", map[string]any{"error_class": "queue_error"})
 				writeAPIError(w, http.StatusTooManyRequests, err.Error())
 				return
 			}
+			recordDashboardRecheckOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, http.StatusAccepted, "dashboard.recheck.queued", ops.SeverityInfo, "dashboard recheck queued", map[string]any{"job_id": job.ID, "status": job.Status})
 			writeJSON(w, http.StatusAccepted, apicontracts.DashboardRecheckResponse{
 				JobID:       job.ID,
 				DomainID:    job.DomainID,
@@ -594,13 +596,16 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		defer cancel()
 		result, err := deps.Scanner.Scan(ctx, domain.Domain)
 		if err != nil {
+			recordDashboardRecheckOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, http.StatusBadRequest, "dashboard.recheck.failed", ops.SeverityWarn, "dashboard recheck failed", map[string]any{"error_class": "scanner_error"})
 			writeAPIError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if err := deps.APIDomainChecker.CreateCheck(r.Context(), domain.ID, result); err != nil {
+			recordDashboardRecheckOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, http.StatusInternalServerError, "dashboard.recheck.failed", ops.SeverityError, "dashboard recheck save failed", map[string]any{"error_class": "store_error"})
 			writeAPIError(w, http.StatusInternalServerError, "saving check failed")
 			return
 		}
+		recordDashboardRecheckOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, http.StatusAccepted, "dashboard.recheck.completed", ops.SeverityInfo, "dashboard recheck completed", map[string]any{"status": "completed"})
 		writeJSON(w, http.StatusAccepted, apicontracts.DashboardRecheckResponse{
 			DomainID: domain.ID,
 			Status:   "completed",
@@ -654,14 +659,19 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		}
 		saved, err := deps.APISPFRoutes.UpsertOrganizationSPFRoute(r.Context(), principal.OrganizationID, route)
 		if err != nil {
+			recordDashboardSPFRouteOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, route, http.StatusInternalServerError, "dashboard.spf_route.failed", ops.SeverityError, "dashboard SPF route save failed", map[string]any{"error_class": "store_error"})
 			writeAPIError(w, http.StatusInternalServerError, "saving SPF route failed")
 			return
 		}
 		now := time.Now().UTC()
-		if _, err := deps.APISPFRouteSyncs.QueueOrganizationSPFRouteSync(r.Context(), principal.OrganizationID, domain.ID, saved.ID, now); err != nil {
+		recordDashboardSPFRouteOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, saved, http.StatusOK, "dashboard.spf_route.upserted", ops.SeverityInfo, "dashboard SPF route upserted", nil)
+		jobID, err := deps.APISPFRouteSyncs.QueueOrganizationSPFRouteSync(r.Context(), principal.OrganizationID, domain.ID, saved.ID, now)
+		if err != nil {
+			recordDashboardSPFRouteOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, saved, http.StatusInternalServerError, "dashboard.spf_route.sync_failed", ops.SeverityError, "dashboard SPF route sync queue failed", map[string]any{"error_class": "queue_error"})
 			writeAPIError(w, http.StatusInternalServerError, "queueing SPF route sync failed")
 			return
 		}
+		recordDashboardSPFRouteOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, saved, http.StatusOK, "dashboard.spf_route.sync_queued", ops.SeverityInfo, "dashboard SPF route sync queued", map[string]any{"job_id": jobID})
 		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSPFRouteResponse(saved))
 	})
 	r.Post("/api/v1/dashboard/domains/{id}/spf-route/sync", func(w http.ResponseWriter, r *http.Request) {
@@ -688,9 +698,11 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		now := time.Now().UTC()
 		jobID, err := deps.APISPFRouteSyncs.QueueOrganizationSPFRouteSync(r.Context(), principal.OrganizationID, domain.ID, route.ID, now)
 		if err != nil {
+			recordDashboardSPFRouteOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, route, http.StatusInternalServerError, "dashboard.spf_route.sync_failed", ops.SeverityError, "dashboard SPF route sync queue failed", map[string]any{"error_class": "queue_error"})
 			writeAPIError(w, http.StatusInternalServerError, "queueing SPF route sync failed")
 			return
 		}
+		recordDashboardSPFRouteOperationalEvent(r, deps.APIOperations, principal.OrganizationID, domain, route, http.StatusAccepted, "dashboard.spf_route.sync_queued", ops.SeverityInfo, "dashboard SPF route sync queued", map[string]any{"job_id": jobID})
 		writeJSON(w, http.StatusAccepted, apicontracts.DashboardSPFRouteSyncResponse{JobID: jobID, RouteID: route.ID, DomainID: domain.ID, Status: "queued", QueuedAt: now})
 	})
 	r.Get("/api/v1/dashboard/domains/{id}/change-plan", func(w http.ResponseWriter, r *http.Request) {
