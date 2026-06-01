@@ -581,14 +581,24 @@ type SummaryResponse struct {
 }
 
 type CheckResponse struct {
-	Name             string                   `json:"name"`
-	Status           scanner.Status           `json:"status"`
-	Message          string                   `json:"message"`
-	Record           string                   `json:"record,omitempty"`
-	SourceName       string                   `json:"source_name,omitempty"`
-	LookupDurationMS int64                    `json:"lookup_duration_ms"`
-	ErrorClass       string                   `json:"error_class,omitempty"`
-	Selectors        []scanner.SelectorResult `json:"selectors,omitempty"`
+	Name             string                    `json:"name"`
+	Status           scanner.Status            `json:"status"`
+	Message          string                    `json:"message"`
+	Record           string                    `json:"record,omitempty"`
+	SourceName       string                    `json:"source_name,omitempty"`
+	LookupDurationMS int64                     `json:"lookup_duration_ms"`
+	ErrorClass       string                    `json:"error_class,omitempty"`
+	Selectors        []scanner.SelectorResult  `json:"selectors,omitempty"`
+	Explanation      *CheckExplanationResponse `json:"explanation,omitempty"`
+}
+
+type CheckExplanationResponse struct {
+	Severity            string `json:"severity"`
+	Confidence          string `json:"confidence"`
+	WhatItMeans         string `json:"what_it_means"`
+	ExactRecord         string `json:"exact_record,omitempty"`
+	NextAction          string `json:"next_action"`
+	ExpectedPropagation string `json:"expected_propagation"`
 }
 
 type AuditResponse struct {
@@ -642,7 +652,65 @@ func newCheckResponse(check scanner.CheckResult) CheckResponse {
 		LookupDurationMS: check.LookupDuration.Milliseconds(),
 		ErrorClass:       check.ErrorClass,
 		Selectors:        check.Selectors,
+		Explanation:      explanationForCheck(check),
 	}
+}
+
+const dnsPropagationCopy = "DNS TXT changes usually propagate within minutes, but allow up to 24 hours before treating stale answers as failure."
+
+func explanationForCheck(check scanner.CheckResult) *CheckExplanationResponse {
+	if check.Name == "" || check.Status == scanner.StatusPass {
+		return nil
+	}
+	explanation := CheckExplanationResponse{
+		Severity:            severityForCheck(check.Status),
+		Confidence:          confidenceForCheck(check),
+		WhatItMeans:         defaultCheckMeaning(check),
+		ExactRecord:         strings.TrimSpace(check.Record),
+		NextAction:          scanner.Summarize(scanner.Result{SPF: check}).Remediation,
+		ExpectedPropagation: dnsPropagationCopy,
+	}
+	switch strings.ToUpper(strings.TrimSpace(check.Name)) {
+	case "SPF":
+		explanation.WhatItMeans = "SPF tells receiving mail servers which systems may send mail for this domain. Problems here can make legitimate mail look suspicious or allow spoofing gaps."
+		explanation.NextAction = scanner.Summarize(scanner.Result{SPF: check}).Remediation
+	case "DKIM":
+		explanation.WhatItMeans = "DKIM lets receiving mail servers verify that messages were signed by an approved provider and were not altered in transit."
+		explanation.NextAction = "Ask each active mail provider for its DKIM selector names and public-key TXT records, publish them under _domainkey, then re-scan after DNS propagation."
+	case "DMARC":
+		explanation.WhatItMeans = "DMARC tells receivers what to do when SPF or DKIM alignment fails and gives operators report visibility before moving to enforcement."
+		explanation.NextAction = scanner.Summarize(scanner.Result{DMARC: check}).Remediation
+	case "BIMI":
+		explanation.WhatItMeans = "BIMI can display a verified brand logo in supporting inboxes, but it depends on strong DMARC enforcement first."
+		explanation.NextAction = scanner.Summarize(scanner.Result{BIMI: check}).Remediation
+	}
+	return &explanation
+}
+
+func severityForCheck(status scanner.Status) string {
+	switch status {
+	case scanner.StatusFail, scanner.StatusMissing:
+		return "high"
+	case scanner.StatusWarn:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+func confidenceForCheck(check scanner.CheckResult) string {
+	errorClass := strings.TrimSpace(check.ErrorClass)
+	if check.Status == scanner.StatusUnknown || errorClass == "timeout" || errorClass == "resolver_failure" {
+		return "low"
+	}
+	if strings.TrimSpace(check.Record) != "" || len(check.Selectors) > 0 {
+		return "high"
+	}
+	return "medium"
+}
+
+func defaultCheckMeaning(check scanner.CheckResult) string {
+	return check.Name + " evidence needs review before the domain's email authentication posture can be trusted."
 }
 
 type DomainResponse struct {
