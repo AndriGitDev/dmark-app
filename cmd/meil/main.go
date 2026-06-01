@@ -36,6 +36,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/notifier"
 	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/spfroutes"
+	"github.com/AndriGitDev/meil/internal/spfroutescheduler"
 	"github.com/AndriGitDev/meil/internal/store/ch"
 	"github.com/AndriGitDev/meil/internal/store/pg"
 	"github.com/AndriGitDev/meil/internal/web"
@@ -121,15 +122,20 @@ func newWorkerCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("creating River client: %w", err)
 			}
-			if err := client.Start(cmd.Context()); err != nil {
+			workerCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			if err := client.Start(workerCtx); err != nil {
 				return fmt.Errorf("starting River worker: %w", err)
+			}
+			if cfg.SPFRouteSchedulerEnabled {
+				interval := time.Duration(cfg.SPFRouteSchedulerIntervalSeconds) * time.Second
+				cadence := time.Duration(cfg.SPFRouteScheduledSyncCadenceHours) * time.Hour
+				go runSPFRouteScheduler(workerCtx, slog.Default(), store, client, interval, cadence)
 			}
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "worker running job kinds: %s\n", strings.Join(registered, ", ")); err != nil {
 				return err
 			}
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-			defer stop()
-			<-ctx.Done()
+			<-workerCtx.Done()
 
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -141,6 +147,35 @@ func newWorkerCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&listJobs, "list-jobs", false, "list registered background job kinds and exit")
 	return cmd
+}
+
+func runSPFRouteScheduler(ctx context.Context, logger *slog.Logger, store spfroutescheduler.RouteStore, enqueuer spfroutescheduler.Enqueuer, interval, cadence time.Duration) {
+	if interval <= 0 {
+		interval = 15 * time.Minute
+	}
+	if cadence <= 0 {
+		cadence = spfroutescheduler.DefaultCadence
+	}
+	runOnce := func() {
+		result, err := spfroutescheduler.EnqueueDue(ctx, store, enqueuer, time.Now().UTC(), cadence)
+		if err != nil {
+			logger.Error("SPF route scheduled enqueue failed", "error", err)
+			return
+		}
+		logger.Info("SPF route scheduled enqueue checked routes", "checked", result.Checked, "due", result.Due, "queued", result.Queued)
+	}
+
+	runOnce()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			runOnce()
+		}
+	}
 }
 
 func newMigrateCommand() *cobra.Command {

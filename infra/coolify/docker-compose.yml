@@ -42,5 +42,30 @@ services:
       retries: 3
       start_period: 10s
 
+  worker:
+    build:
+      context: .
+      dockerfile: infra/coolify/Dockerfile
+    command: ["worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    environment:
+      HTTP_ADDR: ":8080"
+      PUBLIC_BASE_URL: "https://dmark.kastro.is"
+      DATABASE_URL: "postgres://meil:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in Coolify}@db:5432/meil?sslmode=disable"
+      BUNNY_DNS_API_KEY: "${BUNNY_DNS_API_KEY:-}"
+      BUNNY_API_KEY: "${BUNNY_API_KEY:-}"
+      BUNNY_DNS_ZONE_ID: "${BUNNY_DNS_ZONE_ID:-0}"
+      DMARK_SPF_DNS_ZONE: "${DMARK_SPF_DNS_ZONE:-dmark.is}"
+      DMARK_SPF_ROUTE_ZONE: "${DMARK_SPF_ROUTE_ZONE:-route.dmark.is}"
+      DMARK_SPF_ROUTE_TTL: "${DMARK_SPF_ROUTE_TTL:-300}"
+      DMARK_SPF_ROUTE_SCHEDULER_ENABLED: "${DMARK_SPF_ROUTE_SCHEDULER_ENABLED:-true}"
+      DMARK_SPF_ROUTE_SCHEDULER_INTERVAL_SECONDS: "${DMARK_SPF_ROUTE_SCHEDULER_INTERVAL_SECONDS:-900}"
+      DMARK_SPF_ROUTE_SYNC_CADENCE_HOURS: "${DMARK_SPF_ROUTE_SYNC_CADENCE_HOURS:-12}"
+    restart: unless-stopped
+
 volumes:
   postgres-data:

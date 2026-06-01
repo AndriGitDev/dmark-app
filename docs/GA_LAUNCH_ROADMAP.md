@@ -75,7 +75,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 
 **Goal:** Make SPF flattening continuous, not one-shot.
 
-**Status:** Sync service exists, the River worker kind is registered for queued/manual route syncs, and tested scheduler primitives now compute due SPF route sync jobs on a 12-hour default cadence; database listing and actual periodic enqueue wiring remain.
+**Status:** Sync service exists, the River worker kind is registered for queued/manual route syncs, tested scheduler primitives compute due SPF route sync jobs on a 12-hour default cadence, and the Coolify worker service now runs a scheduler loop that enqueues due route sync jobs every 15 minutes by default. Further operator visibility for failed/blocked/stale states remains open.
 
 **Tasks:**
 

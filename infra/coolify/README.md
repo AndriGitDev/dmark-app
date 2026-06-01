@@ -1,6 +1,6 @@
 # Dmark Coolify Deployment
 
-The production compose file deploys the Dmark backend `app` service running `meil serve` and a private Postgres `db` service with a persistent Docker volume. The binary also includes `meil worker` for River-backed scan and enrichment jobs; deploy it as a separate worker process when the target environment needs background scan/enrichment jobs. Frontend and marketing deployment, including Node/Next.js build configuration, belong to the separate `dmark-web` repository.
+The production compose file deploys the Dmark backend `app` service running `meil serve`, a `worker` service running `meil worker`, and a private Postgres `db` service with a persistent Docker volume. The worker processes River scan/enrichment/SPF-route jobs and enqueues due SPF-route resyncs on the configured cadence. Frontend and marketing deployment, including Node/Next.js build configuration, belong to the separate `dmark-web` repository.
 
 ## Hostnames
 
@@ -55,6 +55,8 @@ BOOTSTRAP_API_KEY_TOKEN=meil_generated-token-value
 `FRONTEND_ORIGINS` enables CORS for browser calls from `dmark-web`. It must contain exact origins, not paths. `LETTERMINT_TOKEN` and `LETTERMINT_FROM` are reserved for backend email flows. The browser login surface now belongs in `dmark-web`.
 
 `BUNNY_DNS_ZONE_ID` should point at the authoritative parent `dmark.is` Bunny zone (`801471`) so SPF route records are created as `customer.route` records inside the parent zone. `BUNNY_DNS_API_KEY` is preferred for new deployments; `BUNNY_API_KEY` remains accepted as a backwards-compatible alias for the existing Coolify secret. Do not store the raw Bunny key in code, docs, or logs.
+
+The worker's SPF route scheduler is enabled by default. It checks enabled SPF routes every 900 seconds and queues due route syncs on a 12-hour cadence using River uniqueness to avoid duplicate jobs for the same route/schedule slot. Override with `DMARK_SPF_ROUTE_SCHEDULER_ENABLED=false`, `DMARK_SPF_ROUTE_SCHEDULER_INTERVAL_SECONDS`, or `DMARK_SPF_ROUTE_SYNC_CADENCE_HOURS` if production load or provider limits require it.
 
 Set all four `BOOTSTRAP_*` variables together for first-run production setup. On startup after migrations, the backend idempotently creates/updates the owner user, the organization, owner membership, and a hashed API key for the frontend proxy. The raw `BOOTSTRAP_API_KEY_TOKEN` is never logged and is not stored in the database; only its SHA-256 hash is persisted. Use a generated `meil_...` token value and store the same raw token only in the frontend server-side environment variable that proxies dashboard API calls.
 
