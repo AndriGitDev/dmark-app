@@ -25,6 +25,7 @@ import (
 	"github.com/riverqueue/river/rivermigrate"
 	"github.com/spf13/cobra"
 
+	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/attribution"
 	"github.com/AndriGitDev/meil/internal/auth"
 	"github.com/AndriGitDev/meil/internal/bootstrap"
@@ -707,12 +708,13 @@ func newServeCommand() *cobra.Command {
 			emailScanner := scanner.New(nil)
 			sessionManager := scs.New()
 			sessionManager.Lifetime = 24 * time.Hour
+			apiKeyAuthenticator := apikeys.NewOwnerAdminTokenAuthenticator(cfg.OwnerAdminAPIToken, store)
 
 			server := &http.Server{
 				Addr: cfg.HTTPAddr,
 				Handler: web.NewRouterWithDeps(web.Deps{
 					Scanner:               emailScanner,
-					APIKeys:               store,
+					APIKeys:               apiKeyAuthenticator,
 					APIDomains:            store,
 					APIDomainCreator:      store,
 					APIDomainChecker:      store,

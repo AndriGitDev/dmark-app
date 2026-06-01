@@ -1,6 +1,7 @@
 package apikeys
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -106,4 +107,43 @@ func AuthorizeBearer(header string, principal Principal, required Scope) error {
 		return ErrInvalidKey
 	}
 	return nil
+}
+
+type Authenticator interface {
+	AuthenticateAPIKey(ctx context.Context, key string) (Principal, error)
+}
+
+type OwnerAdminTokenAuthenticator struct {
+	ownerToken string
+	fallback   Authenticator
+}
+
+func NewOwnerAdminTokenAuthenticator(ownerToken string, fallback Authenticator) OwnerAdminTokenAuthenticator {
+	return OwnerAdminTokenAuthenticator{
+		ownerToken: strings.TrimSpace(ownerToken),
+		fallback:   fallback,
+	}
+}
+
+func (a OwnerAdminTokenAuthenticator) AuthenticateAPIKey(ctx context.Context, key string) (Principal, error) {
+	if constantTimeTokenEqual(key, a.ownerToken) {
+		return Principal{
+			Scopes:      []Scope{ScopeAdminManage},
+			GlobalAdmin: true,
+		}, nil
+	}
+	if a.fallback == nil {
+		return Principal{}, ErrInvalidKey
+	}
+	return a.fallback.AuthenticateAPIKey(ctx, key)
+}
+
+func constantTimeTokenEqual(provided string, configured string) bool {
+	configured = strings.TrimSpace(configured)
+	if configured == "" {
+		return false
+	}
+	providedHash := sha256.Sum256([]byte(provided))
+	configuredHash := sha256.Sum256([]byte(configured))
+	return subtle.ConstantTimeCompare(providedHash[:], configuredHash[:]) == 1
 }

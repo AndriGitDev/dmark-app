@@ -1814,6 +1814,55 @@ func TestAPIAdminCasesRequireGlobalAdminPrincipal(t *testing.T) {
 	}
 }
 
+func TestAPIAdminCasesAcceptOwnerAdminTokenResolver(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{adminCases: []admin.Case{{
+		ID:        "case-owner",
+		Kind:      admin.CaseSupport,
+		Status:    admin.CaseOpen,
+		Subject:   "Owner case",
+		CreatedAt: time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC),
+	}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:  apikeys.NewOwnerAdminTokenAuthenticator("owner-token", &webAPIKeyAuth{err: apikeys.ErrInvalidKey}),
+		APIAdmin: store,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/cases", nil)
+	req.Header.Set("Authorization", "Bearer owner-token")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"case-owner"`) {
+		t.Fatalf("body missing owner admin case: %s", rec.Body.String())
+	}
+}
+
+func TestAPIAdminCasesRejectWrongOwnerToken(t *testing.T) {
+	t.Parallel()
+
+	router := NewRouterWithDeps(Deps{
+		APIKeys:  apikeys.NewOwnerAdminTokenAuthenticator("owner-token", &webAPIKeyAuth{err: apikeys.ErrInvalidKey}),
+		APIAdmin: &webDomainStore{},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/cases", nil)
+	req.Header.Set("Authorization", "Bearer wrong-token")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid API key") {
+		t.Fatalf("body missing invalid key error: %s", rec.Body.String())
+	}
+}
+
 func TestAPIAdminAbuseDecisionsListAndCreate(t *testing.T) {
 	t.Parallel()
 

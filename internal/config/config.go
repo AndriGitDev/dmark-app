@@ -21,6 +21,7 @@ type Config struct {
 	LettermintFrom                    string   `env:"LETTERMINT_FROM"`
 	AuthTokenTTL                      int      `env:"AUTH_TOKEN_TTL_MINUTES" envDefault:"15"`
 	BillingWebhookSecret              string   `env:"BILLING_WEBHOOK_SECRET"`
+	OwnerAdminAPIToken                string   `env:"OWNER_ADMIN_API_TOKEN"`
 	FrontendOrigins                   []string `env:"FRONTEND_ORIGINS" envSeparator:","`
 	PublicChecksPerMinute             int      `env:"PUBLIC_CHECKS_PER_MINUTE" envDefault:"12"`
 	DMARCMaxReportBytes               int64    `env:"DMARC_MAX_REPORT_BYTES" envDefault:"10485760"`
