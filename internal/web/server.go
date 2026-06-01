@@ -452,7 +452,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"applied": applied})
 	})
 	r.Get("/api/v1/scan", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeScanRead); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeScanRead); !ok {
 			return
 		}
 		domain := strings.TrimSpace(r.URL.Query().Get("domain"))
@@ -472,7 +472,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewScanResponse(result))
 	})
 	r.Get("/api/v1/dashboard", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -493,7 +493,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewDashboardResponse(items, alertCount, time.Now().UTC()))
 	})
 	r.Get("/api/v1/dashboard/domains", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -508,7 +508,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.DashboardDomainResponse{"domains": items})
 	})
 	r.Get("/api/v1/dashboard/domains/{id}", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -543,7 +543,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		})
 	})
 	r.Get("/api/v1/dashboard/domains/{id}/dns-guidance", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -558,7 +558,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, response)
 	})
 	r.Post("/api/v1/dashboard/domains/{id}/recheck", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainWrite)
 		if !ok {
 			return
 		}
@@ -613,7 +613,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		})
 	})
 	r.Get("/api/v1/dashboard/domains/{id}/spf-route", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -636,7 +636,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSPFRouteResponse(route))
 	})
 	r.Put("/api/v1/dashboard/domains/{id}/spf-route", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainWrite)
 		if !ok {
 			return
 		}
@@ -675,7 +675,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSPFRouteResponse(saved))
 	})
 	r.Post("/api/v1/dashboard/domains/{id}/spf-route/sync", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainWrite)
 		if !ok {
 			return
 		}
@@ -706,7 +706,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusAccepted, apicontracts.DashboardSPFRouteSyncResponse{JobID: jobID, RouteID: route.ID, DomainID: domain.ID, Status: "queued", QueuedAt: now})
 	})
 	r.Get("/api/v1/dashboard/domains/{id}/change-plan", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -729,7 +729,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewDashboardChangePlanResponse(domain, evidence, time.Now().UTC()))
 	})
 	r.Get("/api/v1/dashboard/domains/{id}/brand-risk", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -756,7 +756,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewDashboardBrandRiskResponse(domain, lookalikes, time.Now().UTC()))
 	})
 	r.Get("/api/v1/dashboard/domains/{id}/reporter", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeReporterRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeReporterRead)
 		if !ok {
 			return
 		}
@@ -783,7 +783,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, response)
 	})
 	r.Get("/api/v1/dashboard/alerts", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -812,7 +812,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.DashboardAlertResponse{"alerts": response})
 	})
 	r.Post("/api/v1/dashboard/alerts/{id}/ack", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainWrite)
 		if !ok {
 			return
 		}
@@ -835,7 +835,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.DashboardAlertActionResponse{ID: chi.URLParam(r, "id"), Status: "acknowledged", AppliedAt: time.Now().UTC()})
 	})
 	r.Post("/api/v1/dashboard/alerts/{id}/mute", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainWrite)
 		if !ok {
 			return
 		}
@@ -858,7 +858,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.DashboardAlertActionResponse{ID: chi.URLParam(r, "id"), Status: "muted", AppliedAt: time.Now().UTC()})
 	})
 	r.Get("/api/v1/dashboard/settings", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -877,7 +877,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSettingsResponse(settings))
 	})
 	r.Post("/api/v1/dashboard/settings", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainWrite)
 		if !ok {
 			return
 		}
@@ -917,7 +917,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSettingsResponse(settings))
 	})
 	r.Get("/api/v1/domains", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -941,7 +941,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.DomainResponse{"domains": response})
 	})
 	r.Get("/api/v1/domains/export", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -966,7 +966,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		}
 	})
 	r.Get("/api/v1/domains/{id}/history", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -999,7 +999,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.HistoryResponse{"history": response})
 	})
 	r.Get("/api/v1/domains/{id}/drift", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
 		if !ok {
 			return
 		}
@@ -1028,7 +1028,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.DriftEventResponse{"events": response})
 	})
 	r.Get("/api/v1/domains/{id}/reporter/sources", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeReporterRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeReporterRead)
 		if !ok {
 			return
 		}
@@ -1057,7 +1057,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.ReporterSourceResponse{"sources": response})
 	})
 	r.Get("/api/v1/domains/{id}/reporter/senders", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeReporterRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeReporterRead)
 		if !ok {
 			return
 		}
@@ -1086,7 +1086,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.ReporterSenderResponse{"senders": response})
 	})
 	r.Get("/api/v1/domains/{id}/reporter/health", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeReporterRead)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeReporterRead)
 		if !ok {
 			return
 		}
@@ -1106,7 +1106,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewReporterHealthResponse(health))
 	})
 	r.Get("/api/v1/webhooks", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeWebhookManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeWebhookManage)
 		if !ok {
 			return
 		}
@@ -1130,7 +1130,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.WebhookEndpointResponse{"webhooks": response})
 	})
 	r.Post("/api/v1/webhooks", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeWebhookManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeWebhookManage)
 		if !ok {
 			return
 		}
@@ -1159,7 +1159,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusCreated, apicontracts.NewWebhookEndpointResponse(endpoint, secret))
 	})
 	r.Post("/api/v1/webhooks/{id}/rotate-secret", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeWebhookManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeWebhookManage)
 		if !ok {
 			return
 		}
@@ -1179,7 +1179,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewWebhookEndpointResponse(endpoint, secret))
 	})
 	r.Post("/api/v1/webhooks/{id}/disable", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeWebhookManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeWebhookManage)
 		if !ok {
 			return
 		}
@@ -1199,7 +1199,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewWebhookEndpointResponse(endpoint, ""))
 	})
 	r.Post("/api/v1/billing/cancel", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeBillingManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeBillingManage)
 		if !ok {
 			return
 		}
@@ -1228,7 +1228,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewBillingCancellationResponse(cancellation))
 	})
 	r.Get("/api/v1/api-keys", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAPIKeyManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAPIKeyManage)
 		if !ok {
 			return
 		}
@@ -1252,7 +1252,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.APIKeyResponse{"api_keys": response})
 	})
 	r.Post("/api/v1/api-keys", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAPIKeyManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAPIKeyManage)
 		if !ok {
 			return
 		}
@@ -1285,7 +1285,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusCreated, apicontracts.NewAPIKeyResponse(key))
 	})
 	r.Post("/api/v1/api-keys/{id}/revoke", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAPIKeyManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAPIKeyManage)
 		if !ok {
 			return
 		}
@@ -1305,7 +1305,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewAPIKeyResponse(key))
 	})
 	r.Get("/api/v1/team/invitations", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeTeamManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeTeamManage)
 		if !ok {
 			return
 		}
@@ -1329,7 +1329,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.TeamInvitationResponse{"invitations": response})
 	})
 	r.Post("/api/v1/team/invitations", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeTeamManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeTeamManage)
 		if !ok {
 			return
 		}
@@ -1358,7 +1358,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusCreated, apicontracts.NewTeamInvitationResponse(invitation))
 	})
 	r.Post("/api/v1/domains/{id}/transfer", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeTeamManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeTeamManage)
 		if !ok {
 			return
 		}
@@ -1387,7 +1387,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusCreated, apicontracts.NewDomainTransferResponse(request))
 	})
 	r.Get("/api/v1/privacy/retention", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopePrivacyManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopePrivacyManage)
 		if !ok {
 			return
 		}
@@ -1407,7 +1407,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, settings)
 	})
 	r.Post("/api/v1/privacy/retention", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopePrivacyManage)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopePrivacyManage)
 		if !ok {
 			return
 		}
@@ -1442,7 +1442,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, settings)
 	})
 	r.Get("/api/v1/admin/cases", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIAdmin == nil {
@@ -1466,7 +1466,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.AdminCaseResponse{"cases": response})
 	})
 	r.Post("/api/v1/admin/cases", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIAdmin == nil {
@@ -1492,7 +1492,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusCreated, apicontracts.NewAdminCaseResponse(c))
 	})
 	r.Post("/api/v1/admin/cases/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIAdmin == nil {
@@ -1515,7 +1515,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewAdminCaseResponse(c))
 	})
 	r.Get("/api/v1/admin/abuse-decisions", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIAdmin == nil {
@@ -1539,7 +1539,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.AbuseDecisionResponse{"decisions": response})
 	})
 	r.Post("/api/v1/admin/abuse-decisions", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIAdmin == nil {
@@ -1574,7 +1574,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusCreated, apicontracts.NewAbuseDecisionResponse(decision))
 	})
 	r.Get("/api/v1/admin/operational-events", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIOperations == nil {
@@ -1599,7 +1599,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.OperationalEventResponse{"events": response})
 	})
 	r.Get("/api/v1/admin/provider-health", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		build := buildinfo.Current()
@@ -1625,7 +1625,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, response)
 	})
 	r.Get("/api/v1/admin/spf-routes/{routeID}/publication-audit", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.AdminSPFRouteAudits == nil {
@@ -1645,7 +1645,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, adminSPFRoutePublicationAuditResponse(r.Context(), route, deps.DNSPublicationResolver, deps.DNSPublicationTimeout))
 	})
 	r.Get("/api/v1/status/components", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIStatus == nil {
@@ -1664,7 +1664,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.StatusComponentResponse{"components": response})
 	})
 	r.Post("/api/v1/status/components", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIStatus == nil {
@@ -1688,7 +1688,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewStatusComponentResponse(component))
 	})
 	r.Get("/api/v1/status/incidents", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIStatus == nil {
@@ -1712,7 +1712,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]apicontracts.StatusIncidentResponse{"incidents": response})
 	})
 	r.Post("/api/v1/status/incidents", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIStatus == nil {
@@ -1737,7 +1737,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusCreated, apicontracts.NewStatusIncidentResponse(incident))
 	})
 	r.Post("/api/v1/status/incidents/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeAdminManage); !ok {
+		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAdminManage); !ok {
 			return
 		}
 		if deps.APIStatus == nil {
@@ -1760,7 +1760,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusOK, apicontracts.NewStatusIncidentResponse(incident))
 	})
 	r.Post("/api/v1/domains", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainWrite)
 		if !ok {
 			return
 		}
@@ -1793,7 +1793,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		writeJSON(w, http.StatusCreated, apicontracts.NewDomainResponse(saved))
 	})
 	r.Post("/api/v1/domains/import", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainWrite)
 		if !ok {
 			return
 		}
@@ -1826,7 +1826,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		})
 	})
 	r.Post("/api/v1/domains/{id}/check", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainWrite)
 		if !ok {
 			return
 		}
@@ -1939,7 +1939,7 @@ func isFrontendRoute(path string) bool {
 	return strings.HasPrefix(path, "/app/") || path == "/app" || strings.HasPrefix(path, "/assets/")
 }
 
-func authorizeAPI(w http.ResponseWriter, r *http.Request, authenticator APIKeyAuthenticator, required apikeys.Scope) (apikeys.Principal, bool) {
+func authorizeAPI(w http.ResponseWriter, r *http.Request, authenticator APIKeyAuthenticator, operations OperationalEventStore, required apikeys.Scope) (apikeys.Principal, bool) {
 	token, err := apikeys.BearerToken(r.Header.Get("Authorization"))
 	if err != nil {
 		writeAPIError(w, http.StatusUnauthorized, "valid bearer API key is required")
@@ -1962,7 +1962,45 @@ func authorizeAPI(w http.ResponseWriter, r *http.Request, authenticator APIKeyAu
 		writeAPIError(w, http.StatusForbidden, "global admin principal is required")
 		return apikeys.Principal{}, false
 	}
+	recordAPIKeyUsedOperationalEvent(r, operations, principal, required)
 	return principal, true
+}
+
+func recordAPIKeyUsedOperationalEvent(r *http.Request, store OperationalEventStore, principal apikeys.Principal, required apikeys.Scope) {
+	if store == nil {
+		return
+	}
+	actor := "api-key"
+	if strings.TrimSpace(principal.OrganizationID) != "" {
+		actor = "organization:" + strings.TrimSpace(principal.OrganizationID)
+	} else if principal.GlobalAdmin {
+		actor = "global-admin"
+	}
+	event, err := ops.NewEvent("api_key.used", ops.SeverityInfo, "API key used", time.Now().UTC())
+	if err != nil {
+		return
+	}
+	event.Actor = actor
+	path := apiOperationalEventPath(r)
+	event.Resource = "api:" + path
+	event.Metadata = ops.SanitizeMetadata(map[string]any{
+		"organization_id": strings.TrimSpace(principal.OrganizationID),
+		"scope":           string(required),
+		"method":          r.Method,
+		"path":            path,
+		"request_id":      RequestID(r.Context()),
+		"global_admin":    principal.GlobalAdmin,
+	})
+	_, _ = store.CreateOperationalEvent(r.Context(), event)
+}
+
+func apiOperationalEventPath(r *http.Request) string {
+	if routeContext := chi.RouteContext(r.Context()); routeContext != nil {
+		if pattern := strings.TrimSpace(routeContext.RoutePattern()); pattern != "" {
+			return pattern
+		}
+	}
+	return r.URL.Path
 }
 
 func writeAPIError(w http.ResponseWriter, status int, message string) {

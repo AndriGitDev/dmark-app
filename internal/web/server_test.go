@@ -842,6 +842,48 @@ func TestAPIScanReturnsJSON(t *testing.T) {
 	}
 }
 
+func TestSuccessfulAPIKeyUseRecordsSanitizedOperationalEvent(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{}
+	authenticator := &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeScanRead}}}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/scan?domain=example.com", nil)
+	req.Header.Set("Authorization", "Bearer meil_test_secret_value")
+	req.Header.Set("X-Request-ID", "req-api-key-used")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner:       fakeScanner{result: scanner.Result{Domain: "example.com"}},
+		APIKeys:       authenticator,
+		APIOperations: store,
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if len(store.operationalEvents) != 1 {
+		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	}
+	event := store.operationalEvents[0]
+	if event.Kind != "api_key.used" || event.Severity != ops.SeverityInfo || event.Message != "API key used" {
+		t.Fatalf("event = %+v, want api-key-used info event", event)
+	}
+	if event.Actor != "organization:org-1" || event.Resource != "api:/api/v1/scan" {
+		t.Fatalf("event actor/resource = %q/%q, want organization API path", event.Actor, event.Resource)
+	}
+	if event.Metadata["organization_id"] != "org-1" || event.Metadata["scope"] != string(apikeys.ScopeScanRead) || event.Metadata["method"] != http.MethodGet || event.Metadata["path"] != "/api/v1/scan" || event.Metadata["request_id"] != "req-api-key-used" {
+		t.Fatalf("event metadata = %+v, want sanitized API-key-use metadata", event.Metadata)
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal API key event returned error: %v", err)
+	}
+	lower := strings.ToLower(string(encoded))
+	if strings.Contains(string(encoded), "meil_test_secret_value") || strings.Contains(lower, "authorization") || strings.Contains(lower, "bearer") {
+		t.Fatalf("API key event leaked raw credential material: %+v", event)
+	}
+}
+
 func TestPublicScanReturnsJSONWithoutAPIKey(t *testing.T) {
 	t.Parallel()
 
@@ -878,6 +920,17 @@ func assertNoDashboardOperationalSecretLeak(t *testing.T, event ops.Event) {
 			t.Fatalf("operational event leaked sensitive marker %q: %+v", marker, event)
 		}
 	}
+}
+
+func operationalEventByKind(t *testing.T, events []ops.Event, kind string) ops.Event {
+	t.Helper()
+	for _, event := range events {
+		if event.Kind == kind {
+			return event
+		}
+	}
+	t.Fatalf("operational event kind %q not found in %+v", kind, events)
+	return ops.Event{}
 }
 
 func TestPublicScanRecordsOperationalEventOnSuccess(t *testing.T) {
@@ -1351,11 +1404,18 @@ func TestDashboardRecheckQueuesJobRecordsOperationalEvent(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusAccepted, rec.Body.String())
 	}
-	if len(store.operationalEvents) != 1 {
-		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	if len(store.operationalEvents) != 2 {
+		t.Fatalf("operational events stored = %d, want 2", len(store.operationalEvents))
 	}
-	event := store.operationalEvents[0]
-	if event.Kind != "dashboard.recheck.queued" || event.Severity != ops.SeverityInfo || event.Actor != "organization:org-1" || event.Resource != "domain:domain-1" {
+	apiKeyUsed := operationalEventByKind(t, store.operationalEvents, "api_key.used")
+	if apiKeyUsed.Resource != "api:/api/v1/dashboard/domains/{id}/recheck" || apiKeyUsed.Metadata["path"] != "/api/v1/dashboard/domains/{id}/recheck" {
+		t.Fatalf("api-key-use event path was not templated/sanitized: %+v", apiKeyUsed)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", apiKeyUsed), "domain-1") || strings.Contains(fmt.Sprintf("%+v", apiKeyUsed), "meil_test") {
+		t.Fatalf("api-key-use event leaked resource id or token: %+v", apiKeyUsed)
+	}
+	event := operationalEventByKind(t, store.operationalEvents, "dashboard.recheck.queued")
+	if event.Severity != ops.SeverityInfo || event.Actor != "organization:org-1" || event.Resource != "domain:domain-1" {
 		t.Fatalf("unexpected operational event: %+v", event)
 	}
 	if event.Metadata["organization_id"] != "org-1" || event.Metadata["domain_id"] != "domain-1" || event.Metadata["domain"] != "example.com" || event.Metadata["job_id"] != "job-1" || event.Metadata["http_status"] != http.StatusAccepted || event.Metadata["request_id"] != "req-recheck-queued" {
@@ -1384,11 +1444,11 @@ func TestDashboardRecheckCompletedRecordsOperationalEvent(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusAccepted, rec.Body.String())
 	}
-	if len(store.operationalEvents) != 1 {
-		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	if len(store.operationalEvents) != 2 {
+		t.Fatalf("operational events stored = %d, want 2", len(store.operationalEvents))
 	}
-	event := store.operationalEvents[0]
-	if event.Kind != "dashboard.recheck.completed" || event.Severity != ops.SeverityInfo || event.Actor != "organization:org-1" || event.Resource != "domain:domain-1" {
+	event := operationalEventByKind(t, store.operationalEvents, "dashboard.recheck.completed")
+	if event.Severity != ops.SeverityInfo || event.Actor != "organization:org-1" || event.Resource != "domain:domain-1" {
 		t.Fatalf("unexpected operational event: %+v", event)
 	}
 	if event.Metadata["organization_id"] != "org-1" || event.Metadata["domain_id"] != "domain-1" || event.Metadata["domain"] != "example.com" || event.Metadata["status"] != "completed" || event.Metadata["http_status"] != http.StatusAccepted || event.Metadata["request_id"] != "req-recheck-completed" {
@@ -1705,18 +1765,18 @@ func TestDashboardSPFRoutePutRecordsOperationalEvents(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
-	if len(store.operationalEvents) != 2 {
-		t.Fatalf("operational events stored = %d, want 2: %+v", len(store.operationalEvents), store.operationalEvents)
+	if len(store.operationalEvents) != 3 {
+		t.Fatalf("operational events stored = %d, want 3: %+v", len(store.operationalEvents), store.operationalEvents)
 	}
-	upserted := store.operationalEvents[0]
-	if upserted.Kind != "dashboard.spf_route.upserted" || upserted.Severity != ops.SeverityInfo || upserted.Resource != "spf_route:route-1" {
+	upserted := operationalEventByKind(t, store.operationalEvents, "dashboard.spf_route.upserted")
+	if upserted.Severity != ops.SeverityInfo || upserted.Resource != "spf_route:route-1" {
 		t.Fatalf("unexpected SPF upsert event: %+v", upserted)
 	}
 	if upserted.Metadata["organization_id"] != "org-1" || upserted.Metadata["domain_id"] != "domain-1" || upserted.Metadata["domain"] != "example.com" || upserted.Metadata["route_id"] != "route-1" || upserted.Metadata["sources_count"] != 2 || upserted.Metadata["http_status"] != http.StatusOK || upserted.Metadata["request_id"] != "req-spf-upsert" {
 		t.Fatalf("unexpected SPF upsert metadata: %+v", upserted.Metadata)
 	}
-	syncQueued := store.operationalEvents[1]
-	if syncQueued.Kind != "dashboard.spf_route.sync_queued" || syncQueued.Severity != ops.SeverityInfo || syncQueued.Resource != "spf_route:route-1" {
+	syncQueued := operationalEventByKind(t, store.operationalEvents, "dashboard.spf_route.sync_queued")
+	if syncQueued.Severity != ops.SeverityInfo || syncQueued.Resource != "spf_route:route-1" {
 		t.Fatalf("unexpected SPF sync event: %+v", syncQueued)
 	}
 	if syncQueued.Metadata["job_id"] != "spf-sync-job-1" || syncQueued.Metadata["route_id"] != "route-1" || syncQueued.Metadata["http_status"] != http.StatusOK || syncQueued.Metadata["request_id"] != "req-spf-upsert" {
@@ -1777,11 +1837,11 @@ func TestDashboardSPFRouteSyncRecordsOperationalEvent(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusAccepted, rec.Body.String())
 	}
-	if len(store.operationalEvents) != 1 {
-		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	if len(store.operationalEvents) != 2 {
+		t.Fatalf("operational events stored = %d, want 2", len(store.operationalEvents))
 	}
-	event := store.operationalEvents[0]
-	if event.Kind != "dashboard.spf_route.sync_queued" || event.Severity != ops.SeverityInfo || event.Actor != "organization:org-1" || event.Resource != "spf_route:route-1" {
+	event := operationalEventByKind(t, store.operationalEvents, "dashboard.spf_route.sync_queued")
+	if event.Severity != ops.SeverityInfo || event.Actor != "organization:org-1" || event.Resource != "spf_route:route-1" {
 		t.Fatalf("unexpected operational event: %+v", event)
 	}
 	if event.Metadata["organization_id"] != "org-1" || event.Metadata["domain_id"] != "domain-1" || event.Metadata["domain"] != "example.com" || event.Metadata["route_id"] != "route-1" || event.Metadata["job_id"] != "spf-sync-job-1" || event.Metadata["sources_count"] != 1 || event.Metadata["http_status"] != http.StatusAccepted || event.Metadata["request_id"] != "req-spf-sync" {
@@ -1815,11 +1875,11 @@ func TestDashboardSPFRouteSyncFailureRecordsSanitizedOperationalEvent(t *testing
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusInternalServerError, rec.Body.String())
 	}
-	if len(store.operationalEvents) != 1 {
-		t.Fatalf("operational events stored = %d, want 1", len(store.operationalEvents))
+	if len(store.operationalEvents) != 2 {
+		t.Fatalf("operational events stored = %d, want 2", len(store.operationalEvents))
 	}
-	event := store.operationalEvents[0]
-	if event.Kind != "dashboard.spf_route.sync_failed" || event.Severity != ops.SeverityError || event.Metadata["error_class"] != "queue_error" || event.Metadata["http_status"] != http.StatusInternalServerError {
+	event := operationalEventByKind(t, store.operationalEvents, "dashboard.spf_route.sync_failed")
+	if event.Severity != ops.SeverityError || event.Metadata["error_class"] != "queue_error" || event.Metadata["http_status"] != http.StatusInternalServerError {
 		t.Fatalf("unexpected operational event: %+v", event)
 	}
 	assertNoDashboardOperationalSecretLeak(t, event)
