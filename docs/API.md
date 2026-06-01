@@ -66,6 +66,9 @@ GET /api/v1/dashboard
 GET /api/v1/dashboard/domains
 GET /api/v1/dashboard/domains/{id}
 POST /api/v1/dashboard/domains/{id}/recheck
+GET /api/v1/dashboard/domains/{id}/spf-route
+PUT /api/v1/dashboard/domains/{id}/spf-route
+POST /api/v1/dashboard/domains/{id}/spf-route/sync
 GET /api/v1/dashboard/domains/{id}/change-plan
 GET /api/v1/dashboard/domains/{id}/brand-risk
 GET /api/v1/dashboard/domains/{id}/reporter
@@ -201,6 +204,47 @@ Queues a non-blocking recheck when the job queue is configured. The API returns 
 ```
 
 Rapid duplicate rechecks are coalesced per domain into the same five-minute idempotency window.
+
+### SPF route dashboard endpoints
+
+`GET /api/v1/dashboard/domains/{id}/spf-route` requires `domain:read`. `PUT /api/v1/dashboard/domains/{id}/spf-route` and `POST /api/v1/dashboard/domains/{id}/spf-route/sync` require `domain:write`. All three endpoints first verify that the requested Protected domain belongs to the API key organization. Bunny DNS credentials, zone IDs, provider secrets, and raw provider responses are never returned.
+
+`GET` returns frontend-safe route state:
+
+```json
+{
+  "id": "route_opaque",
+  "domain_id": "domain_opaque",
+  "domain": "example.com",
+  "status": "healthy",
+  "route_fqdn": "example-com.route.dmark.is",
+  "customer_cname_name": "example.com",
+  "customer_cname_target": "example-com.route.dmark.is",
+  "generated_spf_preview": "v=spf1 include:_spf.mailgun.org ~all",
+  "last_published_spf": "v=spf1 include:_spf.mailgun.org ~all",
+  "last_synced_at": "2026-05-31T12:00:00Z",
+  "enabled_sources": [
+    {"kind": "include", "value": "_spf.mailgun.org", "label": "Mailgun"}
+  ],
+  "evidence_summary": [
+    {"source_value": "_spf.mailgun.org", "resolved_domain": "_spf.mailgun.org", "mechanism": "include:_spf.mailgun.org", "kind": "include", "message": "resolved"}
+  ]
+}
+```
+
+`PUT` accepts `route_fqdn`, `customer_cname_name`, `customer_cname_target`, `enabled`, `mechanism_policy` (`softfail`, `fail`, or `neutral`), and `sources` with `kind` (`include`, `ip4`, or `ip6`), `value`, `label`, and `enabled`. It returns the same route response after upsert.
+
+`POST /sync` queues a manual sync through the backend job dependency and returns `202 Accepted`:
+
+```json
+{
+  "job_id": "job_opaque",
+  "route_id": "route_opaque",
+  "domain_id": "domain_opaque",
+  "status": "queued",
+  "queued_at": "2026-05-31T12:00:00Z"
+}
+```
 
 ### GET `/api/v1/dashboard/domains/{id}/change-plan`
 

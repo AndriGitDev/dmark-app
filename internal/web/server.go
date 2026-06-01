@@ -39,6 +39,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/reporter"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
+	"github.com/AndriGitDev/meil/internal/spfroutes"
 	"github.com/AndriGitDev/meil/internal/statuspage"
 	"github.com/AndriGitDev/meil/internal/teams"
 	"github.com/AndriGitDev/meil/internal/webhooks"
@@ -67,6 +68,15 @@ type OrganizationDomainChecker interface {
 
 type OrganizationDomainRecheckQueue interface {
 	QueueOrganizationDomainRecheck(ctx context.Context, organizationID string, domainID string, at time.Time) (domains.RecheckJob, error)
+}
+
+type OrganizationSPFRouteStore interface {
+	GetOrganizationSPFRoute(ctx context.Context, organizationID string, domainID string) (spfroutes.Route, error)
+	UpsertOrganizationSPFRoute(ctx context.Context, organizationID string, route spfroutes.Route) (spfroutes.Route, error)
+}
+
+type OrganizationSPFRouteSyncQueue interface {
+	QueueOrganizationSPFRouteSync(ctx context.Context, organizationID string, domainID string, routeID string, at time.Time) (string, error)
 }
 
 type OrganizationDomainHistoryStore interface {
@@ -166,6 +176,8 @@ type Deps struct {
 	APIDomainCreator             OrganizationDomainCreator
 	APIDomainChecker             OrganizationDomainChecker
 	APIDomainRechecks            OrganizationDomainRecheckQueue
+	APISPFRoutes                 OrganizationSPFRouteStore
+	APISPFRouteSyncs             OrganizationSPFRouteSyncQueue
 	APIDomainHistory             OrganizationDomainHistoryStore
 	APIDomainDrift               OrganizationDomainDriftStore
 	APIReporter                  OrganizationReporterStore
@@ -520,6 +532,87 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			Status:   "completed",
 			QueuedAt: now,
 		})
+	})
+	r.Get("/api/v1/dashboard/domains/{id}/spf-route", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		domain, ok := dashboardDomainForAPI(w, r, deps, principal.OrganizationID)
+		if !ok {
+			return
+		}
+		if deps.APISPFRoutes == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "SPF route API is not configured")
+			return
+		}
+		route, err := deps.APISPFRoutes.GetOrganizationSPFRoute(r.Context(), principal.OrganizationID, domain.ID)
+		if err != nil {
+			writeAPIError(w, http.StatusNotFound, "SPF route was not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSPFRouteResponse(route))
+	})
+	r.Put("/api/v1/dashboard/domains/{id}/spf-route", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		domain, ok := dashboardDomainForAPI(w, r, deps, principal.OrganizationID)
+		if !ok {
+			return
+		}
+		if deps.APISPFRoutes == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "SPF route API is not configured")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+		route, err := dashboardSPFRouteFromRequest(r, principal.OrganizationID, domain)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		saved, err := deps.APISPFRoutes.UpsertOrganizationSPFRoute(r.Context(), principal.OrganizationID, route)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "saving SPF route failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSPFRouteResponse(saved))
+	})
+	r.Post("/api/v1/dashboard/domains/{id}/spf-route/sync", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainWrite)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		domain, ok := dashboardDomainForAPI(w, r, deps, principal.OrganizationID)
+		if !ok {
+			return
+		}
+		if deps.APISPFRoutes == nil || deps.APISPFRouteSyncs == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "SPF route sync queue is not configured")
+			return
+		}
+		route, err := deps.APISPFRoutes.GetOrganizationSPFRoute(r.Context(), principal.OrganizationID, domain.ID)
+		if err != nil {
+			writeAPIError(w, http.StatusNotFound, "SPF route was not found")
+			return
+		}
+		now := time.Now().UTC()
+		jobID, err := deps.APISPFRouteSyncs.QueueOrganizationSPFRouteSync(r.Context(), principal.OrganizationID, domain.ID, route.ID, now)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "queueing SPF route sync failed")
+			return
+		}
+		writeJSON(w, http.StatusAccepted, apicontracts.DashboardSPFRouteSyncResponse{JobID: jobID, RouteID: route.ID, DomainID: domain.ID, Status: "queued", QueuedAt: now})
 	})
 	r.Get("/api/v1/dashboard/domains/{id}/change-plan", func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := authorizeAPI(w, r, deps.APIKeys, apikeys.ScopeDomainRead)
@@ -1810,6 +1903,95 @@ func dashboardDomainResponses(ctx context.Context, deps Deps, organizationID str
 		response = append(response, apicontracts.NewDashboardDomainResponse(domain, senders))
 	}
 	return response, nil
+}
+
+func dashboardDomainForAPI(w http.ResponseWriter, r *http.Request, deps Deps, organizationID string) (domains.Domain, bool) {
+	if deps.APIDomainChecker == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "domain API is not configured")
+		return domains.Domain{}, false
+	}
+	domain, err := deps.APIDomainChecker.GetOrganizationDomain(r.Context(), organizationID, chi.URLParam(r, "id"))
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "domain was not found")
+		return domains.Domain{}, false
+	}
+	return domain, true
+}
+
+func dashboardSPFRouteFromRequest(r *http.Request, organizationID string, domain domains.Domain) (spfroutes.Route, error) {
+	var payload struct {
+		RouteFQDN           string `json:"route_fqdn"`
+		CustomerCNAMEName   string `json:"customer_cname_name"`
+		CustomerCNAMETarget string `json:"customer_cname_target"`
+		Enabled             bool   `json:"enabled"`
+		MechanismPolicy     string `json:"mechanism_policy"`
+		Sources             []struct {
+			Kind    string `json:"kind"`
+			Value   string `json:"value"`
+			Label   string `json:"label"`
+			Enabled bool   `json:"enabled"`
+		} `json:"sources"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return spfroutes.Route{}, fmt.Errorf("invalid JSON body")
+	}
+	route := spfroutes.Route{
+		OrganizationID:      organizationID,
+		DomainID:            domain.ID,
+		Domain:              domain.Domain,
+		RouteFQDN:           strings.TrimSpace(payload.RouteFQDN),
+		CustomerCNAMEName:   strings.TrimSpace(payload.CustomerCNAMEName),
+		CustomerCNAMETarget: strings.TrimSpace(payload.CustomerCNAMETarget),
+		Enabled:             payload.Enabled,
+		MechanismPolicy:     spfroutes.Policy(strings.TrimSpace(payload.MechanismPolicy)),
+		Sources:             make([]spfroutes.Source, 0, len(payload.Sources)),
+	}
+	if route.RouteFQDN == "" {
+		return spfroutes.Route{}, fmt.Errorf("route_fqdn is required")
+	}
+	route.RouteLabel = dashboardSPFRouteLabel(route.RouteFQDN)
+	if route.RouteLabel == "" {
+		return spfroutes.Route{}, fmt.Errorf("route_fqdn must contain a valid route label")
+	}
+	if route.CustomerCNAMEName == "" {
+		return spfroutes.Route{}, fmt.Errorf("customer_cname_name is required")
+	}
+	if route.CustomerCNAMETarget == "" {
+		return spfroutes.Route{}, fmt.Errorf("customer_cname_target is required")
+	}
+	if route.MechanismPolicy == "" {
+		route.MechanismPolicy = spfroutes.PolicySoftfail
+	}
+	if route.MechanismPolicy != spfroutes.PolicySoftfail && route.MechanismPolicy != spfroutes.PolicyFail && route.MechanismPolicy != spfroutes.PolicyNeutral {
+		return spfroutes.Route{}, fmt.Errorf("mechanism_policy must be softfail, fail, or neutral")
+	}
+	for _, source := range payload.Sources {
+		kind := spfroutes.SourceKind(strings.TrimSpace(source.Kind))
+		if kind != spfroutes.SourceKindInclude && kind != spfroutes.SourceKindIP4 && kind != spfroutes.SourceKindIP6 {
+			return spfroutes.Route{}, fmt.Errorf("source kind must be include, ip4, or ip6")
+		}
+		value := strings.TrimSpace(source.Value)
+		if value == "" {
+			return spfroutes.Route{}, fmt.Errorf("source value is required")
+		}
+		route.Sources = append(route.Sources, spfroutes.Source{Kind: kind, Value: value, Label: strings.TrimSpace(source.Label), Enabled: source.Enabled})
+	}
+	return route, nil
+}
+
+func dashboardSPFRouteLabel(routeFQDN string) string {
+	routeFQDN = strings.ToLower(strings.Trim(strings.TrimSpace(routeFQDN), "."))
+	label, _, _ := strings.Cut(routeFQDN, ".")
+	if len(label) == 0 || len(label) > 63 || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+		return ""
+	}
+	for _, r := range label {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			continue
+		}
+		return ""
+	}
+	return label
 }
 
 func dashboardReporterSenders(ctx context.Context, store OrganizationReporterStore, organizationID string, domainID string, limit int) []reporter.InventoryEntry {

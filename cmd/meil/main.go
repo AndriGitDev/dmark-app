@@ -51,6 +51,25 @@ func main() {
 	}
 }
 
+type spfRouteSyncQueue struct {
+	enqueuer spfroutescheduler.Enqueuer
+}
+
+func (q spfRouteSyncQueue) QueueOrganizationSPFRouteSync(ctx context.Context, organizationID string, domainID string, routeID string, at time.Time) (string, error) {
+	if q.enqueuer == nil {
+		return "", fmt.Errorf("SPF route sync queue is not configured")
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	args := jobs.SyncSPFRouteArgs{RouteID: routeID, ScheduledFor: at.UTC(), Manual: true}
+	opts := args.InsertOpts()
+	if _, err := q.enqueuer.Insert(ctx, args, &opts); err != nil {
+		return "", err
+	}
+	return args.IdempotencyKey(), nil
+}
+
 func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "meil",
@@ -728,6 +747,10 @@ func newServeCommand() *cobra.Command {
 			sessionManager := scs.New()
 			sessionManager.Lifetime = 24 * time.Hour
 			apiKeyAuthenticator := apikeys.NewOwnerAdminTokenAuthenticator(cfg.OwnerAdminAPIToken, store)
+			spfSyncEnqueuer, err := river.NewClient(riverpgxv5.New(pool), &river.Config{})
+			if err != nil {
+				return fmt.Errorf("creating River insert client for SPF route syncs: %w", err)
+			}
 			bootstrapOwnerEmailConfigured := strings.TrimSpace(cfg.BootstrapOwnerEmail) != ""
 			bootstrapOrganizationConfigured := strings.TrimSpace(cfg.BootstrapOrganizationName) != ""
 			bootstrapAPIKeyConfigured := strings.TrimSpace(cfg.BootstrapAPIKeyToken) != ""
@@ -743,6 +766,8 @@ func newServeCommand() *cobra.Command {
 					APIDomainCreator:             store,
 					APIDomainChecker:             store,
 					APIDomainRechecks:            store,
+					APISPFRoutes:                 store,
+					APISPFRouteSyncs:             spfRouteSyncQueue{enqueuer: spfSyncEnqueuer},
 					APIDomainHistory:             store,
 					APIDomainDrift:               store,
 					APIReporter:                  store,

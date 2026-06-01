@@ -18,6 +18,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/reporter"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
+	"github.com/AndriGitDev/meil/internal/spfroutes"
 	"github.com/AndriGitDev/meil/internal/statuspage"
 	"github.com/AndriGitDev/meil/internal/teams"
 	"github.com/AndriGitDev/meil/internal/webhooks"
@@ -132,6 +133,116 @@ type DashboardRecheckResponse struct {
 	Status      string    `json:"status"`
 	QueuedAt    time.Time `json:"queued_at"`
 	NextAllowed time.Time `json:"next_allowed_at,omitempty"`
+}
+
+type DashboardSPFRouteResponse struct {
+	ID                  string                      `json:"id"`
+	DomainID            string                      `json:"domain_id"`
+	Domain              string                      `json:"domain"`
+	Status              string                      `json:"status"`
+	RouteFQDN           string                      `json:"route_fqdn"`
+	CustomerCNAMEName   string                      `json:"customer_cname_name"`
+	CustomerCNAMETarget string                      `json:"customer_cname_target"`
+	GeneratedSPFPreview string                      `json:"generated_spf_preview"`
+	LastPublishedSPF    string                      `json:"last_published_spf"`
+	LastSyncedAt        *time.Time                  `json:"last_synced_at,omitempty"`
+	LastSyncError       string                      `json:"last_sync_error,omitempty"`
+	EnabledSources      []DashboardSPFRouteSource   `json:"enabled_sources"`
+	EvidenceSummary     []DashboardSPFRouteEvidence `json:"evidence_summary"`
+}
+
+type DashboardSPFRouteSource struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+	Label string `json:"label,omitempty"`
+}
+
+type DashboardSPFRouteEvidence struct {
+	SourceValue    string `json:"source_value,omitempty"`
+	ResolvedDomain string `json:"resolved_domain,omitempty"`
+	Mechanism      string `json:"mechanism,omitempty"`
+	Kind           string `json:"kind"`
+	Message        string `json:"message"`
+}
+
+type DashboardSPFRouteSyncResponse struct {
+	JobID    string    `json:"job_id"`
+	RouteID  string    `json:"route_id"`
+	DomainID string    `json:"domain_id"`
+	Status   string    `json:"status"`
+	QueuedAt time.Time `json:"queued_at"`
+}
+
+func NewDashboardSPFRouteResponse(route spfroutes.Route) DashboardSPFRouteResponse {
+	status := string(route.LastSyncStatus)
+	if status == "" {
+		status = "pending"
+	}
+	preview := strings.TrimSpace(route.LastGeneratedSPF)
+	if preview == "" {
+		preview = dashboardSPFPreview(route.Sources, route.MechanismPolicy)
+	}
+	response := DashboardSPFRouteResponse{
+		ID:                  route.ID,
+		DomainID:            route.DomainID,
+		Domain:              route.Domain,
+		Status:              status,
+		RouteFQDN:           route.RouteFQDN,
+		CustomerCNAMEName:   route.CustomerCNAMEName,
+		CustomerCNAMETarget: route.CustomerCNAMETarget,
+		GeneratedSPFPreview: preview,
+		LastPublishedSPF:    route.LastPublishedSPF,
+		LastSyncError:       dashboardSafeSPFRouteSyncError(route.LastSyncError),
+		EnabledSources:      []DashboardSPFRouteSource{},
+		EvidenceSummary:     []DashboardSPFRouteEvidence{},
+	}
+	if !route.LastSyncedAt.IsZero() {
+		lastSyncedAt := route.LastSyncedAt.UTC()
+		response.LastSyncedAt = &lastSyncedAt
+	}
+	for _, source := range route.Sources {
+		if !source.Enabled {
+			continue
+		}
+		response.EnabledSources = append(response.EnabledSources, DashboardSPFRouteSource{Kind: string(source.Kind), Value: source.Value, Label: source.Label})
+	}
+	for _, evidence := range route.Evidence {
+		response.EvidenceSummary = append(response.EvidenceSummary, DashboardSPFRouteEvidence{SourceValue: evidence.SourceValue, ResolvedDomain: evidence.ResolvedDomain, Mechanism: evidence.Mechanism, Kind: evidence.Kind, Message: evidence.Message})
+	}
+	return response
+}
+
+func dashboardSafeSPFRouteSyncError(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return "SPF route sync failed; see operational events for operator details"
+}
+
+func dashboardSPFPreview(sources []spfroutes.Source, policy spfroutes.Policy) string {
+	parts := []string{"v=spf1"}
+	for _, source := range sources {
+		if !source.Enabled {
+			continue
+		}
+		switch source.Kind {
+		case spfroutes.SourceKindInclude:
+			parts = append(parts, "include:"+source.Value)
+		case spfroutes.SourceKindIP4:
+			parts = append(parts, "ip4:"+source.Value)
+		case spfroutes.SourceKindIP6:
+			parts = append(parts, "ip6:"+source.Value)
+		}
+	}
+	switch policy {
+	case spfroutes.PolicyFail:
+		parts = append(parts, "-all")
+	case spfroutes.PolicyNeutral:
+		parts = append(parts, "?all")
+	default:
+		parts = append(parts, "~all")
+	}
+	return strings.Join(parts, " ")
 }
 
 type DashboardChangePlanResponse struct {

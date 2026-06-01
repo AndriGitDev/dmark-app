@@ -2353,6 +2353,39 @@ WHERE r.domain_id = $1::uuid
 	return s.hydrateSPFRoute(ctx, route)
 }
 
+func (s *AppStore) GetOrganizationSPFRoute(ctx context.Context, organizationID string, domainID string) (spfroutes.Route, error) {
+	route, err := s.GetSPFRouteByDomain(ctx, domainID)
+	if err != nil {
+		return spfroutes.Route{}, err
+	}
+	if strings.TrimSpace(route.OrganizationID) != strings.TrimSpace(organizationID) {
+		return spfroutes.Route{}, fmt.Errorf("SPF route not found")
+	}
+	return route, nil
+}
+
+func (s *AppStore) UpsertOrganizationSPFRoute(ctx context.Context, organizationID string, route spfroutes.Route) (spfroutes.Route, error) {
+	organizationUUID, domainUUID, err := organizationDomainUUIDs(organizationID, route.DomainID)
+	if err != nil {
+		return spfroutes.Route{}, err
+	}
+	var exists bool
+	if err := s.queries.db.QueryRow(ctx, `
+SELECT EXISTS (
+    SELECT 1
+    FROM domains
+    WHERE organization_id = $1 AND id = $2
+)
+`, organizationUUID, domainUUID).Scan(&exists); err != nil {
+		return spfroutes.Route{}, err
+	}
+	if !exists {
+		return spfroutes.Route{}, fmt.Errorf("SPF route domain not found")
+	}
+	route.OrganizationID = organizationID
+	return s.EnsureSPFRoute(ctx, route)
+}
+
 func (s *AppStore) SaveSPFRouteSync(ctx context.Context, routeID string, update spfroutes.SyncUpdate) (spfroutes.Route, error) {
 	err := s.withTx(ctx, func(db DBTX) error {
 		tag, err := db.Exec(ctx, `

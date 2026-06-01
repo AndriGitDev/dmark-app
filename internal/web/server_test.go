@@ -24,6 +24,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/reporter"
 	"github.com/AndriGitDev/meil/internal/salesaudit"
 	"github.com/AndriGitDev/meil/internal/scanner"
+	"github.com/AndriGitDev/meil/internal/spfroutes"
 	"github.com/AndriGitDev/meil/internal/statuspage"
 	"github.com/AndriGitDev/meil/internal/teams"
 	"github.com/AndriGitDev/meil/internal/webhooks"
@@ -58,6 +59,8 @@ type webDomainStore struct {
 	statusComponents  []statuspage.Component
 	statusIncidents   []statuspage.Incident
 	operationalEvents []ops.Event
+	spfRoute          spfroutes.Route
+	queuedSPFRouteID  string
 	deletedUserID     string
 	checkedDomain     string
 }
@@ -143,6 +146,36 @@ func (s *webDomainStore) QueueOrganizationDomainRecheck(ctx context.Context, org
 		}
 	}
 	return s.queuedRecheck, nil
+}
+
+func (s *webDomainStore) GetOrganizationSPFRoute(ctx context.Context, organizationID string, domainID string) (spfroutes.Route, error) {
+	if s.spfRoute.ID == "" || s.spfRoute.OrganizationID != organizationID || s.spfRoute.DomainID != domainID {
+		return spfroutes.Route{}, errors.New("SPF route not found")
+	}
+	return s.spfRoute, nil
+}
+
+func (s *webDomainStore) UpsertOrganizationSPFRoute(ctx context.Context, organizationID string, route spfroutes.Route) (spfroutes.Route, error) {
+	if route.DomainID == "" {
+		return spfroutes.Route{}, errors.New("domain id is required")
+	}
+	if route.ID == "" {
+		route.ID = "route-1"
+	}
+	if route.RouteLabel == "" {
+		return spfroutes.Route{}, errors.New("route label is required")
+	}
+	route.OrganizationID = organizationID
+	s.spfRoute = route
+	return s.spfRoute, nil
+}
+
+func (s *webDomainStore) QueueOrganizationSPFRouteSync(ctx context.Context, organizationID string, domainID string, routeID string, at time.Time) (string, error) {
+	if s.spfRoute.ID == "" || s.spfRoute.OrganizationID != organizationID || s.spfRoute.DomainID != domainID || s.spfRoute.ID != routeID {
+		return "", errors.New("SPF route not found")
+	}
+	s.queuedSPFRouteID = routeID
+	return "spf-sync-job-1", nil
 }
 
 func (s *webDomainStore) ListOrganizationDashboardAlerts(ctx context.Context, organizationID string, activeOnly bool, limit int) ([]alerts.DashboardAlert, error) {
@@ -1021,6 +1054,221 @@ func TestDashboardRecheckQueuesJob(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"job_id":"job-1"`) || !strings.Contains(rec.Body.String(), `"status":"queued"`) {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestDashboardSPFRouteGetReturnsFrontendSafeContract(t *testing.T) {
+	t.Parallel()
+
+	syncedAt := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+	store := &webDomainStore{
+		domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}},
+		spfRoute: spfroutes.Route{
+			ID:                  "route-1",
+			OrganizationID:      "org-1",
+			DomainID:            "domain-1",
+			Domain:              "example.com",
+			RouteFQDN:           "example-com.route.dmark.is",
+			CustomerCNAMEName:   "example.com",
+			CustomerCNAMETarget: "example-com.route.dmark.is",
+			Enabled:             true,
+			LastGeneratedSPF:    "v=spf1 include:_spf.mailgun.org ~all",
+			LastPublishedSPF:    "v=spf1 include:_spf.mailgun.org ~all",
+			LastSyncStatus:      spfroutes.StatusHealthy,
+			LastSyncError:       "Bunny DNS zone 801471 request failed with api_key=[REDACTED]",
+			LastSyncedAt:        syncedAt,
+			Sources:             []spfroutes.Source{{Kind: spfroutes.SourceKindInclude, Value: "_spf.mailgun.org", Label: "Mailgun", Enabled: true}, {Kind: spfroutes.SourceKindIP4, Value: "192.0.2.0/24", Label: "Legacy", Enabled: false}},
+			Evidence:            []spfroutes.Evidence{{SourceValue: "_spf.mailgun.org", ResolvedDomain: "_spf.mailgun.org", Mechanism: "include:_spf.mailgun.org", Kind: "include", Message: "resolved"}},
+		},
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIDomainChecker: store,
+		APISPFRoutes:     store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/spf-route", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body struct {
+		DomainID            string `json:"domain_id"`
+		Status              string `json:"status"`
+		RouteFQDN           string `json:"route_fqdn"`
+		CustomerCNAMEName   string `json:"customer_cname_name"`
+		CustomerCNAMETarget string `json:"customer_cname_target"`
+		GeneratedSPFPreview string `json:"generated_spf_preview"`
+		LastPublishedSPF    string `json:"last_published_spf"`
+		LastSyncError       string `json:"last_sync_error"`
+		EnabledSources      []struct {
+			Value string `json:"value"`
+		} `json:"enabled_sources"`
+		EvidenceSummary []struct {
+			Message string `json:"message"`
+		} `json:"evidence_summary"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if body.DomainID != "domain-1" || body.Status != "healthy" || body.RouteFQDN != "example-com.route.dmark.is" {
+		t.Fatalf("route mapping mismatch: %+v", body)
+	}
+	if body.CustomerCNAMEName != "example.com" || body.CustomerCNAMETarget != "example-com.route.dmark.is" || body.GeneratedSPFPreview == "" || body.LastPublishedSPF == "" {
+		t.Fatalf("frontend fields missing: %+v", body)
+	}
+	if len(body.EnabledSources) != 1 || body.EnabledSources[0].Value != "_spf.mailgun.org" {
+		t.Fatalf("enabled sources mismatch: %+v", body.EnabledSources)
+	}
+	if len(body.EvidenceSummary) != 1 || body.EvidenceSummary[0].Message != "resolved" {
+		t.Fatalf("evidence mismatch: %+v", body.EvidenceSummary)
+	}
+	if body.LastSyncError != "SPF route sync failed; see operational events for operator details" {
+		t.Fatalf("last sync error was not sanitized: %q", body.LastSyncError)
+	}
+	lowerBody := strings.ToLower(rec.Body.String())
+	if strings.Contains(lowerBody, "bunny") || strings.Contains(lowerBody, "zone_id") || strings.Contains(lowerBody, "api_key") || strings.Contains(lowerBody, "801471") {
+		t.Fatalf("response leaked provider details: %s", rec.Body.String())
+	}
+}
+
+func TestDashboardSPFRouteRejectsCrossOrgAccess(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{
+		domains:  []domains.Domain{{ID: "domain-1", Domain: "example.com"}},
+		spfRoute: spfroutes.Route{ID: "route-1", OrganizationID: "org-2", DomainID: "domain-1"},
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIDomainChecker: store,
+		APISPFRoutes:     store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/spf-route", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+}
+
+func TestDashboardSPFRoutePutValidatesAndUpserts(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
+		APIDomainChecker: store,
+		APISPFRoutes:     store,
+	})
+
+	badReq := httptest.NewRequest(http.MethodPut, "/api/v1/dashboard/domains/domain-1/spf-route", strings.NewReader(`{"route_fqdn":""}`))
+	badReq.Header.Set("Authorization", "Bearer meil_test")
+	badRec := httptest.NewRecorder()
+	router.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusBadRequest {
+		t.Fatalf("bad status = %d, want %d; body %s", badRec.Code, http.StatusBadRequest, badRec.Body.String())
+	}
+
+	payload := `{"route_fqdn":"example-com.route.dmark.is","customer_cname_name":"example.com","customer_cname_target":"example-com.route.dmark.is","enabled":true,"mechanism_policy":"softfail","sources":[{"kind":"include","value":"_spf.mailgun.org","label":"Mailgun","enabled":true}]}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/dashboard/domains/domain-1/spf-route", strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if store.spfRoute.OrganizationID != "org-1" || store.spfRoute.DomainID != "domain-1" || len(store.spfRoute.Sources) != 1 {
+		t.Fatalf("route not upserted with tenant/domain: %+v", store.spfRoute)
+	}
+}
+
+func TestDashboardSPFRouteSyncQueuesManualJob(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{
+		domains:  []domains.Domain{{ID: "domain-1", Domain: "example.com"}},
+		spfRoute: spfroutes.Route{ID: "route-1", OrganizationID: "org-1", DomainID: "domain-1", RouteFQDN: "example-com.route.dmark.is"},
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
+		APIDomainChecker: store,
+		APISPFRoutes:     store,
+		APISPFRouteSyncs: store,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/dashboard/domains/domain-1/spf-route/sync", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+	if store.queuedSPFRouteID != "route-1" || !strings.Contains(rec.Body.String(), `"job_id":"spf-sync-job-1"`) || !strings.Contains(rec.Body.String(), `"status":"queued"`) {
+		t.Fatalf("manual sync not queued; route=%q body=%s", store.queuedSPFRouteID, rec.Body.String())
+	}
+}
+
+func TestDashboardSPFRouteEndpointsRequireExpectedScopes(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		method string
+		path   string
+		body   string
+		scopes []apikeys.Scope
+	}{
+		{
+			name:   "get requires domain read",
+			method: http.MethodGet,
+			path:   "/api/v1/dashboard/domains/domain-1/spf-route",
+			scopes: []apikeys.Scope{apikeys.ScopeDomainWrite},
+		},
+		{
+			name:   "put requires domain write",
+			method: http.MethodPut,
+			path:   "/api/v1/dashboard/domains/domain-1/spf-route",
+			body:   `{"route_fqdn":"example-com.route.dmark.is"}`,
+			scopes: []apikeys.Scope{apikeys.ScopeDomainRead},
+		},
+		{
+			name:   "sync requires domain write",
+			method: http.MethodPost,
+			path:   "/api/v1/dashboard/domains/domain-1/spf-route/sync",
+			scopes: []apikeys.Scope{apikeys.ScopeDomainRead},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}}
+			router := NewRouterWithDeps(Deps{
+				APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: tt.scopes}},
+				APIDomainChecker: store,
+				APISPFRoutes:     store,
+				APISPFRouteSyncs: store,
+			})
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Authorization", "Bearer meil_test")
+			rec := httptest.NewRecorder()
+
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusForbidden, rec.Body.String())
+			}
+			if store.spfRoute.DomainID != "" || store.queuedSPFRouteID != "" {
+				t.Fatalf("scope-denied request reached SPF route store: route=%+v queued=%q", store.spfRoute, store.queuedSPFRouteID)
+			}
+		})
 	}
 }
 

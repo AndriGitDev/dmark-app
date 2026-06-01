@@ -2,12 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/AndriGitDev/meil/internal/brandrisk"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/scanner"
+	"github.com/AndriGitDev/meil/internal/spfroutes"
 )
 
 func TestNewScanResponse(t *testing.T) {
@@ -95,5 +97,37 @@ func TestNewDashboardBrandRiskResponse(t *testing.T) {
 	}
 	if _, err := json.Marshal(response); err != nil {
 		t.Fatalf("Marshal returned error: %v", err)
+	}
+}
+
+func TestNewDashboardSPFRouteResponseOmitsZeroLastSyncedAtAndSanitizesErrors(t *testing.T) {
+	t.Parallel()
+
+	response := NewDashboardSPFRouteResponse(spfroutes.Route{
+		ID:               "route-1",
+		DomainID:         "domain-1",
+		Domain:           "example.com",
+		RouteFQDN:        "example-com.route.dmark.is",
+		LastSyncStatus:   spfroutes.StatusFailed,
+		LastSyncError:    "Bunny DNS zone 801471 request failed with api_key=[REDACTED]",
+		MechanismPolicy:  spfroutes.PolicySoftfail,
+		LastPublishedSPF: "v=spf1 include:_spf.example.net ~all",
+		Sources:          []spfroutes.Source{{Kind: spfroutes.SourceKindInclude, Value: "_spf.example.net", Enabled: true}},
+	})
+
+	data, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	body := string(data)
+	if strings.Contains(body, "last_synced_at") {
+		t.Fatalf("zero last_synced_at was not omitted: %s", body)
+	}
+	lowerBody := strings.ToLower(body)
+	if strings.Contains(lowerBody, "bunny") || strings.Contains(body, "801471") || strings.Contains(lowerBody, "api_key") {
+		t.Fatalf("response leaked provider details: %s", body)
+	}
+	if response.LastSyncError != "SPF route sync failed; see operational events for operator details" {
+		t.Fatalf("last sync error = %q, want sanitized frontend-safe message", response.LastSyncError)
 	}
 }
