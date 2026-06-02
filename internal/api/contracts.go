@@ -795,11 +795,12 @@ type DomainResponse struct {
 }
 
 type CheckSnapshot struct {
-	CheckedAt time.Time     `json:"checked_at"`
-	SPF       CheckResponse `json:"spf"`
-	DKIM      CheckResponse `json:"dkim"`
-	DMARC     CheckResponse `json:"dmarc"`
-	BIMI      CheckResponse `json:"bimi"`
+	CheckedAt        time.Time                `json:"checked_at"`
+	SPF              CheckResponse            `json:"spf"`
+	DKIM             CheckResponse            `json:"dkim"`
+	DMARC            CheckResponse            `json:"dmarc"`
+	BIMI             CheckResponse            `json:"bimi"`
+	EvidenceSnapshot domains.EvidenceSnapshot `json:"evidence_snapshot"`
 }
 
 func NewDomainResponse(domain domains.Domain) DomainResponse {
@@ -817,11 +818,12 @@ func NewDomainResponse(domain domains.Domain) DomainResponse {
 
 func NewCheckSnapshot(check domains.Check) CheckSnapshot {
 	return CheckSnapshot{
-		CheckedAt: check.CheckedAt.UTC(),
-		SPF:       newCheckResponse(check.SPF),
-		DKIM:      newCheckResponse(check.DKIM),
-		DMARC:     newCheckResponse(check.DMARC),
-		BIMI:      newCheckResponse(check.BIMI),
+		CheckedAt:        check.CheckedAt.UTC(),
+		SPF:              newCheckResponse(check.SPF),
+		DKIM:             newCheckResponse(check.DKIM),
+		DMARC:            newCheckResponse(check.DMARC),
+		BIMI:             newCheckResponse(check.BIMI),
+		EvidenceSnapshot: check.EvidenceSnapshot,
 	}
 }
 

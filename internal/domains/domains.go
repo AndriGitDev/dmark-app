@@ -18,11 +18,12 @@ type Domain struct {
 }
 
 type Check struct {
-	SPF       scanner.CheckResult
-	DKIM      scanner.CheckResult
-	DMARC     scanner.CheckResult
-	BIMI      scanner.CheckResult
-	CheckedAt time.Time
+	SPF              scanner.CheckResult
+	DKIM             scanner.CheckResult
+	DMARC            scanner.CheckResult
+	BIMI             scanner.CheckResult
+	CheckedAt        time.Time
+	EvidenceSnapshot EvidenceSnapshot
 }
 
 type Store interface {

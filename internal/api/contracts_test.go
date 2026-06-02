@@ -135,6 +135,18 @@ func TestNewDomainResponse(t *testing.T) {
 			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass},
 			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass},
 			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing},
+			EvidenceSnapshot: domains.EvidenceSnapshot{
+				Domain:     "example.com",
+				CheckedAt:  time.Date(2026, 5, 16, 13, 0, 0, 0, time.UTC),
+				DurationMS: 25,
+				Checks: []domains.CheckEvidence{{
+					Name:          "SPF",
+					Status:        scanner.StatusPass,
+					SourceName:    "example.com",
+					RecordPresent: true,
+					RecordLength:  15,
+				}},
+			},
 		},
 	})
 
@@ -143,6 +155,17 @@ func TestNewDomainResponse(t *testing.T) {
 	}
 	if response.LatestCheck.SPF.Status != scanner.StatusPass {
 		t.Fatalf("latest check not mapped: %+v", response.LatestCheck)
+	}
+	if response.LatestCheck.EvidenceSnapshot.Domain != "example.com" || len(response.LatestCheck.EvidenceSnapshot.Checks) != 1 {
+		t.Fatalf("evidence snapshot not mapped: %+v", response.LatestCheck.EvidenceSnapshot)
+	}
+
+	data, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	if !strings.Contains(string(data), "\"evidence_snapshot\"") || !strings.Contains(string(data), "\"record_present\":true") {
+		t.Fatalf("evidence_snapshot missing from JSON: %s", data)
 	}
 }
 

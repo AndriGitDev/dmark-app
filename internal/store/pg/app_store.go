@@ -1042,12 +1042,17 @@ func (s *AppStore) ListDomains(ctx context.Context, userID string) ([]domains.Do
 			CreatedAt: row.CreatedAt.Time,
 		}
 		if row.CheckID.Valid {
+			evidenceSnapshot, err := decodeEvidenceSnapshot(row.EvidenceSnapshot)
+			if err != nil {
+				return nil, err
+			}
 			saved.LatestCheck = &domains.Check{
-				SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.Status(row.SpfStatus), Message: row.SpfMessage, Record: row.SpfRecord},
-				DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.Status(row.DkimStatus), Message: row.DkimMessage, Record: row.DkimRecord},
-				DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.Status(row.DmarcStatus), Message: row.DmarcMessage, Record: row.DmarcRecord},
-				BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.Status(row.BimiStatus), Message: row.BimiMessage, Record: row.BimiRecord},
-				CheckedAt: row.CheckedAt.Time,
+				SPF:              scanner.CheckResult{Name: "SPF", Status: scanner.Status(row.SpfStatus), Message: row.SpfMessage, Record: row.SpfRecord},
+				DKIM:             scanner.CheckResult{Name: "DKIM", Status: scanner.Status(row.DkimStatus), Message: row.DkimMessage, Record: row.DkimRecord},
+				DMARC:            scanner.CheckResult{Name: "DMARC", Status: scanner.Status(row.DmarcStatus), Message: row.DmarcMessage, Record: row.DmarcRecord},
+				BIMI:             scanner.CheckResult{Name: "BIMI", Status: scanner.Status(row.BimiStatus), Message: row.BimiMessage, Record: row.BimiRecord},
+				CheckedAt:        row.CheckedAt.Time,
+				EvidenceSnapshot: evidenceSnapshot,
 			}
 		}
 		result = append(result, saved)
@@ -1078,10 +1083,11 @@ SELECT
     COALESCE(c.bimi_status, '') AS bimi_status,
     COALESCE(c.bimi_message, '') AS bimi_message,
     COALESCE(c.bimi_record, '') AS bimi_record,
+    COALESCE(c.evidence_snapshot, '{}'::jsonb) AS evidence_snapshot,
     c.created_at AS checked_at
 FROM domains d
 LEFT JOIN LATERAL (
-    SELECT id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, created_at
+    SELECT id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, evidence_snapshot, created_at
     FROM domain_checks dc
     WHERE dc.domain_id = d.id
     ORDER BY dc.created_at DESC
@@ -1104,6 +1110,7 @@ ORDER BY d.created_at DESC
 		var dkimStatus, dkimMessage, dkimRecord string
 		var dmarcStatus, dmarcMessage, dmarcRecord string
 		var bimiStatus, bimiMessage, bimiRecord string
+		var evidenceSnapshotJSON []byte
 		var createdAt pgtype.Timestamptz
 		var checkedAt pgtype.Timestamptz
 		if err := rows.Scan(
@@ -1123,6 +1130,7 @@ ORDER BY d.created_at DESC
 			&bimiStatus,
 			&bimiMessage,
 			&bimiRecord,
+			&evidenceSnapshotJSON,
 			&checkedAt,
 		); err != nil {
 			return nil, err
@@ -1130,12 +1138,17 @@ ORDER BY d.created_at DESC
 		saved.ID = uuidToString(domainID)
 		saved.CreatedAt = createdAt.Time
 		if checkID.Valid {
+			evidenceSnapshot, err := decodeEvidenceSnapshot(evidenceSnapshotJSON)
+			if err != nil {
+				return nil, err
+			}
 			saved.LatestCheck = &domains.Check{
-				SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
-				DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
-				DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
-				BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
-				CheckedAt: checkedAt.Time,
+				SPF:              scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
+				DKIM:             scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
+				DMARC:            scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
+				BIMI:             scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
+				CheckedAt:        checkedAt.Time,
+				EvidenceSnapshot: evidenceSnapshot,
 			}
 		}
 		result = append(result, saved)
@@ -1188,6 +1201,7 @@ func (s *AppStore) GetOrganizationDomain(ctx context.Context, organizationID str
 	var dkimStatus, dkimMessage, dkimRecord string
 	var dmarcStatus, dmarcMessage, dmarcRecord string
 	var bimiStatus, bimiMessage, bimiRecord string
+	var evidenceSnapshotJSON []byte
 	var createdAt pgtype.Timestamptz
 	var checkedAt pgtype.Timestamptz
 	err = s.queries.db.QueryRow(ctx, `
@@ -1207,10 +1221,11 @@ SELECT
     COALESCE(c.bimi_status, '') AS bimi_status,
     COALESCE(c.bimi_message, '') AS bimi_message,
     COALESCE(c.bimi_record, '') AS bimi_record,
+    COALESCE(c.evidence_snapshot, '{}'::jsonb) AS evidence_snapshot,
     c.created_at AS checked_at
 FROM domains d
 LEFT JOIN LATERAL (
-    SELECT id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, created_at
+    SELECT id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, evidence_snapshot, created_at
     FROM domain_checks dc
     WHERE dc.domain_id = d.id
     ORDER BY dc.created_at DESC
@@ -1233,6 +1248,7 @@ WHERE d.organization_id = $1 AND d.id = $2
 		&bimiStatus,
 		&bimiMessage,
 		&bimiRecord,
+		&evidenceSnapshotJSON,
 		&checkedAt,
 	)
 	if err != nil {
@@ -1241,12 +1257,17 @@ WHERE d.organization_id = $1 AND d.id = $2
 	saved.ID = domainID
 	saved.CreatedAt = createdAt.Time
 	if checkID.Valid {
+		evidenceSnapshot, err := decodeEvidenceSnapshot(evidenceSnapshotJSON)
+		if err != nil {
+			return domains.Domain{}, err
+		}
 		saved.LatestCheck = &domains.Check{
-			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
-			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
-			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
-			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
-			CheckedAt: checkedAt.Time,
+			SPF:              scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
+			DKIM:             scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
+			DMARC:            scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
+			BIMI:             scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
+			CheckedAt:        checkedAt.Time,
+			EvidenceSnapshot: evidenceSnapshot,
 		}
 	}
 	return saved, nil
@@ -1600,6 +1621,7 @@ SELECT
     c.bimi_status,
     c.bimi_message,
     c.bimi_record,
+    c.evidence_snapshot,
     c.created_at
 FROM domains d
 JOIN domain_checks c ON c.domain_id = d.id
@@ -1621,6 +1643,7 @@ LIMIT $3
 		var dkimStatus, dkimMessage, dkimRecord string
 		var dmarcStatus, dmarcMessage, dmarcRecord string
 		var bimiStatus, bimiMessage, bimiRecord string
+		var evidenceSnapshotJSON []byte
 		if err := rows.Scan(
 			&id,
 			&entry.Domain,
@@ -1636,17 +1659,23 @@ LIMIT $3
 			&bimiStatus,
 			&bimiMessage,
 			&bimiRecord,
+			&evidenceSnapshotJSON,
 			&checkedAt,
 		); err != nil {
 			return nil, err
 		}
 		entry.DomainID = uuidToString(id)
+		evidenceSnapshot, err := decodeEvidenceSnapshot(evidenceSnapshotJSON)
+		if err != nil {
+			return nil, err
+		}
 		entry.Check = domains.Check{
-			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
-			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
-			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
-			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
-			CheckedAt: checkedAt.Time,
+			SPF:              scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
+			DKIM:             scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
+			DMARC:            scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
+			BIMI:             scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
+			CheckedAt:        checkedAt.Time,
+			EvidenceSnapshot: evidenceSnapshot,
 		}
 		history = append(history, entry)
 	}
@@ -2126,6 +2155,7 @@ func (s *AppStore) GetDomain(ctx context.Context, userID string, domainID string
 	var dkimStatus, dkimMessage, dkimRecord string
 	var dmarcStatus, dmarcMessage, dmarcRecord string
 	var bimiStatus, bimiMessage, bimiRecord string
+	var evidenceSnapshotJSON []byte
 	var createdAt pgtype.Timestamptz
 	var checkedAt pgtype.Timestamptz
 	err = s.queries.db.QueryRow(ctx, `
@@ -2145,10 +2175,11 @@ SELECT
     COALESCE(c.bimi_status, '') AS bimi_status,
     COALESCE(c.bimi_message, '') AS bimi_message,
     COALESCE(c.bimi_record, '') AS bimi_record,
+    COALESCE(c.evidence_snapshot, '{}'::jsonb) AS evidence_snapshot,
     c.created_at AS checked_at
 FROM domains d
 LEFT JOIN LATERAL (
-    SELECT id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, created_at
+    SELECT id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, evidence_snapshot, created_at
     FROM domain_checks dc
     WHERE dc.domain_id = d.id
     ORDER BY dc.created_at DESC
@@ -2171,6 +2202,7 @@ WHERE d.id = $1 AND d.user_id = $2
 		&bimiStatus,
 		&bimiMessage,
 		&bimiRecord,
+		&evidenceSnapshotJSON,
 		&checkedAt,
 	)
 	if err != nil {
@@ -2179,12 +2211,17 @@ WHERE d.id = $1 AND d.user_id = $2
 	saved.ID = domainID
 	saved.CreatedAt = createdAt.Time
 	if checkID.Valid {
+		evidenceSnapshot, err := decodeEvidenceSnapshot(evidenceSnapshotJSON)
+		if err != nil {
+			return domains.Domain{}, err
+		}
 		saved.LatestCheck = &domains.Check{
-			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
-			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
-			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
-			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
-			CheckedAt: checkedAt.Time,
+			SPF:              scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
+			DKIM:             scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
+			DMARC:            scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
+			BIMI:             scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
+			CheckedAt:        checkedAt.Time,
+			EvidenceSnapshot: evidenceSnapshot,
 		}
 	}
 	return saved, nil
@@ -2207,22 +2244,38 @@ func (s *AppStore) CreateCheck(ctx context.Context, domainID string, result scan
 	if err != nil {
 		return err
 	}
+	evidenceSnapshot, err := json.Marshal(domains.NewScanEvidenceSnapshot(result))
+	if err != nil {
+		return fmt.Errorf("encoding domain check evidence snapshot: %w", err)
+	}
 	_, err = s.queries.CreateDomainCheck(ctx, CreateDomainCheckParams{
-		DomainID:     domainUUID,
-		SpfStatus:    string(result.SPF.Status),
-		SpfMessage:   result.SPF.Message,
-		SpfRecord:    result.SPF.Record,
-		DkimStatus:   string(result.DKIM.Status),
-		DkimMessage:  result.DKIM.Message,
-		DkimRecord:   result.DKIM.Record,
-		DmarcStatus:  string(result.DMARC.Status),
-		DmarcMessage: result.DMARC.Message,
-		DmarcRecord:  result.DMARC.Record,
-		BimiStatus:   string(result.BIMI.Status),
-		BimiMessage:  result.BIMI.Message,
-		BimiRecord:   result.BIMI.Record,
+		DomainID:         domainUUID,
+		SpfStatus:        string(result.SPF.Status),
+		SpfMessage:       result.SPF.Message,
+		SpfRecord:        result.SPF.Record,
+		DkimStatus:       string(result.DKIM.Status),
+		DkimMessage:      result.DKIM.Message,
+		DkimRecord:       result.DKIM.Record,
+		DmarcStatus:      string(result.DMARC.Status),
+		DmarcMessage:     result.DMARC.Message,
+		DmarcRecord:      result.DMARC.Record,
+		BimiStatus:       string(result.BIMI.Status),
+		BimiMessage:      result.BIMI.Message,
+		BimiRecord:       result.BIMI.Record,
+		EvidenceSnapshot: evidenceSnapshot,
 	})
 	return err
+}
+
+func decodeEvidenceSnapshot(raw []byte) (domains.EvidenceSnapshot, error) {
+	if len(raw) == 0 {
+		return domains.EvidenceSnapshot{}, nil
+	}
+	var snapshot domains.EvidenceSnapshot
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return domains.EvidenceSnapshot{}, fmt.Errorf("decoding domain check evidence snapshot: %w", err)
+	}
+	return snapshot, nil
 }
 
 func domainFromParts(id pgtype.UUID, domain string, createdAt pgtype.Timestamptz) domains.Domain {

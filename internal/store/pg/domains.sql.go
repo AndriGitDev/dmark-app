@@ -58,29 +58,50 @@ INSERT INTO domain_checks (
     dmarc_record,
     bimi_status,
     bimi_message,
-    bimi_record
+    bimi_record,
+    evidence_snapshot
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, domain_id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, created_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
+RETURNING id, domain_id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, evidence_snapshot, created_at
 `
 
 type CreateDomainCheckParams struct {
-	DomainID     pgtype.UUID
-	SpfStatus    string
-	SpfMessage   string
-	SpfRecord    string
-	DkimStatus   string
-	DkimMessage  string
-	DkimRecord   string
-	DmarcStatus  string
-	DmarcMessage string
-	DmarcRecord  string
-	BimiStatus   string
-	BimiMessage  string
-	BimiRecord   string
+	DomainID         pgtype.UUID
+	SpfStatus        string
+	SpfMessage       string
+	SpfRecord        string
+	DkimStatus       string
+	DkimMessage      string
+	DkimRecord       string
+	DmarcStatus      string
+	DmarcMessage     string
+	DmarcRecord      string
+	BimiStatus       string
+	BimiMessage      string
+	BimiRecord       string
+	EvidenceSnapshot []byte
 }
 
-func (q *Queries) CreateDomainCheck(ctx context.Context, arg CreateDomainCheckParams) (DomainCheck, error) {
+type CreateDomainCheckRow struct {
+	ID               pgtype.UUID
+	DomainID         pgtype.UUID
+	SpfStatus        string
+	SpfMessage       string
+	SpfRecord        string
+	DkimStatus       string
+	DkimMessage      string
+	DkimRecord       string
+	DmarcStatus      string
+	DmarcMessage     string
+	DmarcRecord      string
+	BimiStatus       string
+	BimiMessage      string
+	BimiRecord       string
+	EvidenceSnapshot []byte
+	CreatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) CreateDomainCheck(ctx context.Context, arg CreateDomainCheckParams) (CreateDomainCheckRow, error) {
 	row := q.db.QueryRow(ctx, createDomainCheck,
 		arg.DomainID,
 		arg.SpfStatus,
@@ -95,8 +116,9 @@ func (q *Queries) CreateDomainCheck(ctx context.Context, arg CreateDomainCheckPa
 		arg.BimiStatus,
 		arg.BimiMessage,
 		arg.BimiRecord,
+		arg.EvidenceSnapshot,
 	)
-	var i DomainCheck
+	var i CreateDomainCheckRow
 	err := row.Scan(
 		&i.ID,
 		&i.DomainID,
@@ -112,6 +134,7 @@ func (q *Queries) CreateDomainCheck(ctx context.Context, arg CreateDomainCheckPa
 		&i.BimiStatus,
 		&i.BimiMessage,
 		&i.BimiRecord,
+		&i.EvidenceSnapshot,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -184,10 +207,11 @@ SELECT
     COALESCE(c.bimi_status, '') AS bimi_status,
     COALESCE(c.bimi_message, '') AS bimi_message,
     COALESCE(c.bimi_record, '') AS bimi_record,
+    COALESCE(c.evidence_snapshot, '{}'::jsonb) AS evidence_snapshot,
     c.created_at AS checked_at
 FROM domains d
 LEFT JOIN LATERAL (
-    SELECT id, domain_id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, created_at
+    SELECT id, domain_id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, created_at, evidence_snapshot
     FROM domain_checks dc
     WHERE dc.domain_id = d.id
     ORDER BY dc.created_at DESC
@@ -198,25 +222,26 @@ ORDER BY d.created_at DESC
 `
 
 type ListDomainsWithLatestCheckRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	Domain       string
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
-	CheckID      pgtype.UUID
-	SpfStatus    string
-	SpfMessage   string
-	SpfRecord    string
-	DkimStatus   string
-	DkimMessage  string
-	DkimRecord   string
-	DmarcStatus  string
-	DmarcMessage string
-	DmarcRecord  string
-	BimiStatus   string
-	BimiMessage  string
-	BimiRecord   string
-	CheckedAt    pgtype.Timestamptz
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Domain           string
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	CheckID          pgtype.UUID
+	SpfStatus        string
+	SpfMessage       string
+	SpfRecord        string
+	DkimStatus       string
+	DkimMessage      string
+	DkimRecord       string
+	DmarcStatus      string
+	DmarcMessage     string
+	DmarcRecord      string
+	BimiStatus       string
+	BimiMessage      string
+	BimiRecord       string
+	EvidenceSnapshot []byte
+	CheckedAt        pgtype.Timestamptz
 }
 
 func (q *Queries) ListDomainsWithLatestCheck(ctx context.Context, userID pgtype.UUID) ([]ListDomainsWithLatestCheckRow, error) {
@@ -247,6 +272,7 @@ func (q *Queries) ListDomainsWithLatestCheck(ctx context.Context, userID pgtype.
 			&i.BimiStatus,
 			&i.BimiMessage,
 			&i.BimiRecord,
+			&i.EvidenceSnapshot,
 			&i.CheckedAt,
 		); err != nil {
 			return nil, err

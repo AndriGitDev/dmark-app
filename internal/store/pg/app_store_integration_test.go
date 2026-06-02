@@ -172,10 +172,13 @@ func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
 	}
 
 	if err := store.CreateCheck(ctx, domain.ID, scanner.Result{
-		SPF:   scanner.CheckResult{Name: "SPF", Status: scanner.StatusWarn, Message: "SPF warning", Record: "v=spf1 ~all"},
-		DKIM:  scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing"},
-		DMARC: scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor"},
-		BIMI:  scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
+		Domain:    "example.com",
+		CheckedAt: time.Date(2026, 6, 2, 10, 30, 0, 0, time.UTC),
+		Duration:  31 * time.Millisecond,
+		SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusWarn, Message: "SPF warning", Record: "v=spf1 include:secret-mailer.example ~all", SourceName: "example.com", LookupDuration: 3 * time.Millisecond},
+		DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing, Message: "DKIM missing", Selectors: []scanner.SelectorResult{{Selector: "default", Record: "v=DKIM1; p=SECRET", Status: scanner.StatusMissing}}},
+		DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Message: "DMARC monitor"},
+		BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
 	}); err != nil {
 		t.Fatalf("create first check: %v", err)
 	}
@@ -220,10 +223,13 @@ func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
 	}
 	time.Sleep(10 * time.Millisecond)
 	if err := store.CreateCheck(ctx, domain.ID, scanner.Result{
-		SPF:   scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF pass", Record: "v=spf1 -all"},
-		DKIM:  scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass, Message: "DKIM pass"},
-		DMARC: scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass, Message: "DMARC pass"},
-		BIMI:  scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
+		Domain:    "example.com",
+		CheckedAt: time.Date(2026, 6, 2, 10, 31, 0, 0, time.UTC),
+		Duration:  17 * time.Millisecond,
+		SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass, Message: "SPF pass", Record: "v=spf1 -all", SourceName: "example.com", LookupDuration: 2 * time.Millisecond},
+		DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass, Message: "DKIM pass"},
+		DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass, Message: "DMARC pass"},
+		BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
 	}); err != nil {
 		t.Fatalf("create latest check: %v", err)
 	}
@@ -238,12 +244,21 @@ func TestPostgresMigrationsAndAuthDomainStoreIntegration(t *testing.T) {
 	if domains[0].LatestCheck == nil || domains[0].LatestCheck.SPF.Status != scanner.StatusPass {
 		t.Fatalf("latest check = %+v, want SPF pass", domains[0].LatestCheck)
 	}
+	if domains[0].LatestCheck.EvidenceSnapshot.Domain != "example.com" || domains[0].LatestCheck.EvidenceSnapshot.DurationMS != 17 {
+		t.Fatalf("list latest evidence snapshot = %+v, want persisted snapshot", domains[0].LatestCheck.EvidenceSnapshot)
+	}
+	if len(domains[0].LatestCheck.EvidenceSnapshot.Checks) == 0 || !domains[0].LatestCheck.EvidenceSnapshot.Checks[0].RecordPresent {
+		t.Fatalf("list latest evidence checks = %+v, want record presence", domains[0].LatestCheck.EvidenceSnapshot.Checks)
+	}
 	domainWithCheck, err := store.GetDomain(ctx, user.ID, domain.ID)
 	if err != nil {
 		t.Fatalf("get domain: %v", err)
 	}
 	if domainWithCheck.LatestCheck == nil || domainWithCheck.LatestCheck.SPF.Status != scanner.StatusPass {
 		t.Fatalf("get domain latest check = %+v, want SPF pass", domainWithCheck.LatestCheck)
+	}
+	if domainWithCheck.LatestCheck.EvidenceSnapshot.Domain != "example.com" || domainWithCheck.LatestCheck.EvidenceSnapshot.DurationMS != 17 {
+		t.Fatalf("get latest evidence snapshot = %+v, want persisted snapshot", domainWithCheck.LatestCheck.EvidenceSnapshot)
 	}
 	claim, err := store.CreateAuditClaim(ctx, salesaudit.Claim{
 		Domain:        "example.com",

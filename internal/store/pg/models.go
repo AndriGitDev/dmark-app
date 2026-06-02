@@ -160,21 +160,22 @@ type Domain struct {
 }
 
 type DomainCheck struct {
-	ID           pgtype.UUID
-	DomainID     pgtype.UUID
-	SpfStatus    string
-	SpfMessage   string
-	SpfRecord    string
-	DkimStatus   string
-	DkimMessage  string
-	DkimRecord   string
-	DmarcStatus  string
-	DmarcMessage string
-	DmarcRecord  string
-	BimiStatus   string
-	BimiMessage  string
-	BimiRecord   string
-	CreatedAt    pgtype.Timestamptz
+	ID               pgtype.UUID
+	DomainID         pgtype.UUID
+	SpfStatus        string
+	SpfMessage       string
+	SpfRecord        string
+	DkimStatus       string
+	DkimMessage      string
+	DkimRecord       string
+	DmarcStatus      string
+	DmarcMessage     string
+	DmarcRecord      string
+	BimiStatus       string
+	BimiMessage      string
+	BimiRecord       string
+	CreatedAt        pgtype.Timestamptz
+	EvidenceSnapshot []byte
 }
 
 type DomainSetting struct {

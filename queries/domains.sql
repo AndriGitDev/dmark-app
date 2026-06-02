@@ -24,6 +24,7 @@ SELECT
     COALESCE(c.bimi_status, '') AS bimi_status,
     COALESCE(c.bimi_message, '') AS bimi_message,
     COALESCE(c.bimi_record, '') AS bimi_record,
+    COALESCE(c.evidence_snapshot, '{}'::jsonb) AS evidence_snapshot,
     c.created_at AS checked_at
 FROM domains d
 LEFT JOIN LATERAL (
@@ -59,7 +60,8 @@ INSERT INTO domain_checks (
     dmarc_record,
     bimi_status,
     bimi_message,
-    bimi_record
+    bimi_record,
+    evidence_snapshot
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, domain_id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, created_at;
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, sqlc.arg(evidence_snapshot)::jsonb)
+RETURNING id, domain_id, spf_status, spf_message, spf_record, dkim_status, dkim_message, dkim_record, dmarc_status, dmarc_message, dmarc_record, bimi_status, bimi_message, bimi_record, evidence_snapshot, created_at;
