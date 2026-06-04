@@ -690,6 +690,42 @@ func TestRequestIDHeader(t *testing.T) {
 	}
 }
 
+func TestRequestIDHeaderRejectsUnsafeClientValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "whitespace separated secret", value: "req-test bearer-token"},
+		{name: "too long", value: "req-" + strings.Repeat("a", 129)},
+		{name: "invalid punctuation", value: "req-test/../../secret"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			req.Header.Set("X-Request-ID", tt.value)
+			rec := httptest.NewRecorder()
+
+			NewRouter().ServeHTTP(rec, req)
+
+			got := rec.Header().Get("X-Request-ID")
+			if got == tt.value {
+				t.Fatalf("unsafe X-Request-ID %q was echoed", got)
+			}
+			if !strings.HasPrefix(got, "req-") {
+				t.Fatalf("replacement X-Request-ID = %q, want generated req-* value", got)
+			}
+			if strings.Contains(got, "bearer") || strings.Contains(got, "secret") || strings.ContainsAny(got, " /\\") {
+				t.Fatalf("replacement X-Request-ID = %q contains unsafe client content", got)
+			}
+		})
+	}
+}
+
 func TestSecurityHeadersAreApplied(t *testing.T) {
 	t.Parallel()
 

@@ -2452,13 +2452,31 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
-		if requestID == "" {
+		if !isSafeRequestID(requestID) {
 			requestID = newRequestID()
 		}
 		w.Header().Set("X-Request-ID", requestID)
 		ctx := context.WithValue(r.Context(), requestIDContextKey{}, requestID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func isSafeRequestID(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for _, ch := range value {
+		if ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' {
+			continue
+		}
+		switch ch {
+		case '-', '_', '.', ':':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func RequestID(ctx context.Context) string {
