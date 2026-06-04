@@ -255,7 +255,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
   - no secret-like values in logs
 - Add privacy-respecting funnel analytics sufficient to understand launch performance:
   - homepage visits
-  - scan starts/completions
+  - scan starts/completions (public scanner lifecycle events are wired in `dmark-web` with only coarse status/source properties and no raw domains, emails, DNS records, URLs, or error text)
   - claim starts/completions
   - recommendation views
   - CTA clicks/bookings
