@@ -30,16 +30,21 @@ type DNSResolver interface {
 }
 
 type SyntheticConfig struct {
-	FrontendURL        string
-	BackendURL         string
-	ScanDomain         string
-	ScanFixtureDomains []string
-	MaxScanAge         time.Duration
-	RouteTXTName       string
-	RouteTXTWanted     string
-	RouteCNAMEName     string
-	RouteCNAMEWant     string
-	Timeout            time.Duration
+	FrontendURL             string
+	BackendURL              string
+	ScanDomain              string
+	ScanFixtureDomains      []string
+	ScanFixtureExpectations map[string]ScanFixtureExpectation
+	MaxScanAge              time.Duration
+	RouteTXTName            string
+	RouteTXTWanted          string
+	RouteCNAMEName          string
+	RouteCNAMEWant          string
+	Timeout                 time.Duration
+}
+
+type ScanFixtureExpectation struct {
+	SummaryStatus string
 }
 
 type SyntheticReport struct {
@@ -49,12 +54,13 @@ type SyntheticReport struct {
 }
 
 type SyntheticCheckResult struct {
-	Name         string `json:"name"`
-	Status       string `json:"status"`
-	Target       string `json:"target,omitempty"`
-	LatencyMS    int64  `json:"latency_ms,omitempty"`
-	ErrorClass   string `json:"error_class,omitempty"`
-	ErrorMessage string `json:"error_message,omitempty"`
+	Name              string `json:"name"`
+	Status            string `json:"status"`
+	Target            string `json:"target,omitempty"`
+	LatencyMS         int64  `json:"latency_ms,omitempty"`
+	ScanSummaryStatus string `json:"scan_summary_status,omitempty"`
+	ErrorClass        string `json:"error_class,omitempty"`
+	ErrorMessage      string `json:"error_message,omitempty"`
 }
 
 type SyntheticRunner struct {
@@ -82,7 +88,11 @@ func (r SyntheticRunner) Run(ctx context.Context, cfg SyntheticConfig) Synthetic
 		if domain == "" || strings.EqualFold(domain, cfg.ScanDomain) {
 			continue
 		}
-		report.Checks = append(report.Checks, r.checkPublicScan(ctx, "public_scan:"+domain, cfg.BackendURL, domain, cfg.MaxScanAge, now()))
+		result := r.checkPublicScan(ctx, "public_scan:"+domain, cfg.BackendURL, domain, cfg.MaxScanAge, now())
+		if expectation, ok := cfg.ScanFixtureExpectations[domain]; ok && result.Status != SyntheticStatusFail {
+			result = enforceScanFixtureExpectation(result, expectation)
+		}
+		report.Checks = append(report.Checks, result)
 	}
 	if cfg.RouteTXTName != "" {
 		report.Checks = append(report.Checks, r.checkTXT(ctx, cfg.RouteTXTName, cfg.RouteTXTWanted))
@@ -155,6 +165,9 @@ func (r SyntheticRunner) checkPublicScan(ctx context.Context, name, backend, dom
 	var payload struct {
 		Domain    string `json:"domain"`
 		CheckedAt string `json:"checked_at"`
+		Summary   struct {
+			Status string `json:"status"`
+		} `json:"summary"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return failResult(result.Name, result.Target, result.LatencyMS, "schema", "scan response was not valid JSON")
@@ -169,7 +182,16 @@ func (r SyntheticRunner) checkPublicScan(ctx context.Context, name, backend, dom
 	if age := now.UTC().Sub(checkedAt.UTC()); age > maxAge || age < -1*time.Minute {
 		return failResult(result.Name, result.Target, result.LatencyMS, "freshness", "scan checked_at was outside the freshness window")
 	}
+	result.ScanSummaryStatus = strings.TrimSpace(payload.Summary.Status)
 	return result
+}
+
+func enforceScanFixtureExpectation(result SyntheticCheckResult, expectation ScanFixtureExpectation) SyntheticCheckResult {
+	wantStatus := strings.TrimSpace(expectation.SummaryStatus)
+	if wantStatus == "" || strings.EqualFold(result.ScanSummaryStatus, wantStatus) {
+		return result
+	}
+	return failResult(result.Name, result.Target, result.LatencyMS, "fixture_mismatch", "scan fixture summary status did not match expected class")
 }
 
 func (r SyntheticRunner) get(ctx context.Context, name, target string) (SyntheticCheckResult, []byte) {

@@ -247,6 +247,37 @@ func TestSyntheticCheckCommandIncludesScanFixtureDomainFlag(t *testing.T) {
 	}
 }
 
+func TestSyntheticCheckCommandIncludesScanFixtureExpectStatusFlag(t *testing.T) {
+	t.Parallel()
+
+	cmd := newSyntheticCheckCommand()
+	flag := cmd.Flags().Lookup("scan-fixture-expect-status")
+	if flag == nil {
+		t.Fatalf("synthetic-check missing scan-fixture-expect-status flag")
+	}
+	if flag.DefValue != "[]" {
+		t.Fatalf("scan-fixture-expect-status default = %q, want []", flag.DefValue)
+	}
+
+	expectations, err := parseScanFixtureExpectations([]string{"broken-spf.canary.dmark.is=fail", "route-published.canary.dmark.is=pass"})
+	if err != nil {
+		t.Fatalf("parseScanFixtureExpectations returned error: %v", err)
+	}
+	if expectations["broken-spf.canary.dmark.is"].SummaryStatus != "fail" || expectations["route-published.canary.dmark.is"].SummaryStatus != "pass" {
+		t.Fatalf("unexpected expectations: %#v", expectations)
+	}
+}
+
+func TestSyntheticCheckCommandRejectsInvalidScanFixtureExpectStatus(t *testing.T) {
+	t.Parallel()
+
+	for _, entries := range [][]string{{"missing-separator"}, {"example.com=critical"}, {"=pass"}} {
+		if _, err := parseScanFixtureExpectations(entries); err == nil {
+			t.Fatalf("parseScanFixtureExpectations(%v) returned nil error", entries)
+		}
+	}
+}
+
 func TestPrintSyntheticCheckJSON(t *testing.T) {
 	t.Parallel()
 

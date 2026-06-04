@@ -7,6 +7,7 @@ Before production promotion, run the automated gates from `docs/QA_TEST_PLAN.md`
 - `make qa-code` for code-level gates
 - `make qa-services` from an environment with Docker, Postgres, and ClickHouse access
 - `make qa` when both local code tooling and service dependencies are available
+- `make rc-backend` for the backend release-candidate code/container ladder after final backend changes land
 - `go test ./...`
 - `go test -race ./...`
 - `go vet ./...`
@@ -46,6 +47,11 @@ go run ./cmd/meil synthetic-check --timeout=15s --json \
   --scan-fixture-domain dmark.is \
   --scan-fixture-domain example.com \
   --scan-fixture-domain xn--bcher-kva.example
+
+# Once canary DNS is intentionally provisioned, turn class/status checks into hard gates, for example:
+go run ./cmd/meil synthetic-check --timeout=15s --json \
+  --scan-fixture-domain broken-spf.canary.dmark.is \
+  --scan-fixture-expect-status broken-spf.canary.dmark.is=fail
 ```
 
 The default scan domain remains `kastro.is`. Repeated `--scan-fixture-domain` values add named `public_scan:<domain>` checks to the JSON report so operators can keep valid, missing-DMARC, parked/no-MX, IDN, and route-published canary domains in a single smoke run. Use only non-customer or explicitly approved fixture domains.
@@ -61,7 +67,7 @@ Current production-safe fixture registry for the GA runbook:
 - `parked-no-mx.canary.dmark.is`: reserved Dmark-owned canary name for parked/no-MX posture. Advisory until scanner MX classification exists.
 - `route-published.canary.dmark.is`: reserved Dmark-owned customer-facing CNAME canary for SPF route publication proof, paired with a stable route target such as `route-published.route.dmark.is`. Provision once, then smoke read-only with `--route-cname-name`/`--route-cname-want` and `--route-txt-name`/`--route-txt-want`.
 
-Synthetic smoke must remain read-only. It must not create, update, or delete Bunny records; canary DNS records are provisioned out-of-band through an explicit operator change. Do not rely on random third-party broken SPF or too-many-lookup domains for GA smoke. The current CLI verifies scan freshness/schema for fixture domains; expected class/status assertions are a follow-up before broken/too-many/parked canaries become hard release gates.
+Synthetic smoke must remain read-only. It must not create, update, or delete Bunny records; canary DNS records are provisioned out-of-band through an explicit operator change. Do not rely on random third-party broken SPF or too-many-lookup domains for GA smoke. The CLI verifies scan freshness/schema for fixture domains and can enforce expected class/status via `--scan-fixture-expect-status domain=status` once Dmark-owned canary DNS is deliberately provisioned.
 
 ## Incident Process
 

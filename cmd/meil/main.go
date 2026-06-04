@@ -92,10 +92,16 @@ func newRootCommand() *cobra.Command {
 func newSyntheticCheckCommand() *cobra.Command {
 	var cfg monitoring.SyntheticConfig
 	var jsonOutput bool
+	var scanFixtureExpectStatus []string
 	cmd := &cobra.Command{
 		Use:   "synthetic-check",
 		Short: "Run synthetic public-flow and DNS monitoring checks",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			expectations, err := parseScanFixtureExpectations(scanFixtureExpectStatus)
+			if err != nil {
+				return err
+			}
+			cfg.ScanFixtureExpectations = expectations
 			runner := monitoring.SyntheticRunner{
 				HTTPClient: &http.Client{Timeout: cfg.Timeout},
 				Resolver:   net.DefaultResolver,
@@ -116,6 +122,7 @@ func newSyntheticCheckCommand() *cobra.Command {
 	cmd.Flags().StringVar(&cfg.BackendURL, "backend-url", "https://dmark.kastro.is", "public backend base URL for /healthz and /api/public/scan")
 	cmd.Flags().StringVar(&cfg.ScanDomain, "scan-domain", "kastro.is", "domain used for public scan freshness/schema check")
 	cmd.Flags().StringSliceVar(&cfg.ScanFixtureDomains, "scan-fixture-domain", nil, "additional public scan fixture domains to verify for launch smoke checks")
+	cmd.Flags().StringSliceVar(&scanFixtureExpectStatus, "scan-fixture-expect-status", nil, "expected public scan summary status for a fixture domain as domain=pass|warn|fail|missing|unknown")
 	cmd.Flags().DurationVar(&cfg.MaxScanAge, "max-scan-age", 5*time.Minute, "maximum acceptable age for public scan checked_at")
 	cmd.Flags().StringVar(&cfg.RouteTXTName, "route-txt-name", "", "optional DNS TXT name to check")
 	cmd.Flags().StringVar(&cfg.RouteTXTWanted, "route-txt-want", "", "expected substring for optional DNS TXT record")
@@ -130,6 +137,28 @@ func printSyntheticCheckJSON(w io.Writer, report monitoring.SyntheticReport) err
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(report)
+}
+
+func parseScanFixtureExpectations(entries []string) (map[string]monitoring.ScanFixtureExpectation, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	expectations := make(map[string]monitoring.ScanFixtureExpectation, len(entries))
+	for _, entry := range entries {
+		name, status, ok := strings.Cut(entry, "=")
+		name = strings.TrimSpace(name)
+		status = strings.ToLower(strings.TrimSpace(status))
+		if !ok || name == "" || status == "" {
+			return nil, fmt.Errorf("invalid --scan-fixture-expect-status %q; use domain=pass|warn|fail|missing|unknown", entry)
+		}
+		switch status {
+		case "pass", "warn", "fail", "missing", "unknown":
+			expectations[name] = monitoring.ScanFixtureExpectation{SummaryStatus: status}
+		default:
+			return nil, fmt.Errorf("invalid expected scan fixture status %q for %s", status, name)
+		}
+	}
+	return expectations, nil
 }
 
 func newWorkerCommand() *cobra.Command {

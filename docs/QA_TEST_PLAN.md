@@ -35,6 +35,7 @@ Automated checks:
 - `make qa-code` for repeatable code-level verification.
 - `make qa-services` from an environment with Docker, Postgres, and ClickHouse access.
 - `make qa` for the complete automated QA phase when all dependencies are available.
+- `make rc-backend` for the backend release-candidate ladder after final backend changes land.
 - `go test ./...`
 - `go test -race ./...` for packages with concurrency or shared state.
 - `go vet ./...`
@@ -342,7 +343,9 @@ Maintain deterministic fixtures for:
   - deterministic unit/integration fixtures use fake DNS and standards-reserved names only;
   - live production smoke uses Dmark-owned domains plus standards-reserved controls;
   - selected Dmark-owned canary names are `broken-spf.canary.dmark.is`, `spf-too-many-lookups.canary.dmark.is`, `parked-no-mx.canary.dmark.is`, and `route-published.canary.dmark.is`;
-  - run only provisioned/read-only fixtures through `meil synthetic-check --scan-fixture-domain ...` after deploys, and keep live DNS mutation out of smoke checks.
+  - run only provisioned/read-only fixtures through `meil synthetic-check --scan-fixture-domain ...` after deploys;
+  - add `--scan-fixture-expect-status domain=pass|warn|fail|missing|unknown` only after the canary DNS class is intentionally provisioned and stable;
+  - keep live DNS mutation out of smoke checks.
 - Attribution provider rules and source IP examples.
 - Billing webhook examples.
 

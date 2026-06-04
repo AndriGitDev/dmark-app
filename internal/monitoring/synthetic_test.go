@@ -140,6 +140,64 @@ func TestSyntheticRunnerRunsAdditionalScanFixtureDomains(t *testing.T) {
 	}
 }
 
+func TestSyntheticRunnerFailsFixtureStatusMismatch(t *testing.T) {
+	t.Parallel()
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/healthz":
+			_, _ = w.Write([]byte(`ok`))
+		case "/api/public/scan":
+			domain := r.URL.Query().Get("domain")
+			status := "pass"
+			if domain == "broken-spf.canary.dmark.is" {
+				status = "warn"
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"domain":     domain,
+				"checked_at": "2026-06-01T00:00:00Z",
+				"summary": map[string]string{
+					"status": status,
+				},
+			})
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer backend.Close()
+
+	runner := SyntheticRunner{
+		HTTPClient: backend.Client(),
+		Now:        func() time.Time { return time.Date(2026, 6, 1, 0, 1, 0, 0, time.UTC) },
+	}
+	result := runner.Run(context.Background(), SyntheticConfig{
+		FrontendURL:        backend.URL,
+		BackendURL:         backend.URL,
+		ScanDomain:         "kastro.is",
+		ScanFixtureDomains: []string{"broken-spf.canary.dmark.is"},
+		ScanFixtureExpectations: map[string]ScanFixtureExpectation{
+			"broken-spf.canary.dmark.is": {SummaryStatus: "fail"},
+		},
+	})
+
+	if !result.Failed {
+		t.Fatalf("expected fixture status mismatch to fail: %+v", result)
+	}
+	var fixtureCheck SyntheticCheckResult
+	for _, check := range result.Checks {
+		if check.Name == "public_scan:broken-spf.canary.dmark.is" {
+			fixtureCheck = check
+		}
+	}
+	if fixtureCheck.Status != SyntheticStatusFail || fixtureCheck.ErrorClass != "fixture_mismatch" {
+		t.Fatalf("fixture check = %+v, want fixture_mismatch failure", fixtureCheck)
+	}
+	if strings.Contains(fixtureCheck.ErrorMessage, "broken-spf.canary.dmark.is") {
+		t.Fatalf("fixture mismatch leaked domain in error message: %q", fixtureCheck.ErrorMessage)
+	}
+}
+
 func TestSyntheticRunnerFailsStalePublicScanEvidence(t *testing.T) {
 	t.Parallel()
 

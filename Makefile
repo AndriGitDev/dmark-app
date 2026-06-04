@@ -1,6 +1,6 @@
 DOCKER_COMPOSE ?= docker compose
 
-.PHONY: dev up down migrate migrate-clickhouse generate test lint security fuzz-smoke build generate-check qa-code qa-services qa load-api load-dashboard load-dashboard-reporter load-dashboard-brand-risk load-dashboard-alerts load-dashboard-settings load-reporter load-scan-job
+.PHONY: dev up down migrate migrate-clickhouse generate test lint security fuzz-smoke build generate-check qa-code qa-services qa rc-backend load-api load-dashboard load-dashboard-reporter load-dashboard-brand-risk load-dashboard-alerts load-dashboard-settings load-reporter load-scan-job
 
 up:
 	$(DOCKER_COMPOSE) -f infra/coolify/docker-compose.dev.yml up -d
@@ -63,7 +63,8 @@ build:
 	CGO_ENABLED=0 go build -o bin/meil ./cmd/meil
 
 generate-check:
-	@tmp_dir=$$(mktemp -d); \
+	@set -e; \
+	tmp_dir=$$(mktemp -d); \
 	trap 'rm -rf "$$tmp_dir"' EXIT; \
 	mkdir -p "$$tmp_dir/pg"; \
 	cp internal/store/pg/*.sql.go internal/store/pg/db.go internal/store/pg/models.go "$$tmp_dir/pg"/; \
@@ -88,3 +89,14 @@ qa-services:
 	go run ./cmd/meil migrate clickhouse up
 
 qa: qa-code qa-services
+
+rc-backend:
+	go test ./... -count=1
+	go test -race ./... -count=1
+	go vet ./...
+	golangci-lint run ./...
+	$(MAKE) security
+	$(MAKE) generate-check
+	go build ./cmd/meil
+	$(DOCKER_COMPOSE) -f infra/coolify/docker-compose.dev.yml config --quiet
+	docker build -f infra/coolify/Dockerfile .

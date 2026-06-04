@@ -244,7 +244,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
   - parked/no-MX domain
   - internationalized domain
   - route-published customer fixture
-  - backend synthetic smoke now accepts repeated `--scan-fixture-domain` values so these fixtures can be exercised in one read-only operator run; the production fixture registry now reserves `broken-spf.canary.dmark.is`, `spf-too-many-lookups.canary.dmark.is`, `parked-no-mx.canary.dmark.is`, and `route-published.canary.dmark.is` as Dmark-owned canary names, but those records still need explicit out-of-band provisioning before they become enforced live smoke gates. Current fixture-domain checks enforce freshness/schema only; class/status assertions remain follow-up work.
+  - backend synthetic smoke now accepts repeated `--scan-fixture-domain` values so these fixtures can be exercised in one read-only operator run; the production fixture registry now reserves `broken-spf.canary.dmark.is`, `spf-too-many-lookups.canary.dmark.is`, `parked-no-mx.canary.dmark.is`, and `route-published.canary.dmark.is` as Dmark-owned canary names, but those records still need explicit out-of-band provisioning before they become enforced live smoke gates. Fixture-domain checks now support optional `--scan-fixture-expect-status domain=pass|warn|fail|missing|unknown` assertions so provisioned canaries can become class/status release gates without live DNS mutation.
 - Add a security/abuse pass for public scan and dashboard-adjacent endpoints:
   - rate limits by IP/domain
   - strict domain normalization
@@ -276,7 +276,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 
 **Goal:** Re-run the full backend release-candidate gate after final backend work lands.
 
-**Status:** Recent SPF slice gates passed; rerun after all GA changes.
+**Status:** Recent SPF slice gates passed; rerun after all GA changes. `make rc-backend` now wraps the backend release-candidate command ladder for a clean local/CI-equivalent pass: full tests, race tests, vet, golangci-lint, govulncheck, sqlc generated-file check, CLI build, Compose config validation, and Docker image build. Fresh Postgres/ClickHouse migration runs still require service-backed environments and remain explicit gates.
 
 **Commands/gates:**
 
