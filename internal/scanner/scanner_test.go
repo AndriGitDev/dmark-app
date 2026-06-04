@@ -54,6 +54,25 @@ func TestNormalizeDomainRejectsInvalidDomains(t *testing.T) {
 	}
 }
 
+func TestNormalizeDomainRejectsIPLiteralInputs(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{
+		"127.0.0.1",
+		"192.168.1.10",
+		"https://10.0.0.5/path",
+		"2001:db8::1",
+		"https://[::1]/",
+		"１２７.０.０.１",
+		"https://１２７.０.０.１/path",
+		"０.０.０.０",
+	} {
+		if _, err := NormalizeDomain(input); err == nil {
+			t.Fatalf("NormalizeDomain(%q) returned nil error", input)
+		}
+	}
+}
+
 func TestScanClassifiesEmailAuthRecords(t *testing.T) {
 	t.Parallel()
 

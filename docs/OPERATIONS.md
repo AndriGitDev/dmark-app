@@ -42,12 +42,22 @@ Run the read-only synthetic public-flow check after backend deploys and before l
 
 ```sh
 go run ./cmd/meil synthetic-check --timeout=15s --json \
-  --scan-fixture-domain valid-fixture.example \
-  --scan-fixture-domain missing-dmarc-fixture.example \
-  --scan-fixture-domain parked-fixture.example
+  --scan-fixture-domain kastro.is \
+  --scan-fixture-domain dmark.is \
+  --scan-fixture-domain example.com \
+  --scan-fixture-domain xn--bcher-kva.example
 ```
 
-The default scan domain remains `kastro.is`. Repeated `--scan-fixture-domain` values add named `public_scan:<domain>` checks to the JSON report so operators can keep valid, broken-SPF, too-many-lookups, missing-DMARC, parked/no-MX, IDN, and route-published canary domains in a single smoke run. Use only non-customer or explicitly approved fixture domains.
+The default scan domain remains `kastro.is`. Repeated `--scan-fixture-domain` values add named `public_scan:<domain>` checks to the JSON report so operators can keep valid, missing-DMARC, parked/no-MX, IDN, and route-published canary domains in a single smoke run. Use only non-customer or explicitly approved fixture domains.
+
+Current production-safe fixture list for the GA runbook:
+
+- `kastro.is`: Dmark/Kastro-owned production baseline; expected to scan successfully and exercise live Icelandic DNS.
+- `dmark.is`: Dmark-owned missing-record fixture until the launch DNS records are intentionally published.
+- `example.com`: standards-reserved third-party baseline with stable public DNS; useful as a non-customer control.
+- `xn--bcher-kva.example`: standards-reserved IDN/punycode normalization fixture.
+
+Do not rely on random third-party broken SPF or too-many-lookup domains for GA smoke. Create explicit Dmark-owned canary domains for broken-SPF, too-many-lookups, parked/no-MX, and route-published cases before promoting those classes from documented target coverage to enforced production smoke fixtures.
 
 ## Incident Process
 

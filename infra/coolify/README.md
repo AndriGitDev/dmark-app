@@ -35,6 +35,9 @@ The app runs Postgres and River migrations automatically when `meil serve` start
 Optional environment variables:
 
 ```env
+APP_VERSION=2026.06.04
+GIT_COMMIT=<full-git-sha>
+BUILD_TIME=<rfc3339-utc-time>
 LETTERMINT_TOKEN=
 LETTERMINT_FROM=Dmark <login@dmark.kastro.is>
 BILLING_WEBHOOK_SECRET=
@@ -53,6 +56,8 @@ BOOTSTRAP_API_KEY_TOKEN=meil_generated-token-value
 ```
 
 `FRONTEND_ORIGINS` enables CORS for browser calls from `dmark-web`. It must contain exact origins, not paths. `LETTERMINT_TOKEN` and `LETTERMINT_FROM` are reserved for backend email flows. The browser login surface now belongs in `dmark-web`.
+
+`APP_VERSION`, `GIT_COMMIT`, and `BUILD_TIME` are passed through Compose as Docker build args for both the `app` and `worker` images, then exposed through `/status` as non-secret build metadata. Set them on every production deploy; otherwise `/status` deliberately reports the safe defaults `dev`, `unknown`, and `unknown`.
 
 `BUNNY_DNS_ZONE_ID` should point at the authoritative parent `dmark.is` Bunny zone (`801471`) so SPF route records are created as `customer.route` records inside the parent zone. `BUNNY_DNS_API_KEY` is preferred for new deployments; `BUNNY_API_KEY` remains accepted as a backwards-compatible alias for the existing Coolify secret. Do not store the raw Bunny key in code, docs, or logs.
 

@@ -133,6 +133,9 @@ func NormalizeDomain(input string) (string, error) {
 	}
 
 	domain = strings.TrimSuffix(domain, ".")
+	if net.ParseIP(domain) != nil {
+		return "", fmt.Errorf("invalid domain %q", input)
+	}
 	if strings.Contains(domain, "/") || strings.Contains(domain, " ") || strings.Contains(domain, "..") {
 		return "", fmt.Errorf("invalid domain %q", input)
 	}
@@ -141,6 +144,9 @@ func NormalizeDomain(input string) (string, error) {
 		return "", fmt.Errorf("invalid domain %q", input)
 	}
 	domain = strings.ToLower(asciiDomain)
+	if net.ParseIP(domain) != nil {
+		return "", fmt.Errorf("invalid domain %q", input)
+	}
 
 	labels := strings.Split(domain, ".")
 	if len(labels) < 2 {
