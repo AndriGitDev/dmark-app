@@ -1057,6 +1057,32 @@ func TestPublicScanRateLimitsByClient(t *testing.T) {
 	}
 }
 
+func TestPublicScanRateLimitIgnoresMalformedForwardedFor(t *testing.T) {
+	t.Parallel()
+
+	router := NewRouterWithDeps(Deps{
+		Scanner:               fakeScanner{result: scanner.Result{Domain: "example.com"}},
+		PublicChecksPerMinute: 1,
+	})
+
+	for i, forwardedFor := range []string{"not-an-ip-one", "not-an-ip-two"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/public/scan?domain=example.com", nil)
+		req.RemoteAddr = "203.0.113.20:12345"
+		req.Header.Set("X-Forwarded-For", forwardedFor)
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		want := http.StatusOK
+		if i == 1 {
+			want = http.StatusTooManyRequests
+		}
+		if rec.Code != want {
+			t.Fatalf("request %d with X-Forwarded-For=%q status = %d, want %d; body=%s", i+1, forwardedFor, rec.Code, want, rec.Body.String())
+		}
+	}
+}
+
 func TestPublicAuditClaimPersistsVerifiedWorkEmail(t *testing.T) {
 	t.Parallel()
 

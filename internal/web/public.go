@@ -69,7 +69,7 @@ func publicRateKey(r *http.Request) string {
 	forwardedFor := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
 	if forwardedFor != "" {
 		first, _, _ := strings.Cut(forwardedFor, ",")
-		if first = strings.TrimSpace(first); first != "" {
+		if first = strings.TrimSpace(first); first != "" && net.ParseIP(first) != nil {
 			return first
 		}
 	}
