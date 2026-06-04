@@ -276,7 +276,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 
 **Goal:** Re-run the full backend release-candidate gate after final backend work lands.
 
-**Status:** Recent SPF slice gates passed; rerun after all GA changes. `make rc-backend` now wraps the backend release-candidate command ladder for a clean local/CI-equivalent pass: full tests, race tests, vet, golangci-lint, govulncheck, sqlc generated-file check, CLI build, Compose config validation, and Docker image build. Fresh Postgres/ClickHouse migration runs still require service-backed environments and remain explicit gates.
+**Status:** Recent SPF slice gates passed; rerun after all GA changes. `make rc-backend` now wraps the backend release-candidate command ladder for a clean local/CI-equivalent pass: full tests, race tests, vet, golangci-lint, govulncheck, sqlc generated-file check, CLI build, Compose config validation, and Docker image build. `make rc-backend-services` now wraps the service-backed gate for dev Postgres/ClickHouse readiness, fresh migrations, and `MEIL_DB_INTEGRATION=1 go test ./internal/store/pg -count=1`. On Havana, pass `DOCKER_COMPOSE=docker-compose` unless the Compose v2 plugin is installed.
 
 **Commands/gates:**
 
@@ -289,6 +289,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - `docker build -f infra/coolify/Dockerfile .`
 - Fresh Postgres migrations.
 - Fresh ClickHouse migrations.
+- `make rc-backend-services`.
 - `MEIL_DB_INTEGRATION=1 go test ./internal/store/pg -count=1`
 - GitHub Actions green on latest pushed main.
 

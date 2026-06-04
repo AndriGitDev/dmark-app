@@ -1,6 +1,9 @@
 DOCKER_COMPOSE ?= docker compose
+GOLANGCI_LINT ?= golangci-lint
+GOVULNCHECK ?= govulncheck
+SQLC ?= sqlc
 
-.PHONY: dev up down migrate migrate-clickhouse generate test lint security fuzz-smoke build generate-check qa-code qa-services qa rc-backend load-api load-dashboard load-dashboard-reporter load-dashboard-brand-risk load-dashboard-alerts load-dashboard-settings load-reporter load-scan-job
+.PHONY: dev up down migrate migrate-clickhouse generate test lint security fuzz-smoke build generate-check qa-code qa-services qa rc-backend rc-backend-services load-api load-dashboard load-dashboard-reporter load-dashboard-brand-risk load-dashboard-alerts load-dashboard-settings load-reporter load-scan-job
 
 up:
 	$(DOCKER_COMPOSE) -f infra/coolify/docker-compose.dev.yml up -d
@@ -15,7 +18,7 @@ migrate-clickhouse:
 	go run ./cmd/meil migrate clickhouse up
 
 generate:
-	sqlc generate
+	$(SQLC) generate
 
 dev: up migrate generate
 	air
@@ -24,10 +27,10 @@ test:
 	go test ./...
 
 lint:
-	golangci-lint run
+	$(GOLANGCI_LINT) run
 
 security:
-	GOMEMLIMIT=$${GOMEMLIMIT:-512MiB} govulncheck ./...
+	GOMEMLIMIT=$${GOMEMLIMIT:-512MiB} $(GOVULNCHECK) ./...
 
 fuzz-smoke:
 	go test ./internal/scanner -run=^$$ -fuzz=FuzzNormalizeDomain -fuzztime=$${FUZZTIME:-2s}
@@ -77,7 +80,7 @@ generate-check:
 qa-code: test
 	go test -race ./...
 	go vet ./...
-	golangci-lint run
+	$(GOLANGCI_LINT) run
 	$(MAKE) security
 	$(MAKE) fuzz-smoke
 	$(MAKE) generate-check
@@ -94,9 +97,12 @@ rc-backend:
 	go test ./... -count=1
 	go test -race ./... -count=1
 	go vet ./...
-	golangci-lint run ./...
+	$(GOLANGCI_LINT) run ./...
 	$(MAKE) security
 	$(MAKE) generate-check
 	go build ./cmd/meil
 	$(DOCKER_COMPOSE) -f infra/coolify/docker-compose.dev.yml config --quiet
 	docker build -f infra/coolify/Dockerfile .
+
+rc-backend-services:
+	./scripts/rc_backend_services.sh

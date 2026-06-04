@@ -36,6 +36,7 @@ Automated checks:
 - `make qa-services` from an environment with Docker, Postgres, and ClickHouse access.
 - `make qa` for the complete automated QA phase when all dependencies are available.
 - `make rc-backend` for the backend release-candidate ladder after final backend changes land.
+- `make rc-backend-services` for the service-backed backend RC gate: dev Postgres/ClickHouse readiness, fresh Postgres migrations, fresh ClickHouse migrations, and `MEIL_DB_INTEGRATION=1 go test ./internal/store/pg -count=1`. On Havana, use `DOCKER_COMPOSE=docker-compose` unless the Docker Compose v2 plugin is installed.
 - `go test ./...`
 - `go test -race ./...` for packages with concurrency or shared state.
 - `go vet ./...`

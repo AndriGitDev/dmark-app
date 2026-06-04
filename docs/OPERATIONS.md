@@ -8,6 +8,7 @@ Before production promotion, run the automated gates from `docs/QA_TEST_PLAN.md`
 - `make qa-services` from an environment with Docker, Postgres, and ClickHouse access
 - `make qa` when both local code tooling and service dependencies are available
 - `make rc-backend` for the backend release-candidate code/container ladder after final backend changes land
+- `make rc-backend-services` for the service-backed RC gate: start or use dev Postgres/ClickHouse, run fresh Postgres and ClickHouse migrations, then run `MEIL_DB_INTEGRATION=1 go test ./internal/store/pg -count=1`
 - `go test ./...`
 - `go test -race ./...`
 - `go vet ./...`
