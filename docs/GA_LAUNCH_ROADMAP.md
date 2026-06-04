@@ -256,9 +256,9 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - Add privacy-respecting funnel analytics sufficient to understand launch performance:
   - homepage visits
   - scan starts/completions (public scanner lifecycle events are wired in `dmark-web` with only coarse status/source properties and no raw domains, emails, DNS records, URLs, or error text)
-  - claim starts/completions
-  - recommendation views
-  - CTA clicks/bookings
+  - claim starts/completions/errors (wired in `dmark-web` upgrade modal with only coarse source/status properties)
+  - recommendation views (wired when public scanner results render, without raw domains or records)
+  - CTA clicks/bookings (CTA clicks wired for nav/pricing/footer/result upsell sources without plan, domain, email, or name payloads)
   - dashboard/beta-lock interactions
   - Prefer Plausible, Umami, self-hosted PostHog, or similarly privacy-conscious tracking over invasive analytics.
 - If scan/recommendation/route work starts stretching request lifecycles, introduce a simple Postgres-backed job table before adding new infrastructure:
