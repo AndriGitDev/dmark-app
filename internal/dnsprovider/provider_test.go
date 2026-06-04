@@ -36,6 +36,16 @@ func TestDetectRecognizesKnownProviders(t *testing.T) {
 			nameservers: []string{"ns0.1984.is", "ns1.1984.is."},
 			wantID:      "1984",
 		},
+		{
+			name:        "microsoft azure dns delegated zone",
+			nameservers: []string{"ns1-36.azure-dns.com", "ns2-36.azure-dns.net", "ns3-36.azure-dns.org", "ns4-36.azure-dns.info"},
+			wantID:      "azure-dns",
+		},
+		{
+			name:        "google domains legacy nameservers",
+			nameservers: []string{"ns-cloud-a1.googledomains.com", "ns-cloud-a2.googledomains.com"},
+			wantID:      "google-domains",
+		},
 	}
 
 	for _, tt := range tests {
@@ -100,6 +110,28 @@ func TestDetectUnknownAndAmbiguous(t *testing.T) {
 			t.Fatalf("EvidenceNameservers = %#v, want both nameservers", got.EvidenceNameservers)
 		}
 	})
+}
+
+func TestDetectRepresentativeNameserverFixtures(t *testing.T) {
+	tests := []struct {
+		name        string
+		nameservers []string
+		wantID      string
+	}{
+		{name: "microsoft.com azure dns", nameservers: []string{"ns1-39.azure-dns.com.", "ns2-39.azure-dns.net.", "ns3-39.azure-dns.org.", "ns4-39.azure-dns.info."}, wantID: "azure-dns"},
+		{name: "dmark bunny dns", nameservers: []string{"coco.bunny.net.", "kiki.bunny.net."}, wantID: "bunny"},
+		{name: "cloudflare corporate dns", nameservers: []string{"ns3.cloudflare.com.", "ns4.cloudflare.com.", "ns5.cloudflare.com."}, wantID: "cloudflare"},
+		{name: "amazon route53", nameservers: []string{"ns-1447.awsdns-52.org.", "ns-1707.awsdns-21.co.uk.", "ns-264.awsdns-33.com.", "ns-521.awsdns-01.net."}, wantID: "route53"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Detect(tt.nameservers)
+			if got.Status != StatusDetected || got.ProviderID != tt.wantID {
+				t.Fatalf("Detect(%#v) = %+v, want detected %q", tt.nameservers, got, tt.wantID)
+			}
+		})
+	}
 }
 
 func TestDetectDoesNotOverMatchRoute53Substring(t *testing.T) {

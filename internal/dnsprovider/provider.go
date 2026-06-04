@@ -85,7 +85,7 @@ var registry = []Provider{
 	{
 		ID:           "cloudflare",
 		Name:         "Cloudflare",
-		NSPatterns:   []string{".ns.cloudflare.com"},
+		NSPatterns:   []string{".ns.cloudflare.com", "cloudflare.com"},
 		DashboardURL: "https://dash.cloudflare.com/",
 	},
 	{
@@ -99,6 +99,18 @@ var registry = []Provider{
 		Name:         "bunny.net DNS",
 		NSPatterns:   []string{"bunnydns.com", "bunny.net"},
 		DashboardURL: "https://dash.bunny.net/dns",
+	},
+	{
+		ID:           "azure-dns",
+		Name:         "Microsoft Azure DNS",
+		NSPatterns:   []string{"azure-dns.com", "azure-dns.net", "azure-dns.org", "azure-dns.info"},
+		DashboardURL: "https://portal.azure.com/#view/HubsExtension/BrowseResource/resourceType/Microsoft.Network%2Fdnszones",
+	},
+	{
+		ID:           "google-domains",
+		Name:         "Google Domains legacy DNS",
+		NSPatterns:   []string{"googledomains.com"},
+		DashboardURL: "https://domains.google.com/",
 	},
 }
 
