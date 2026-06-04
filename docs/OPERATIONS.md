@@ -36,6 +36,19 @@ BASE_URL=https://dmark.example API_TOKEN=... DOMAIN_ID=... REQUESTS=50 CONCURREN
 
 Use `api-get`/`reporter-get` for authenticated API and Reporter read endpoints, and `api-post` for domain recheck or other job-triggering endpoints. Browser load checks and frontend bundle checks belong in `dmark-web`. Record p50, p95, max latency, status distribution, target commit, and environment size with the release notes.
 
+## Synthetic Public-Flow Smoke
+
+Run the read-only synthetic public-flow check after backend deploys and before launch decisions:
+
+```sh
+go run ./cmd/meil synthetic-check --timeout=15s --json \
+  --scan-fixture-domain valid-fixture.example \
+  --scan-fixture-domain missing-dmarc-fixture.example \
+  --scan-fixture-domain parked-fixture.example
+```
+
+The default scan domain remains `kastro.is`. Repeated `--scan-fixture-domain` values add named `public_scan:<domain>` checks to the JSON report so operators can keep valid, broken-SPF, too-many-lookups, missing-DMARC, parked/no-MX, IDN, and route-published canary domains in a single smoke run. Use only non-customer or explicitly approved fixture domains.
+
 ## Incident Process
 
 1. Confirm user-visible impact and affected surfaces: API scan, protected domains, Brand Risk findings, jobs, notifications, or Reporter ingestion.

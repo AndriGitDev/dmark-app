@@ -338,6 +338,7 @@ Maintain deterministic fixtures for:
 - Magic-link email request payloads.
 - Domain snapshot and drift event pairs.
 - DMARC aggregate report XML, gzip, and zip files.
+- Production-safe public scan fixture domains for valid, broken-SPF, too-many-lookups, missing-DMARC, parked/no-MX, IDN, and route-published cases; run them through `meil synthetic-check --scan-fixture-domain ...` after deploys.
 - Attribution provider rules and source IP examples.
 - Billing webhook examples.
 

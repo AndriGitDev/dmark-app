@@ -86,6 +86,56 @@ func TestSyntheticRunnerPassesPublicFlowsAndDNS(t *testing.T) {
 	}
 }
 
+func TestSyntheticRunnerRunsAdditionalScanFixtureDomains(t *testing.T) {
+	t.Parallel()
+
+	seen := []string{}
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/healthz":
+			_, _ = w.Write([]byte(`ok`))
+		case "/api/public/scan":
+			domain := r.URL.Query().Get("domain")
+			seen = append(seen, domain)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"domain":"` + domain + `","checked_at":"2026-06-01T00:00:00Z"}`))
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer backend.Close()
+
+	runner := SyntheticRunner{
+		HTTPClient: backend.Client(),
+		Now:        func() time.Time { return time.Date(2026, 6, 1, 0, 1, 0, 0, time.UTC) },
+	}
+	result := runner.Run(context.Background(), SyntheticConfig{
+		FrontendURL:        backend.URL,
+		BackendURL:         backend.URL,
+		ScanDomain:         "kastro.is",
+		ScanFixtureDomains: []string{"missing-dmarc.example", "xn--e1afmkfd.xn--p1ai"},
+	})
+
+	if result.Failed {
+		t.Fatalf("expected scan fixtures to pass: %+v", result)
+	}
+	wantNames := []string{"public_scan", "public_scan:missing-dmarc.example", "public_scan:xn--e1afmkfd.xn--p1ai"}
+	for _, want := range wantNames {
+		found := false
+		for _, check := range result.Checks {
+			if check.Name == want && check.Status == SyntheticStatusPass {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("missing passing check %q in %+v", want, result.Checks)
+		}
+	}
+	if strings.Join(seen, ",") != "kastro.is,missing-dmarc.example,xn--e1afmkfd.xn--p1ai" {
+		t.Fatalf("scan domains = %v", seen)
+	}
+}
+
 func TestSyntheticRunnerFailsStalePublicScanEvidence(t *testing.T) {
 	t.Parallel()
 

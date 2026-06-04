@@ -115,6 +115,7 @@ func newSyntheticCheckCommand() *cobra.Command {
 	cmd.Flags().StringVar(&cfg.FrontendURL, "frontend-url", "https://dmark.is", "public frontend base URL to GET")
 	cmd.Flags().StringVar(&cfg.BackendURL, "backend-url", "https://dmark.kastro.is", "public backend base URL for /healthz and /api/public/scan")
 	cmd.Flags().StringVar(&cfg.ScanDomain, "scan-domain", "kastro.is", "domain used for public scan freshness/schema check")
+	cmd.Flags().StringSliceVar(&cfg.ScanFixtureDomains, "scan-fixture-domain", nil, "additional public scan fixture domains to verify for launch smoke checks")
 	cmd.Flags().DurationVar(&cfg.MaxScanAge, "max-scan-age", 5*time.Minute, "maximum acceptable age for public scan checked_at")
 	cmd.Flags().StringVar(&cfg.RouteTXTName, "route-txt-name", "", "optional DNS TXT name to check")
 	cmd.Flags().StringVar(&cfg.RouteTXTWanted, "route-txt-want", "", "expected substring for optional DNS TXT record")

@@ -170,6 +170,19 @@ func TestRootCommandIncludesSyntheticCheckSubcommand(t *testing.T) {
 	}
 }
 
+func TestSyntheticCheckCommandIncludesScanFixtureDomainFlag(t *testing.T) {
+	t.Parallel()
+
+	cmd := newSyntheticCheckCommand()
+	flag := cmd.Flags().Lookup("scan-fixture-domain")
+	if flag == nil {
+		t.Fatalf("synthetic-check missing scan-fixture-domain flag")
+	}
+	if flag.DefValue != "[]" {
+		t.Fatalf("scan-fixture-domain default = %q, want []", flag.DefValue)
+	}
+}
+
 func TestPrintSyntheticCheckJSON(t *testing.T) {
 	t.Parallel()
 

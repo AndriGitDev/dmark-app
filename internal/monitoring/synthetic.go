@@ -30,15 +30,16 @@ type DNSResolver interface {
 }
 
 type SyntheticConfig struct {
-	FrontendURL    string
-	BackendURL     string
-	ScanDomain     string
-	MaxScanAge     time.Duration
-	RouteTXTName   string
-	RouteTXTWanted string
-	RouteCNAMEName string
-	RouteCNAMEWant string
-	Timeout        time.Duration
+	FrontendURL        string
+	BackendURL         string
+	ScanDomain         string
+	ScanFixtureDomains []string
+	MaxScanAge         time.Duration
+	RouteTXTName       string
+	RouteTXTWanted     string
+	RouteCNAMEName     string
+	RouteCNAMEWant     string
+	Timeout            time.Duration
 }
 
 type SyntheticReport struct {
@@ -75,7 +76,14 @@ func (r SyntheticRunner) Run(ctx context.Context, cfg SyntheticConfig) Synthetic
 	report := SyntheticReport{CheckedAt: now().UTC()}
 	report.Checks = append(report.Checks, r.checkFrontend(ctx, cfg.FrontendURL))
 	report.Checks = append(report.Checks, r.checkHealthz(ctx, cfg.BackendURL))
-	report.Checks = append(report.Checks, r.checkPublicScan(ctx, cfg.BackendURL, cfg.ScanDomain, cfg.MaxScanAge, now()))
+	report.Checks = append(report.Checks, r.checkPublicScan(ctx, "public_scan", cfg.BackendURL, cfg.ScanDomain, cfg.MaxScanAge, now()))
+	for _, domain := range cfg.ScanFixtureDomains {
+		domain = strings.TrimSpace(domain)
+		if domain == "" || strings.EqualFold(domain, cfg.ScanDomain) {
+			continue
+		}
+		report.Checks = append(report.Checks, r.checkPublicScan(ctx, "public_scan:"+domain, cfg.BackendURL, domain, cfg.MaxScanAge, now()))
+	}
 	if cfg.RouteTXTName != "" {
 		report.Checks = append(report.Checks, r.checkTXT(ctx, cfg.RouteTXTName, cfg.RouteTXTWanted))
 	}
@@ -125,7 +133,7 @@ func (r SyntheticRunner) checkHealthz(ctx context.Context, backend string) Synth
 	return result
 }
 
-func (r SyntheticRunner) checkPublicScan(ctx context.Context, backend, domain string, maxAge time.Duration, now time.Time) SyntheticCheckResult {
+func (r SyntheticRunner) checkPublicScan(ctx context.Context, name, backend, domain string, maxAge time.Duration, now time.Time) SyntheticCheckResult {
 	if domain == "" {
 		domain = "kastro.is"
 	}
@@ -140,7 +148,7 @@ func (r SyntheticRunner) checkPublicScan(ctx context.Context, backend, domain st
 		u.RawQuery = q.Encode()
 		target = u.String()
 	}
-	result, body := r.get(ctx, "public_scan", target)
+	result, body := r.get(ctx, name, target)
 	if result.Status == SyntheticStatusFail {
 		return result
 	}
