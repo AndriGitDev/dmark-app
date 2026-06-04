@@ -690,6 +690,27 @@ func TestRequestIDHeader(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersAreApplied(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+
+	NewRouter().ServeHTTP(rec, req)
+
+	wantHeaders := map[string]string{
+		"X-Content-Type-Options": "nosniff",
+		"X-Frame-Options":        "DENY",
+		"Referrer-Policy":        "no-referrer",
+		"Permissions-Policy":     "camera=(), microphone=(), geolocation=(), payment=()",
+	}
+	for header, want := range wantHeaders {
+		if got := rec.Header().Get(header); got != want {
+			t.Fatalf("%s = %q, want %q", header, got, want)
+		}
+	}
+}
+
 func TestMuteUntil(t *testing.T) {
 	t.Parallel()
 

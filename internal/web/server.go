@@ -292,6 +292,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 	}
 
 	r := chi.NewRouter()
+	r.Use(securityHeadersMiddleware)
 	r.Use(requestIDMiddleware)
 	r.Use(legacyHostRedirect)
 	r.Use(corsMiddleware(deps.FrontendOrigins))
@@ -2437,6 +2438,16 @@ func muteUntil(duration string, now time.Time) time.Time {
 }
 
 type requestIDContextKey struct{}
+
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		next.ServeHTTP(w, r)
+	})
+}
 
 func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
