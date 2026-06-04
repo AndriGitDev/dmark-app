@@ -352,7 +352,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			Domain string `json:"domain"`
 			Email  string `json:"email"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		if err := decodePublicJSONBody(r.Body, &payload); err != nil {
 			writeAPIError(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}

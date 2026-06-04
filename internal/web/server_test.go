@@ -1094,6 +1094,30 @@ func TestPublicScanAcceptsPOSTBody(t *testing.T) {
 	}
 }
 
+func TestPublicScanRejectsAmbiguousJSONBody(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{
+		`{"domain":"example.com"}{"domain":"evil.example"}`,
+		`{"domain":"example.com"} trailing`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/public/scan", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		NewRouterWithDeps(Deps{
+			Scanner: fakeScanner{result: scanner.Result{Domain: "example.com"}},
+		}).ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %q status = %d, want %d; response=%s", body, rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), "evil.example") || strings.Contains(strings.ToLower(rec.Body.String()), "trailing") {
+			t.Fatalf("response leaked ambiguous JSON body details: %s", rec.Body.String())
+		}
+	}
+}
+
 func TestPublicScanRateLimitsByClient(t *testing.T) {
 	t.Parallel()
 
@@ -1136,6 +1160,35 @@ func TestPublicScanRateLimitIgnoresMalformedForwardedFor(t *testing.T) {
 		}
 		if rec.Code != want {
 			t.Fatalf("request %d with X-Forwarded-For=%q status = %d, want %d; body=%s", i+1, forwardedFor, rec.Code, want, rec.Body.String())
+		}
+	}
+}
+
+func TestPublicAuditClaimRejectsAmbiguousJSONBody(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{
+		`{"domain":"example.com","email":"security@example.com"}{"domain":"evil.example","email":"security@evil.example"}`,
+		`{"domain":"example.com","email":"security@example.com"} trailing`,
+	} {
+		store := &webDomainStore{}
+		req := httptest.NewRequest(http.MethodPost, "/api/public/audit-claims", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		NewRouterWithDeps(Deps{
+			Scanner:     fakeScanner{result: scanner.Result{Domain: "example.com"}},
+			AuditClaims: store,
+		}).ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %q status = %d, want %d; response=%s", body, rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+		if len(store.auditClaims) != 0 {
+			t.Fatalf("audit claims stored = %d, want 0 for ambiguous JSON body", len(store.auditClaims))
+		}
+		if strings.Contains(rec.Body.String(), "evil.example") || strings.Contains(strings.ToLower(rec.Body.String()), "trailing") {
+			t.Fatalf("response leaked ambiguous JSON body details: %s", rec.Body.String())
 		}
 	}
 }

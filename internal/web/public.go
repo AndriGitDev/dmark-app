@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/mail"
@@ -87,10 +88,22 @@ func publicScanDomain(r *http.Request) (string, error) {
 	var payload struct {
 		Domain string `json:"domain"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	if err := decodePublicJSONBody(r.Body, &payload); err != nil {
 		return "", fmt.Errorf("invalid JSON body")
 	}
 	return scanner.NormalizeDomain(payload.Domain)
+}
+
+func decodePublicJSONBody(body io.Reader, payload any) error {
+	decoder := json.NewDecoder(body)
+	if err := decoder.Decode(payload); err != nil {
+		return err
+	}
+	var extra struct{}
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return fmt.Errorf("invalid JSON body")
+	}
+	return nil
 }
 
 func recordPublicScanOperationalEvent(r *http.Request, store OperationalEventStore, domain string, status int, completed bool) {
