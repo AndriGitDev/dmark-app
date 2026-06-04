@@ -251,7 +251,12 @@ type Deps struct {
 	SPFRouteSchedulerEnabled     bool
 	SPFRouteSchedulerInterval    time.Duration
 	SPFRouteScheduledSyncEvery   time.Duration
+	WorkerQueueName              string
+	WorkerMaxWorkers             int
+	WorkerRegisteredJobs         []string
 }
+
+var defaultWorkerRegisteredJobs = []string{"scan_domain", "refresh_enrichment", "sync_spf_route"}
 
 func NewRouter() http.Handler {
 	return NewRouterWithScanner(scanner.New(nil))
@@ -289,6 +294,15 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 	}
 	if deps.DNSPublicationTimeout <= 0 {
 		deps.DNSPublicationTimeout = 2 * time.Second
+	}
+	if strings.TrimSpace(deps.WorkerQueueName) == "" {
+		deps.WorkerQueueName = "default"
+	}
+	if deps.WorkerMaxWorkers <= 0 {
+		deps.WorkerMaxWorkers = 4
+	}
+	if len(deps.WorkerRegisteredJobs) == 0 {
+		deps.WorkerRegisteredJobs = append([]string(nil), defaultWorkerRegisteredJobs...)
 	}
 
 	r := chi.NewRouter()
@@ -1616,6 +1630,11 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			Version:                      build.Version,
 			Commit:                       build.Commit,
 			BuildTime:                    build.BuildTime,
+			Worker: apicontracts.ProviderWorkerHealthResponse{
+				QueueName:      deps.WorkerQueueName,
+				MaxWorkers:     deps.WorkerMaxWorkers,
+				RegisteredJobs: append([]string(nil), deps.WorkerRegisteredJobs...),
+			},
 		}
 		if deps.SPFRouteSchedulerInterval > 0 {
 			response.SPFRouteSchedulerInterval = deps.SPFRouteSchedulerInterval.String()

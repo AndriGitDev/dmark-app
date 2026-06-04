@@ -3282,6 +3282,10 @@ func TestAPIAdminProviderHealthReturnsSafeConfiguredState(t *testing.T) {
 		`"version":`,
 		`"commit":`,
 		`"build_time":`,
+		`"worker":`,
+		`"queue_name":"default"`,
+		`"max_workers":4`,
+		`"registered_jobs":["scan_domain","refresh_enrichment","sync_spf_route"]`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %s: %s", want, body)

@@ -50,14 +50,18 @@ go run ./cmd/meil synthetic-check --timeout=15s --json \
 
 The default scan domain remains `kastro.is`. Repeated `--scan-fixture-domain` values add named `public_scan:<domain>` checks to the JSON report so operators can keep valid, missing-DMARC, parked/no-MX, IDN, and route-published canary domains in a single smoke run. Use only non-customer or explicitly approved fixture domains.
 
-Current production-safe fixture list for the GA runbook:
+Current production-safe fixture registry for the GA runbook:
 
-- `kastro.is`: Dmark/Kastro-owned production baseline; expected to scan successfully and exercise live Icelandic DNS.
-- `dmark.is`: Dmark-owned missing-record fixture until the launch DNS records are intentionally published.
-- `example.com`: standards-reserved third-party baseline with stable public DNS; useful as a non-customer control.
-- `xn--bcher-kva.example`: standards-reserved IDN/punycode normalization fixture.
+- `kastro.is`: Dmark/Kastro-owned production baseline; expected to scan successfully and exercise live Icelandic DNS. Enforced in smoke today.
+- `dmark.is`: Dmark-owned launch domain; useful as an owned missing/partial-record fixture until launch DNS records are intentionally published. Enforced in smoke today, but expected classification may change as launch DNS is completed.
+- `example.com`: standards-reserved public DNS baseline; useful as a non-customer control. Enforced in smoke today for freshness/schema, not as a Dmark-owned reliability proof.
+- `xn--bcher-kva.example`: standards-reserved IDN/punycode normalization fixture. Enforced in smoke today for normalization/schema.
+- `broken-spf.canary.dmark.is`: reserved Dmark-owned canary name for intentionally malformed SPF. Provision once before enforcing in production smoke.
+- `spf-too-many-lookups.canary.dmark.is`: reserved Dmark-owned canary name for an SPF record that exceeds the DNS lookup budget. Provision once before enforcing in production smoke.
+- `parked-no-mx.canary.dmark.is`: reserved Dmark-owned canary name for parked/no-MX posture. Advisory until scanner MX classification exists.
+- `route-published.canary.dmark.is`: reserved Dmark-owned customer-facing CNAME canary for SPF route publication proof, paired with a stable route target such as `route-published.route.dmark.is`. Provision once, then smoke read-only with `--route-cname-name`/`--route-cname-want` and `--route-txt-name`/`--route-txt-want`.
 
-Do not rely on random third-party broken SPF or too-many-lookup domains for GA smoke. Create explicit Dmark-owned canary domains for broken-SPF, too-many-lookups, parked/no-MX, and route-published cases before promoting those classes from documented target coverage to enforced production smoke fixtures.
+Synthetic smoke must remain read-only. It must not create, update, or delete Bunny records; canary DNS records are provisioned out-of-band through an explicit operator change. Do not rely on random third-party broken SPF or too-many-lookup domains for GA smoke. The current CLI verifies scan freshness/schema for fixture domains; expected class/status assertions are a follow-up before broken/too-many/parked canaries become hard release gates.
 
 ## Incident Process
 

@@ -770,21 +770,7 @@ func newServeCommand() *cobra.Command {
 					slog.Bool("api_key_created", bootstrapResult.APIKeyCreated),
 				)
 			}
-			bootstrapEvent := ops.Event{
-				Kind:       "bootstrap.skipped",
-				Severity:   ops.SeverityInfo,
-				Message:    "bootstrap configuration was not complete; setup skipped",
-				Resource:   "bootstrap",
-				OccurredAt: time.Now().UTC(),
-			}
-			if bootstrapResult.Applied {
-				bootstrapEvent.Kind = "bootstrap.ran"
-				bootstrapEvent.Message = "bootstrap setup completed"
-				bootstrapEvent.Metadata = map[string]any{
-					"api_key_created": bootstrapResult.APIKeyCreated,
-					"api_key_name":    bootstrapResult.APIKeyName,
-				}
-			}
+			bootstrapEvent := bootstrapOperationalEvent(bootstrapResult, time.Now().UTC())
 			if _, err := store.CreateOperationalEvent(cmd.Context(), bootstrapEvent); err != nil {
 				logger.Warn("recording bootstrap operational event failed", slog.String("error", err.Error()))
 			}
@@ -881,4 +867,23 @@ func newServeCommand() *cobra.Command {
 			}
 		},
 	}
+}
+
+func bootstrapOperationalEvent(result bootstrap.Result, occurredAt time.Time) ops.Event {
+	event := ops.Event{
+		Kind:       "bootstrap.skipped",
+		Severity:   ops.SeverityInfo,
+		Message:    "bootstrap configuration was not complete; setup skipped",
+		Resource:   "bootstrap",
+		OccurredAt: occurredAt.UTC(),
+	}
+	if result.Applied {
+		event.Kind = "bootstrap.ran"
+		event.Message = "bootstrap setup completed"
+		event.Metadata = map[string]any{
+			"credential_created": result.APIKeyCreated,
+			"credential_name":    result.APIKeyName,
+		}
+	}
+	return event
 }

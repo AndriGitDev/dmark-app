@@ -95,7 +95,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 
 **Goal:** Prove production credentials and configuration can create, update, no-op, and safely block a real route publication.
 
-**Status:** Parent zone and env config are set; no live route TXT publication has been proven yet.
+**Status:** Parent zone and env config are set; no live route TXT publication has been proven yet. Any permanent health canary should be provisioned once through an explicit operator change and then used only through read-only DNS/synthetic smoke.
 
 **Tasks:**
 
@@ -104,7 +104,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - Verify public DNS resolution with `dig +short TXT hermes-test.route.dmark.is`.
 - Re-run sync unchanged and verify no extra Bunny write.
 - Force a controlled include-resolution failure and verify publication is blocked.
-- Decide whether to leave the test route as a permanent health canary or clean it up.
+- Decide whether to leave the test route as a permanent read-only health canary, preferably `route-published.canary.dmark.is` -> `route-published.route.dmark.is`, or clean it up.
 
 **Acceptance criteria:**
 
@@ -244,7 +244,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
   - parked/no-MX domain
   - internationalized domain
   - route-published customer fixture
-  - backend synthetic smoke now accepts repeated `--scan-fixture-domain` values so these fixtures can be exercised in one read-only operator run; the concrete production fixture list still needs to be selected and documented.
+  - backend synthetic smoke now accepts repeated `--scan-fixture-domain` values so these fixtures can be exercised in one read-only operator run; the production fixture registry now reserves `broken-spf.canary.dmark.is`, `spf-too-many-lookups.canary.dmark.is`, `parked-no-mx.canary.dmark.is`, and `route-published.canary.dmark.is` as Dmark-owned canary names, but those records still need explicit out-of-band provisioning before they become enforced live smoke gates. Current fixture-domain checks enforce freshness/schema only; class/status assertions remain follow-up work.
 - Add a security/abuse pass for public scan and dashboard-adjacent endpoints:
   - rate limits by IP/domain
   - strict domain normalization

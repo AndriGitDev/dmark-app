@@ -338,7 +338,11 @@ Maintain deterministic fixtures for:
 - Magic-link email request payloads.
 - Domain snapshot and drift event pairs.
 - DMARC aggregate report XML, gzip, and zip files.
-- Production-safe public scan fixture domains for valid, broken-SPF, too-many-lookups, missing-DMARC, parked/no-MX, IDN, and route-published cases; run them through `meil synthetic-check --scan-fixture-domain ...` after deploys.
+- Production-safe public scan fixture domains split by fixture class:
+  - deterministic unit/integration fixtures use fake DNS and standards-reserved names only;
+  - live production smoke uses Dmark-owned domains plus standards-reserved controls;
+  - selected Dmark-owned canary names are `broken-spf.canary.dmark.is`, `spf-too-many-lookups.canary.dmark.is`, `parked-no-mx.canary.dmark.is`, and `route-published.canary.dmark.is`;
+  - run only provisioned/read-only fixtures through `meil synthetic-check --scan-fixture-domain ...` after deploys, and keep live DNS mutation out of smoke checks.
 - Attribution provider rules and source IP examples.
 - Billing webhook examples.
 

@@ -9,11 +9,75 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AndriGitDev/meil/internal/bootstrap"
 	"github.com/AndriGitDev/meil/internal/monitoring"
+	"github.com/AndriGitDev/meil/internal/ops"
 	"github.com/AndriGitDev/meil/internal/scanner"
 	"github.com/AndriGitDev/meil/internal/spfroutes"
 	"github.com/AndriGitDev/meil/internal/spfroutescheduler"
 )
+
+func TestBootstrapOperationalEventSkipped(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 4, 13, 0, 0, 0, time.UTC)
+	event := bootstrapOperationalEvent(bootstrap.Result{}, now)
+
+	if event.Kind != "bootstrap.skipped" {
+		t.Fatalf("Kind = %q, want bootstrap.skipped", event.Kind)
+	}
+	if event.Severity != ops.SeverityInfo {
+		t.Fatalf("Severity = %q, want info", event.Severity)
+	}
+	if event.Message != "bootstrap configuration was not complete; setup skipped" {
+		t.Fatalf("Message = %q", event.Message)
+	}
+	if event.Resource != "bootstrap" {
+		t.Fatalf("Resource = %q, want bootstrap", event.Resource)
+	}
+	if !event.OccurredAt.Equal(now) {
+		t.Fatalf("OccurredAt = %s, want %s", event.OccurredAt, now)
+	}
+	if len(event.Metadata) != 0 {
+		t.Fatalf("Metadata = %#v, want empty", event.Metadata)
+	}
+}
+
+func TestBootstrapOperationalEventRanUsesOnlySafeMetadata(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 4, 13, 5, 0, 0, time.UTC)
+	event := bootstrapOperationalEvent(bootstrap.Result{
+		Applied:        true,
+		UserID:         "user-1",
+		OrganizationID: "org-1",
+		APIKeyCreated:  true,
+		APIKeyName:     "frontend-proxy",
+	}, now)
+
+	if event.Kind != "bootstrap.ran" {
+		t.Fatalf("Kind = %q, want bootstrap.ran", event.Kind)
+	}
+	if event.Severity != ops.SeverityInfo {
+		t.Fatalf("Severity = %q, want info", event.Severity)
+	}
+	if event.Message != "bootstrap setup completed" {
+		t.Fatalf("Message = %q", event.Message)
+	}
+	if event.Metadata["credential_created"] != true || event.Metadata["credential_name"] != "frontend-proxy" {
+		t.Fatalf("Metadata missing safe bootstrap fields: %#v", event.Metadata)
+	}
+	raw, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	lower := strings.ToLower(string(raw))
+	for _, forbidden := range []string{"token", "api_key", "apikey", "authorization", "password", "secret", "hash"} {
+		if strings.Contains(lower, forbidden) {
+			t.Fatalf("bootstrap event leaked forbidden marker %q: %s", forbidden, string(raw))
+		}
+	}
+}
 
 func TestScanCommandRequiresDomain(t *testing.T) {
 	t.Parallel()

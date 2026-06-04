@@ -1154,19 +1154,26 @@ func NewOperationalEventResponse(event ops.Event) OperationalEventResponse {
 }
 
 type ProviderHealthResponse struct {
-	GeneratedAt                  time.Time `json:"generated_at"`
-	PublicBaseURLConfigured      bool      `json:"public_base_url_configured"`
-	BunnyDNSConfigured           bool      `json:"bunny_dns_configured"`
-	BunnyDNSZoneIDConfigured     bool      `json:"bunny_dns_zone_id_configured"`
-	BootstrapConfigured          bool      `json:"bootstrap_configured"`
-	BootstrapPartiallyConfigured bool      `json:"bootstrap_partially_configured"`
-	BootstrapSkipped             bool      `json:"bootstrap_skipped"`
-	SPFRouteSchedulerEnabled     bool      `json:"spf_route_scheduler_enabled"`
-	SPFRouteSchedulerInterval    string    `json:"spf_route_scheduler_interval,omitempty"`
-	SPFRouteScheduledSyncCadence string    `json:"spf_route_scheduled_sync_cadence,omitempty"`
-	Version                      string    `json:"version"`
-	Commit                       string    `json:"commit"`
-	BuildTime                    string    `json:"build_time"`
+	GeneratedAt                  time.Time                    `json:"generated_at"`
+	PublicBaseURLConfigured      bool                         `json:"public_base_url_configured"`
+	BunnyDNSConfigured           bool                         `json:"bunny_dns_configured"`
+	BunnyDNSZoneIDConfigured     bool                         `json:"bunny_dns_zone_id_configured"`
+	BootstrapConfigured          bool                         `json:"bootstrap_configured"`
+	BootstrapPartiallyConfigured bool                         `json:"bootstrap_partially_configured"`
+	BootstrapSkipped             bool                         `json:"bootstrap_skipped"`
+	SPFRouteSchedulerEnabled     bool                         `json:"spf_route_scheduler_enabled"`
+	SPFRouteSchedulerInterval    string                       `json:"spf_route_scheduler_interval,omitempty"`
+	SPFRouteScheduledSyncCadence string                       `json:"spf_route_scheduled_sync_cadence,omitempty"`
+	Version                      string                       `json:"version"`
+	Commit                       string                       `json:"commit"`
+	BuildTime                    string                       `json:"build_time"`
+	Worker                       ProviderWorkerHealthResponse `json:"worker"`
+}
+
+type ProviderWorkerHealthResponse struct {
+	QueueName      string   `json:"queue_name"`
+	MaxWorkers     int      `json:"max_workers"`
+	RegisteredJobs []string `json:"registered_jobs"`
 }
 
 type AdminSPFRoutePublicationAuditResponse struct {
