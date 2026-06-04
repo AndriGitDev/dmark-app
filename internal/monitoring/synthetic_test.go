@@ -2,6 +2,7 @@ package monitoring
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -98,7 +99,10 @@ func TestSyntheticRunnerRunsAdditionalScanFixtureDomains(t *testing.T) {
 			domain := r.URL.Query().Get("domain")
 			seen = append(seen, domain)
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"domain":"` + domain + `","checked_at":"2026-06-01T00:00:00Z"}`))
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"domain":     domain,
+				"checked_at": "2026-06-01T00:00:00Z",
+			})
 		default:
 			w.WriteHeader(http.StatusOK)
 		}
