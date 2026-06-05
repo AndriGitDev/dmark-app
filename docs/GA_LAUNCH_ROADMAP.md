@@ -425,6 +425,8 @@ The redesign materially improves first impression, but GA still needs a few rele
 
 **Why:** The new design is strong enough to drive launch traffic; the words now need to be as precise as the product.
 
+**Status:** Public-site scope copy is now explicitly launch-bounded in `dmark-web`: public scanner is live, SPF automation/reporting are early-access beta while DNS publication and reporting gates finish, and Kastro managed rollout is operator-managed. Regression coverage rejects old overclaims such as GA-ready reporting and ungated automated SPF flattening language.
+
 **Acceptance criteria:** public copy distinguishes GA, beta, and operator-managed capabilities; CTA/upgrade flows are tested; no copy promises live email, rollback, billing, Reporter, or SPF automation beyond proven evidence.
 
 ### B. Accessibility, performance, and SEO/metadata pass
