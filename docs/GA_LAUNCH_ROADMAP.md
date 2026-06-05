@@ -390,6 +390,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 
 - Keep this roadmap updated after every major slice.
 - Update `docs/GA_READINESS.md` after release gates run.
+- Use `docs/GA_OPERATOR_HANDOFF.md` for the final founder/operator evidence packet, live-provider proof steps, and GA/public-beta/hold decision.
 - Update `docs/SPF_FLATTENER_BUNNY_PLAN.md` as implementation phases move from pending to complete.
 - Update `dmark-web` docs so they match the parent-zone Bunny strategy.
 - Prepare launch notes with:

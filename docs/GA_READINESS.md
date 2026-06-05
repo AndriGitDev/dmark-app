@@ -62,7 +62,7 @@ These must pass before a GA release candidate is promoted. `docs/GA_LAUNCH_ROADM
 
 ## Immediate GA Workstream
 
-Priority order is now tracked in `docs/GA_LAUNCH_ROADMAP.md`:
+Priority order is now tracked in `docs/GA_LAUNCH_ROADMAP.md`. The final founder/operator evidence checklist lives in `docs/GA_OPERATOR_HANDOFF.md`:
 
 1. Backend SPF route dashboard API.
 2. SPF route operator visibility for failed/blocked/stale resyncs.
