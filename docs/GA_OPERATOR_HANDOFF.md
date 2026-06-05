@@ -102,6 +102,16 @@ Latest verified non-mutating smoke evidence before human-gated work:
 - 2026-06-05 17:47 UTC homepage/API marker smoke: `https://dmark.is/` returned HTML (`37196` bytes), `https://dmark.kastro.is/status` contained `operational`, `https://dmark.kastro.is/healthz` returned `ok`, and `https://dmark.kastro.is/api/public/scan?domain=kastro.is` returned JSON containing `kastro.is` with top-level keys `audit,checked_at,checks,domain,duration_ms,summary`.
 - The homepage source marker check found `dmark-privacy-analytics`, Google Tag Manager, Google Analytics, Meta/Facebook script, and Meta pixel markers all absent.
 
+Latest operator-gate pass evidence:
+
+- 2026-06-05 18:08 UTC preflight: `dmark-app` was clean on `main...origin/main` at `ca8db82b09071aac2e8c50706508f83b58008aa3`; exact-head CI run `27030871109` completed successfully. `dmark-web` was aligned at `cced9852b2bb7ce0bab7789f904ee913769e1721`; local untracked `DMARK.zip` was outside the app repo and no frontend CI runs were visible.
+- 2026-06-05 18:02 UTC backend RC gates: `PATH=/root/go/bin:$PATH make rc-backend DOCKER_COMPOSE=docker-compose` passed, including tests, race tests, vet, golangci-lint (`0 issues`), govulncheck (`No vulnerabilities found`), sqlc generated-file check, build, Compose config validation, and Docker image build.
+- 2026-06-05 18:02 UTC service-backed RC gates: `PATH=/root/go/bin:$PATH make rc-backend-services DOCKER_COMPOSE=docker-compose` passed fresh Postgres migrations through version 8, River migrations through version 6, fresh ClickHouse migrations, and `internal/store/pg` integration tests.
+- 2026-06-05 18:03 UTC frontend gates: `npm test` passed 57/57, `npm run lint` passed, and `npm run build` passed.
+- 2026-06-05 18:06 UTC read-only canary DNS check: `route-published.canary.dmark.is`, `route-published.route.dmark.is`, `broken-spf.canary.dmark.is`, and `spf-too-many-lookups.canary.dmark.is` did not yet resolve; no Bunny mutation was performed.
+- 2026-06-05 18:06 UTC unauthenticated production API boundary check: backend `/healthz` returned `200`; admin provider health and dashboard domain list endpoints returned `401` with `valid bearer API key is required`.
+- 2026-06-05 18:08 UTC local non-production Postgres backup/restore drill passed against disposable Compose Postgres: migrations applied, `pg_dump` produced a `78591` byte dump, the local database was dropped/recreated, restore succeeded, `goose_db_version` remained queryable with `9` rows, and a harmless marker row restored as `dmark local restore drill`. This is local restore evidence only, not production backup evidence.
+
 ## 4. Explicit operator-only mutation: Bunny route canary
 
 Do this only after confirming the production Bunny DNS key is scoped appropriately and loaded in the backend environment. Never paste the key into logs, docs, Memento, Telegram, shell history, or issue comments.
@@ -114,9 +124,23 @@ Target canary:
 
 Procedure:
 
-1. Create or select a protected-domain/test-route fixture through the normal application path, not by hand-editing the database unless this is explicitly a break-glass drill.
-2. Configure route sources so the generated SPF value is deterministic and safe.
-3. Trigger manual SPF route sync through the backend/dashboard API path.
+1. Create or select a protected-domain/test-route fixture through the normal application path, not by hand-editing the database unless this is explicitly a break-glass drill. The API path is `POST /api/v1/domains` with a bearer API key scoped for domain writes.
+2. Configure route sources so the generated SPF value is deterministic and safe through `PUT /api/v1/dashboard/domains/{id}/spf-route`, with a payload like:
+
+```json
+{
+  "route_fqdn": "route-published.route.dmark.is",
+  "customer_cname_name": "route-published.canary.dmark.is",
+  "customer_cname_target": "route-published.route.dmark.is",
+  "enabled": true,
+  "mechanism_policy": "softfail",
+  "sources": [
+    {"kind": "ip4", "value": "192.0.2.10", "label": "GA canary TEST-NET-1", "enabled": true}
+  ]
+}
+```
+
+3. Trigger manual SPF route sync through `POST /api/v1/dashboard/domains/{id}/spf-route/sync`, or use the dashboard's SPF route sync action. Do not call Bunny directly unless this is an explicit rollback/break-glass action.
 4. Verify public DNS:
 
 ```sh
