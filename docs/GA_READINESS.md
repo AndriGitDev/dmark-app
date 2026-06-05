@@ -9,8 +9,8 @@ Last full historical local verification: 2026-05-27. Frontend cleanup spot-check
 ## Current Status
 
 - Repository state: `dmark-app` is backend-only; browser-facing surfaces and frontend build checks live in `dmark-web`.
-- Latest backend main: `40ab606be175accf50c74aa40ead9d51bf979b03`, matching `origin/main` during the 2026-06-05 closeout.
-- Latest backend CI: GitHub Actions run `27002508770` for commit `40ab606be175accf50c74aa40ead9d51bf979b03` completed successfully.
+- Latest implementation-bearing backend main before the final docs-only closeout: `40ab606be175accf50c74aa40ead9d51bf979b03`, matching `origin/main` during the 2026-06-05 smoke closeout.
+- Latest implementation-bearing backend CI: GitHub Actions run `27002508770` for commit `40ab606be175accf50c74aa40ead9d51bf979b03` completed successfully. Later docs-only handoff commits must still be pushed and CI-verified before release use.
 - Latest frontend main observed during closeout: `c882440a51d012e81787e8dfe9ed62651cbb94ec`, matching `origin/main`; no visible GitHub Actions runs exist for `dmark-web`, so local test/lint/build gates are the frontend evidence.
 - Code/product posture: public scanner, dashboard contracts, SPF route backend/dashboard/admin foundations, DNS guidance, operational events, privacy-safe funnel analytics, public endpoint hardening, synthetic smoke, backend RC/service gates, and frontend RC gates have recent implementation or verification evidence. The product is ready for a public-beta posture if the public copy scopes unfinished live-provider/recovery claims honestly.
 - GA posture: do **not** declare GA until the human/operator-gated items in `docs/GA_OPERATOR_HANDOFF.md` pass and are recorded. Current recommended posture before those gates is public beta, not GA.
