@@ -14,8 +14,10 @@ The current backend foundation is strong: scanner, dashboard contracts, Reporter
 
 ## Current Evidence
 
-- `dmark-app` latest verified main commit: `a2cac68 chore: commit generated sqlc models`.
-- GitHub Actions run for the SPF persistence/orchestration slice passed lint and tests.
+- `dmark-app` latest observed main commit: `1e7a6b3c899b3b80f644e0d82d22de60416c5e5c` (`docs: record live operator gate evidence`), matching `origin/main` on 2026-06-05.
+- `dmark-web` latest observed main commit: `4baa31eda218f6ead98c3fb11712921bf2e261cd` (`feat: refresh logo assets from original`), matching `origin/main` on 2026-06-05; the only local frontend untracked file is `DMARK.zip`.
+- The redesigned public site has shipped in `dmark-web` with the approved logo assets and sampled original-logo palette (`#44B6CD` cyan, `#182E4D` navy). Local verification for the redesign passed `npm test` (`58/58`), `npm run lint`, `npm run build`, and browser scanner smoke for `kastro.is`.
+- Latest backend CI/release-gate evidence is recorded in `docs/GA_READINESS.md` and `docs/GA_OPERATOR_HANDOFF.md`; rerun exact-head gates after any code changes before a final GA decision.
 - Live backend smoke checks passed against `https://dmark.kastro.is`:
   - `/healthz` returned `200 ok`.
   - `/status` returned service `Dmark` with status `operational`.
@@ -302,7 +304,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 
 **Goal:** Verify the public and dashboard browser experience before declaring GA.
 
-**Status:** Previous dashboard/frontend work is deployed and beta-locked; final QA must run after SPF/provider UI lands.
+**Status:** The public marketing redesign is implemented and pushed at `4baa31eda218f6ead98c3fb11712921bf2e261cd`, using the approved transparent logo assets and original-logo palette. Local redesign verification passed `npm test` (`58/58`), `npm run lint`, `npm run build`, and browser smoke of the scanner. Previous dashboard/frontend work remains deployed and beta-locked; final full-product QA must still run after SPF/provider UI lands and after the production deployment is confirmed at the exact release candidate.
 
 **Commands/gates:**
 
@@ -310,15 +312,18 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - `npm test`
 - `npm run build`
 - Production smoke of public scanner and marketing CTAs.
+- Production smoke that the redesigned homepage is served from the intended release candidate and uses the approved logo/palette assets.
 - Production smoke of dashboard locked/beta state.
 - If dashboard access is enabled for the release candidate, smoke authenticated/proxy paths.
 - Manual responsive pass for mobile/tablet/desktop.
 - Manual accessibility pass for keyboard flow, focus states, labels, and contrast.
+- Lighthouse or equivalent performance/SEO/accessibility spot-check for the public homepage and scanner result state.
 
 **Acceptance criteria:**
 
 - No unfinished dashboard/product surface is publicly accessible unless intentionally enabled.
 - Public scanner and lead-capture flows work.
+- Public marketing copy, logo, palette, responsive layout, and CTA paths match the approved release candidate.
 - SPF/provider guidance UI is readable and actionable.
 
 ### 9. Live Provider Checks
@@ -396,14 +401,55 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 - Prepare launch notes with:
   - final scope
   - known limitations
+  - public-beta versus GA language
   - rollback plan
   - live-provider proof
   - support/incident process
+- Freeze public-site launch copy after the redesign smoke passes:
+  - hero and scanner promise
+  - pricing/CTA language
+  - beta/GA qualifiers
+  - privacy/analytics wording
+  - support/contact path
 
 **Acceptance criteria:**
 
 - A fresh agent can read the docs and continue without needing oral history.
 - GA scope, beta scope, and future work are clearly separated.
+
+## Recommended Additional Pre-GA Stages After The Redesign
+
+The redesign materially improves first impression, but GA still needs a few release stages that are easy to overlook because they are not a single backend feature. These stages should be treated as pre-GA gates when the public promise depends on them; otherwise mark them public-beta or operator-managed.
+
+### A. Public-site copy, scope, and conversion freeze
+
+**Why:** The new design is strong enough to drive launch traffic; the words now need to be as precise as the product.
+
+**Acceptance criteria:** public copy distinguishes GA, beta, and operator-managed capabilities; CTA/upgrade flows are tested; no copy promises live email, rollback, billing, Reporter, or SPF automation beyond proven evidence.
+
+### B. Accessibility, performance, and SEO/metadata pass
+
+**Why:** A polished homepage can still fail launch quality if it is slow, inaccessible, or hard to preview/share.
+
+**Acceptance criteria:** mobile/desktop responsive checks pass; keyboard/focus/contrast checks pass; Lighthouse or equivalent does not reveal launch-blocking accessibility/performance/SEO issues; Open Graph/Twitter/social preview metadata and favicon/logo assets are verified.
+
+### C. Release-candidate deploy verification
+
+**Why:** Local gates are necessary but not sufficient; the exact pushed frontend/backend commits must be observed in production before GA language goes live.
+
+**Acceptance criteria:** production serves the intended `dmark-web` and `dmark-app` release candidates; homepage/scanner/dashboard-beta/admin-boundary smokes pass; invasive analytics markers remain absent unless intentionally enabled.
+
+### D. Founder/operator support readiness
+
+**Why:** Public beta can be operated manually, but GA needs support and incident handling to be boring.
+
+**Acceptance criteria:** support/contact path works; operator can inspect scans, route state, provider health, operational events, and recent errors; incident/recovery ownership is explicit for the first launch week.
+
+### E. Post-launch monitoring and rollback watch
+
+**Why:** The first 24-72 hours after launch are part of launch, not an afterthought.
+
+**Acceptance criteria:** synthetic checks, provider health, scan errors, route publication status, and conversion/CTA telemetry are reviewed on a defined cadence; rollback/hold criteria are written before traffic arrives.
 
 ## Suggested Execution Order
 
@@ -416,11 +462,13 @@ If any of these are descoped before Friday, document the scope cut explicitly in
 7. Evidence snapshots, operational events, and customer-facing explanations.
 8. Minimal admin/provider-health/version surfaces.
 9. Security/abuse pass and privacy-respecting funnel analytics.
-10. Backend and frontend release-candidate gates.
-11. Live-provider checks.
-12. Backup/restore/rollback/DNS recovery drills.
-13. Observability confirmation.
-14. Final docs/release notes.
+10. Public-site copy/scope freeze plus accessibility, performance, SEO, and social-preview QA.
+11. Backend and frontend release-candidate gates.
+12. Exact production release-candidate deploy verification.
+13. Live-provider checks.
+14. Backup/restore/rollback/DNS recovery drills.
+15. Observability confirmation and first-72-hours monitoring cadence.
+16. Final docs/release notes and GA/public-beta decision.
 
 ## Daily Operating Rhythm Through Launch Week
 

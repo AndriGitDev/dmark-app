@@ -11,8 +11,9 @@ Last full historical local verification: 2026-05-27. Frontend cleanup spot-check
 - Repository state: `dmark-app` is backend-only; browser-facing surfaces and frontend build checks live in `dmark-web`.
 - Latest backend main observed during 2026-06-05 18:53 UTC operator-gate pass: `752f806a533b6c373b27fe8231ee73327cd2c2d8` (`docs: record operator gate pass`), matching `origin/main`.
 - Latest backend CI: GitHub Actions run `27031937186` for commit `752f806a533b6c373b27fe8231ee73327cd2c2d8` completed successfully.
-- Latest frontend main observed during 2026-06-05 18:53 UTC operator-gate pass: `cced9852b2bb7ce0bab7789f904ee913769e1721` (`feat: improve dashboard auth recovery UX`), matching `origin/main`; no visible GitHub Actions runs exist for `dmark-web`, so local test/lint/build gates are the frontend evidence.
-- Code/product posture: public scanner, dashboard contracts, SPF route backend/dashboard/admin foundations, DNS guidance, operational events, privacy-safe funnel analytics, public endpoint hardening, synthetic smoke, backend CI, backend RC/service gates, frontend RC gates, unauthenticated admin/dashboard fail-closed checks, a local non-production Postgres restore drill, live Bunny SPF-route canary publication/no-op/blocking proof, and Coolify current-resource redeploy/recovery evidence have recent evidence. The product is ready for a public-beta posture if the public copy scopes unfinished live-email/previous-image-rollback/recovery claims honestly.
+- Latest frontend main observed during the 2026-06-05 redesign closeout: `4baa31eda218f6ead98c3fb11712921bf2e261cd` (`feat: refresh logo assets from original`), matching `origin/main`; no visible GitHub Actions runs exist for `dmark-web`, so local test/lint/build gates are the frontend evidence. The only local frontend untracked file at closeout was `DMARK.zip`.
+- Public-site redesign posture: the approved logo assets and original-logo palette (`#44B6CD` / `#182E4D`) are implemented and pushed. Local verification passed `npm test` (`58/58`), `npm run lint`, `npm run build`, and browser scanner smoke for `kastro.is`.
+- Code/product posture: public scanner, redesigned marketing surface, dashboard contracts, SPF route backend/dashboard/admin foundations, DNS guidance, operational events, privacy-safe funnel analytics, public endpoint hardening, synthetic smoke, backend CI, backend RC/service gates, frontend RC gates, unauthenticated admin/dashboard fail-closed checks, a local non-production Postgres restore drill, live Bunny SPF-route canary publication/no-op/blocking proof, and Coolify current-resource redeploy/recovery evidence have recent evidence. The product is ready for a public-beta posture if the public copy scopes unfinished live-email/previous-image-rollback/recovery claims honestly.
 - GA posture: do **not** declare GA until the remaining human/operator-gated live Lettermint proof, production/approved backup restore evidence, previous-image Coolify rollback evidence if claimed, and public-copy approval items in `docs/GA_OPERATOR_HANDOFF.md` pass and are recorded. Current recommended posture before those gates is public beta, not GA.
 
 ## Verified Automated And Read-Only Gates
@@ -47,7 +48,7 @@ These must pass before a GA release candidate is promoted. They require explicit
 
 ## Public-Beta Scope If Human Gates Are Not Completed
 
-Public beta is the recommended posture until the gates above are proven.
+Public beta is the recommended posture until the gates above are proven. The redesign is suitable for launch traffic, but GA language should wait until the remaining live-provider/recovery/copy gates pass.
 
 - Launchable: public scanner, marketing funnel, selected dashboard/read flows, provider guidance, owner-only admin/read-only operator surfaces, and supportable manual onboarding.
 - Beta/operator-managed: Bunny-backed SPF route publication, live email/provider delivery, billing webhooks, advanced Reporter ingestion, and recovery claims.
@@ -61,5 +62,6 @@ Stop here before human-gated work unless Andri explicitly approves the next gate
 2. Run the operator-approved Lettermint live email proof.
 3. Run the operator-approved backup/restore/Coolify rollback drills.
 4. Approve public-beta copy/scope and publish with the beta limitations above.
+5. Run the post-redesign public-site QA pass: exact production release-candidate verification, responsive/accessibility/performance/SEO checks, social-preview metadata, and CTA/upgrade smoke.
 
 Proof-email dispatch remains isolated unless explicitly pulled into GA scope with ownership verification, rate limits, blocklists, consent, and audit logging.
