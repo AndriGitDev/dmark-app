@@ -61,9 +61,31 @@ go run ./cmd/meil synthetic-check --timeout=20s --json \
   --scan-fixture-domain xn--bcher-kva.example
 
 curl -fsS https://dmark.is/ >/tmp/dmark-home.html
-curl -fsS https://dmark.kastro.is/status
-curl -fsS https://dmark.kastro.is/healthz
+curl -fsS https://dmark.kastro.is/status >/tmp/dmark-status.json
+curl -fsS https://dmark.kastro.is/healthz >/tmp/dmark-healthz.txt
 curl -fsS 'https://dmark.kastro.is/api/public/scan?domain=kastro.is' >/tmp/dmark-kastro-scan.json
+
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+html = Path('/tmp/dmark-home.html').read_text(errors='replace')
+scan = Path('/tmp/dmark-kastro-scan.json').read_text(errors='replace')
+status = Path('/tmp/dmark-status.json').read_text(errors='replace') if Path('/tmp/dmark-status.json').exists() else ''
+needles = {
+    'dmark-privacy-analytics': 'privacy analytics marker',
+    'googletagmanager.com': 'Google Tag Manager',
+    'google-analytics.com': 'Google Analytics',
+    'connect.facebook.net': 'Meta/Facebook tracking',
+    'facebook.com/tr': 'Meta pixel',
+}
+print('homepage_bytes', len(html))
+for needle, label in needles.items():
+    print(f"{label}: {'FOUND' if needle in html else 'absent'}")
+print('status_contains_operational', 'operational' in status.lower())
+print('scan_contains_kastro_is', 'kastro.is' in scan)
+print('scan_top_level_keys', ','.join(sorted(json.loads(scan).keys())[:20]))
+PY
 ```
 
 Evidence to record:
@@ -73,6 +95,12 @@ Evidence to record:
 - backend `/status` and `/healthz` return `200`;
 - public scan returns `200` and contains `kastro.is` plus a current scan marker;
 - homepage source has no invasive analytics markers and no `dmark-privacy-analytics` marker unless privacy analytics were intentionally enabled.
+
+Latest verified non-mutating smoke evidence before human-gated work:
+
+- 2026-06-05 08:09 UTC: `go run ./cmd/meil synthetic-check --timeout=20s --json --scan-fixture-domain dmark.is --scan-fixture-domain example.com --scan-fixture-domain xn--bcher-kva.example` returned `failed:false` for backend commit `40ab606be175accf50c74aa40ead9d51bf979b03`.
+- 2026-06-05 closeout homepage/API marker smoke: `https://dmark.is/` returned HTML, `https://dmark.kastro.is/status` contained `operational`, `https://dmark.kastro.is/healthz` returned `ok`, and `https://dmark.kastro.is/api/public/scan?domain=kastro.is` returned JSON containing `kastro.is` with top-level keys `audit,checked_at,checks,domain,duration_ms,summary`.
+- The homepage source marker check found `dmark-privacy-analytics`, Google Tag Manager, Google Analytics, Meta/Facebook script, and Meta pixel markers all absent.
 
 ## 4. Explicit operator-only mutation: Bunny route canary
 
@@ -128,6 +156,15 @@ At minimum before GA, record evidence for:
 If any drill cannot be run safely before launch, choose public beta or hold. DNS does not negotiate.
 
 ## 7. Launch decision
+
+Current recommended launch posture unless the operator-gated proof below is completed: **public beta**, not GA.
+
+Public beta scope:
+
+- Public scanner, public marketing flows, and selected dashboard/read flows may launch if frontend/backend gates and read-only production smoke pass.
+- SPF route publication, live email/provider delivery, billing webhooks, advanced Reporter ingestion, and recovery claims remain beta/operator-managed unless separately proven.
+- Do not claim GA for Bunny-backed SPF route publication until live create/update/no-op/blocking behaviour and SPF rollback evidence are documented.
+- Do not claim GA recoverability until Postgres/ClickHouse restore and Coolify rollback drills have been run and recorded.
 
 Use this exact decision rule:
 
