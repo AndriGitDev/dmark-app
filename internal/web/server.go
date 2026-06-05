@@ -1810,6 +1810,32 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			writeAPIError(w, http.StatusInternalServerError, "saving domain failed")
 			return
 		}
+		if deps.Scanner != nil && deps.APIDomainChecker != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+			defer cancel()
+			result, err := deps.Scanner.Scan(ctx, saved.Domain)
+			if err != nil {
+				writeAPIError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			if err := deps.APIDomainChecker.CreateCheck(r.Context(), saved.ID, result); err != nil {
+				writeAPIError(w, http.StatusInternalServerError, "saving check failed")
+				return
+			}
+			checkedAt := result.CheckedAt
+			if checkedAt.IsZero() {
+				checkedAt = time.Now().UTC()
+			}
+			saved.LatestCheck = &domains.Check{
+				SPF:       result.SPF,
+				DKIM:      result.DKIM,
+				DMARC:     result.DMARC,
+				BIMI:      result.BIMI,
+				CheckedAt: checkedAt,
+			}
+			writeJSON(w, http.StatusCreated, apicontracts.NewDashboardDomainResponse(saved, nil))
+			return
+		}
 		writeJSON(w, http.StatusCreated, apicontracts.NewDomainResponse(saved))
 	})
 	r.Post("/api/v1/domains/import", func(w http.ResponseWriter, r *http.Request) {

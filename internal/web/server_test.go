@@ -522,6 +522,22 @@ func (s *webDomainStore) DeleteDomain(ctx context.Context, userID string, domain
 
 func (s *webDomainStore) CreateCheck(ctx context.Context, domainID string, result scanner.Result) error {
 	s.checkedDomain = domainID
+	for i := range s.domains {
+		if s.domains[i].ID == domainID {
+			checkedAt := result.CheckedAt
+			if checkedAt.IsZero() {
+				checkedAt = time.Now().UTC()
+			}
+			s.domains[i].LatestCheck = &domains.Check{
+				SPF:       result.SPF,
+				DKIM:      result.DKIM,
+				DMARC:     result.DMARC,
+				BIMI:      result.BIMI,
+				CheckedAt: checkedAt,
+			}
+			return nil
+		}
+	}
 	return nil
 }
 
@@ -3438,6 +3454,45 @@ func TestAPIDomainCreateReturnsDomain(t *testing.T) {
 	}
 	if body := rec.Body.String(); !strings.Contains(body, `"domain":"example.com"`) {
 		t.Fatalf("body missing domain response: %s", body)
+	}
+}
+
+func TestAPIDomainCreateScansAndReturnsDashboardPolicy(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/domains", strings.NewReader(`{"domain":"andri.is"}`))
+	req.Header.Set("Authorization", "Bearer meil_test")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	NewRouterWithDeps(Deps{
+		Scanner: fakeScanner{result: scanner.Result{
+			Domain: "andri.is",
+			SPF:    scanner.CheckResult{Name: "SPF", Status: scanner.StatusWarn, Message: "SPF softfail", Record: "v=spf1 include:_spf.protonmail.ch ~all"},
+			DKIM:   scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass, Message: "DKIM present"},
+			DMARC:  scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass, Message: "DMARC enforcing", Record: "v=DMARC1; p=quarantine"},
+			BIMI:   scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing, Message: "BIMI missing"},
+		}},
+		APIKeys: &webAPIKeyAuth{
+			principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}},
+		},
+		APIDomainCreator: store,
+		APIDomainChecker: store,
+	}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if store.checkedDomain != "org-domain-andri.is" {
+		t.Fatalf("checked domain = %q, want org-domain-andri.is", store.checkedDomain)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v; body=%s", err, rec.Body.String())
+	}
+	if body["dmarc_policy"] != "quarantine" || body["status"] == "needs-work" {
+		t.Fatalf("response = %+v, want dashboard policy quarantine with checked posture", body)
 	}
 }
 
