@@ -98,8 +98,8 @@ Evidence to record:
 
 Latest verified non-mutating smoke evidence before human-gated work:
 
-- 2026-06-05 08:09 UTC: `go run ./cmd/meil synthetic-check --timeout=20s --json --scan-fixture-domain dmark.is --scan-fixture-domain example.com --scan-fixture-domain xn--bcher-kva.example` returned `failed:false` for backend commit `40ab606be175accf50c74aa40ead9d51bf979b03`.
-- 2026-06-05 closeout homepage/API marker smoke: `https://dmark.is/` returned HTML, `https://dmark.kastro.is/status` contained `operational`, `https://dmark.kastro.is/healthz` returned `ok`, and `https://dmark.kastro.is/api/public/scan?domain=kastro.is` returned JSON containing `kastro.is` with top-level keys `audit,checked_at,checks,domain,duration_ms,summary`.
+- 2026-06-05 17:46 UTC: `go run ./cmd/meil synthetic-check --timeout=20s --json --scan-fixture-domain dmark.is --scan-fixture-domain example.com --scan-fixture-domain xn--bcher-kva.example` returned `failed:false` for backend commit `01ddf4fe75c31cd76ac13400e836cf5be0d2c180`.
+- 2026-06-05 17:47 UTC homepage/API marker smoke: `https://dmark.is/` returned HTML (`37196` bytes), `https://dmark.kastro.is/status` contained `operational`, `https://dmark.kastro.is/healthz` returned `ok`, and `https://dmark.kastro.is/api/public/scan?domain=kastro.is` returned JSON containing `kastro.is` with top-level keys `audit,checked_at,checks,domain,duration_ms,summary`.
 - The homepage source marker check found `dmark-privacy-analytics`, Google Tag Manager, Google Analytics, Meta/Facebook script, and Meta pixel markers all absent.
 
 ## 4. Explicit operator-only mutation: Bunny route canary
