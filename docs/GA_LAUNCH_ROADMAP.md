@@ -259,7 +259,7 @@ If any of these are descoped before Friday, document the scope cut explicitly in
   - claim starts/completions/errors (wired in `dmark-web` upgrade modal with only coarse source/status properties)
   - recommendation views (wired when public scanner results render, without raw domains or records)
   - CTA clicks/bookings (CTA clicks wired for nav/pricing/footer/result upsell sources without plan, domain, email, or name payloads)
-  - dashboard/beta-lock interactions
+  - dashboard/beta-lock interactions (initial dashboard interaction events wired in `dmark-web` for navigation, domain rechecks, SPF route sync/source saves, alert actions, settings saves, and exports with coarse source/status only; beta-lock CTA measurement remains open)
   - Prefer Plausible, Umami, self-hosted PostHog, or similarly privacy-conscious tracking over invasive analytics.
 - If scan/recommendation/route work starts stretching request lifecycles, introduce a simple Postgres-backed job table before adding new infrastructure:
   - status, attempts, retry-after, idempotency key, locked-by/locked-at
