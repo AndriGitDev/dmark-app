@@ -32,3 +32,17 @@ func TestSummarizePrioritizesHighestIssue(t *testing.T) {
 		t.Fatalf("summary = %+v, want DMARC fail as top issue", summary)
 	}
 }
+
+func TestSummarizeTreatsMissingBIMIAsOptional(t *testing.T) {
+	t.Parallel()
+
+	summary := Summarize(Result{
+		SPF:   CheckResult{Name: "SPF", Status: StatusWarn, Message: "soft fail"},
+		DKIM:  CheckResult{Name: "DKIM", Status: StatusPass},
+		DMARC: CheckResult{Name: "DMARC", Status: StatusPass},
+		BIMI:  CheckResult{Name: "BIMI", Status: StatusMissing, Message: "BIMI record was not found."},
+	})
+	if summary.Score != 90 || summary.Status != StatusPass || !strings.Contains(summary.TopIssue, "SPF") {
+		t.Fatalf("summary = %+v, want missing BIMI ignored and SPF warning surfaced", summary)
+	}
+}

@@ -12,8 +12,8 @@ func Summarize(result Result) PostureSummary {
 	score := 100
 	var top CheckResult
 	for _, check := range checks {
-		score -= penalty(check.Status)
-		if top.Name == "" || statusPriority(check.Status) > statusPriority(top.Status) {
+		score -= penaltyFor(check)
+		if top.Name == "" || statusPriorityFor(check) > statusPriorityFor(top) {
 			top = check
 		}
 	}
@@ -27,14 +27,17 @@ func Summarize(result Result) PostureSummary {
 	if score < 60 {
 		status = StatusFail
 	}
-	if top.Name == "" || top.Status == StatusPass {
+	if top.Name == "" || statusPriorityFor(top) == 0 || top.Status == StatusPass {
 		return PostureSummary{Score: score, Status: status, TopIssue: "No high-priority issue detected.", Remediation: "Keep monitoring DNS authentication records for drift."}
 	}
 	return PostureSummary{Score: score, Status: status, TopIssue: top.Name + ": " + top.Message, Remediation: remediationFor(top)}
 }
 
-func penalty(status Status) int {
-	switch status {
+func penaltyFor(check CheckResult) int {
+	if isOptionalMissingBIMI(check) {
+		return 0
+	}
+	switch check.Status {
 	case StatusMissing:
 		return 25
 	case StatusFail:
@@ -48,8 +51,11 @@ func penalty(status Status) int {
 	}
 }
 
-func statusPriority(status Status) int {
-	switch status {
+func statusPriorityFor(check CheckResult) int {
+	if isOptionalMissingBIMI(check) {
+		return 0
+	}
+	switch check.Status {
 	case StatusFail:
 		return 5
 	case StatusMissing:
@@ -61,6 +67,10 @@ func statusPriority(status Status) int {
 	default:
 		return 1
 	}
+}
+
+func isOptionalMissingBIMI(check CheckResult) bool {
+	return check.Name == "BIMI" && check.Status == StatusMissing
 }
 
 func remediationFor(check CheckResult) string {
