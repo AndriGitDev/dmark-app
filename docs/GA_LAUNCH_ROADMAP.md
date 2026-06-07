@@ -433,6 +433,8 @@ The redesign materially improves first impression, but GA still needs a few rele
 
 **Why:** A polished homepage can still fail launch quality if it is slow, inaccessible, or hard to preview/share.
 
+**Status:** Initial launch-quality pass is now wired in `dmark-web`: root metadata has canonical URL, Open Graph/Twitter cards, production robots indexing, icon/manifest pointers, and a generated web app manifest using approved logo/palette assets. The public marketing page includes keyboard skip navigation to the scanner and reduced-motion CSS guardrails. Full browser/Lighthouse evidence remains to be captured against the deployed release candidate.
+
 **Acceptance criteria:** mobile/desktop responsive checks pass; keyboard/focus/contrast checks pass; Lighthouse or equivalent does not reveal launch-blocking accessibility/performance/SEO issues; Open Graph/Twitter/social preview metadata and favicon/logo assets are verified.
 
 ### C. Release-candidate deploy verification
