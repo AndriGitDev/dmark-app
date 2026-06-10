@@ -2,9 +2,9 @@
 
 This tracker records the current release posture for general availability prep. It should be updated whenever a release gate is run or a GA blocker is accepted, fixed, or moved out of scope.
 
-Current launch roadmap: `docs/GA_LAUNCH_ROADMAP.md`. Final founder/operator evidence checklist: `docs/GA_OPERATOR_HANDOFF.md`.
+Current launch roadmap: `docs/GA_LAUNCH_ROADMAP.md`. Final founder/operator evidence checklist: `docs/GA_OPERATOR_HANDOFF.md`. Step-by-step runbooks for the remaining operator gates: `docs/GA_EVIDENCE_RUNBOOKS.md`.
 
-Last full historical local verification: 2026-05-27. Frontend cleanup spot-check: 2026-05-28. Latest backend launch-readiness closeout evidence: 2026-06-05.
+Last full historical local verification: 2026-05-27. Frontend cleanup spot-check: 2026-05-28. Backend launch-readiness closeout evidence: 2026-06-05. Latest engineering wave (dashboard enrichment + overhaul + launch-quality hardening): 2026-06-10.
 
 ## Current Status
 
@@ -18,7 +18,14 @@ Last full historical local verification: 2026-05-27. Frontend cleanup spot-check
 
 ## Verified Automated And Read-Only Gates
 
-Historical broad gates are summarized for provenance; the latest release-candidate evidence is the 2026-06-05 closeout.
+Historical broad gates are summarized for provenance; the latest release-candidate evidence is the 2026-06-10 engineering wave on top of the 2026-06-05 closeout.
+
+- 2026-06-10 engineering wave (local gates; rerun and record CI run IDs after push):
+  - Backend: new dashboard endpoints (`/api/v1/dashboard/domains/{id}/trends`, `/api/v1/dashboard/domains/{id}/spf-route/history`, `/api/v1/dashboard/plan`), plan saved-domain limit enforcement on domain create/import, and journey readiness exposure in change-plan; documented in `docs/API.md`. Legacy bootstrap plan `pro` now maps to business-tier entitlements so limit enforcement cannot cap the provisioned production organization.
+  - Backend toolchain: Go bumped to 1.26.4 in `go.mod`, `infra/coolify/Dockerfile`, and CI; this clears two called stdlib govulncheck findings (GO-2026-5039, GO-2026-5037) that fail the security gate on Go ≤1.26.3. `govulncheck` reports no vulnerabilities on 1.26.4.
+  - Backend gates passed locally: `go test ./...`, `go test -race ./...`, `go vet`, `golangci-lint` (0 issues), `govulncheck` (clean), sqlc generated-file diff, and `DOCKER_COMPOSE=docker-compose make rc-backend-services` including new real-Postgres integration coverage for the trend/history/plan queries and cross-organization isolation.
+  - Frontend: dashboard decomposed into per-tab components and fully restyled to the marketing brand system; trends sparklines, SPF sync-history timeline, plan/usage card, and journey readiness panel added; launch-quality hardening shipped (brand 404/500 pages, robots/sitemap, session-expired re-login banner on any 401, retry buttons and skeleton loaders on all panels, empty-state CTAs, mobile add-domain focus, responsive Reporter cards) and OIDC nonce verification added to both the customer dashboard and admin Authentik callbacks (fail-closed id_token nonce binding).
+  - Frontend gates passed locally: `npm test` 83/83 (new coverage: Authentik session/state/nonce crypto, proxy fail-closed 401/403 and mock paths, backend path allowlist, new mappers), `npm run lint`, `npm run build`.
 
 - 2026-06-05 18:08 UTC backend exact-head CI: run `27030871109` completed success for `ca8db82b09071aac2e8c50706508f83b58008aa3`.
 - 2026-06-05 18:02 UTC backend RC gate: `PATH=/root/go/bin:$PATH make rc-backend DOCKER_COMPOSE=docker-compose` passed, including tests, race tests, vet, golangci-lint, govulncheck, generated-file check, build, Compose config validation, and Docker image build.
@@ -56,12 +63,13 @@ Public beta is the recommended posture until the gates above are proven. The red
 
 ## Immediate Next Workstream
 
-Stop here before human-gated work unless Andri explicitly approves the next gate. The next action is to choose one of:
+Stop here before human-gated work unless Andri explicitly approves the next gate. The remaining gates each have a step-by-step procedure in `docs/GA_EVIDENCE_RUNBOOKS.md`:
 
-1. Run the operator-approved Bunny route canary mutation and rollback proof.
-2. Run the operator-approved Lettermint live email proof.
-3. Run the operator-approved backup/restore/Coolify rollback drills.
-4. Approve public-beta copy/scope and publish with the beta limitations above.
-5. Run the post-redesign public-site QA pass: exact production release-candidate verification, responsive/accessibility/performance/SEO checks, social-preview metadata, and CTA/upgrade smoke.
+1. Runbook 1: Lettermint team verification and live magic-link proof (current blocker).
+2. Runbook 2: production-target Postgres backup/restore proof.
+3. Runbook 3: Coolify previous-image rollback proof for app and worker.
+4. Runbook 4: final public copy lock against proven capabilities.
+
+After all four pass, rerun the full gates, record exact-head CI runs, move each gate into the verified-evidence list above, and flip the posture from public beta to GA.
 
 Proof-email dispatch remains isolated unless explicitly pulled into GA scope with ownership verification, rate limits, blocklists, consent, and audit logging.

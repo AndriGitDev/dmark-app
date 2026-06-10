@@ -46,6 +46,7 @@ The current deployment target is `https://dmark.kastro.is` until `dmark.is` is p
 - Long-term product and engineering roadmap: `docs/ROADMAP.md`
 - Roadmap implementation audit: `docs/ROADMAP_AUDIT.md`
 - GA readiness tracker: `docs/GA_READINESS.md`
+- GA operator-gate runbooks: `docs/GA_EVIDENCE_RUNBOOKS.md`
 - Competitive Icelandic DMARC SaaS roadmap: `docs/COMPETITIVE_ROADMAP.md`
 - Checkmate sales-audit integration notes: `docs/CHECKMATE_INTEGRATION.md`
 - Staged QA and release test plan: `docs/QA_TEST_PLAN.md`
