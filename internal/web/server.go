@@ -84,6 +84,20 @@ type OrganizationDomainHistoryStore interface {
 	ListOrganizationDomainHistory(ctx context.Context, organizationID string, domainID string, limit int) ([]domains.HistoryEntry, error)
 }
 
+type OrganizationDomainTrendStore interface {
+	ListOrganizationDomainCheckTimeline(ctx context.Context, organizationID string, domainID string, days int) ([]domains.HistoryEntry, error)
+	ListOrganizationDomainAlignmentDaily(ctx context.Context, organizationID string, domainID string, days int) ([]reporter.AlignmentDay, error)
+}
+
+type OrganizationPlanStore interface {
+	GetOrganizationPlan(ctx context.Context, organizationID string) (string, error)
+	CountOrganizationDomains(ctx context.Context, organizationID string) (int, error)
+}
+
+type OperationalEventResourceStore interface {
+	ListOperationalEventsByResource(ctx context.Context, resource string, limit int) ([]ops.Event, error)
+}
+
 type OrganizationDomainDriftStore interface {
 	ListOrganizationDomainDrift(ctx context.Context, organizationID string, domainID string, limit int) ([]drift.Event, error)
 }
@@ -210,6 +224,9 @@ type Deps struct {
 	APISPFRoutes                 OrganizationSPFRouteStore
 	APISPFRouteSyncs             OrganizationSPFRouteSyncQueue
 	APIDomainHistory             OrganizationDomainHistoryStore
+	APIDomainTrends              OrganizationDomainTrendStore
+	APIPlan                      OrganizationPlanStore
+	APISPFRouteHistory           OperationalEventResourceStore
 	APIDomainDrift               OrganizationDomainDriftStore
 	APIReporter                  OrganizationReporterStore
 	APIDashboardAlerts           OrganizationDashboardAlertStore
@@ -742,6 +759,99 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			evidence = dashboardDMARCEvidence(r.Context(), deps.APIReporter, principal.OrganizationID, domain.ID)
 		}
 		writeJSON(w, http.StatusOK, apicontracts.NewDashboardChangePlanResponse(domain, evidence, time.Now().UTC()))
+	})
+	r.Get("/api/v1/dashboard/domains/{id}/trends", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIDomainTrends == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "domain trends API is not configured")
+			return
+		}
+		domain, ok := dashboardDomainForAPI(w, r, deps, principal.OrganizationID)
+		if !ok {
+			return
+		}
+		days, err := dashboardTrendDays(r.URL.Query().Get("days"))
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		timeline, err := deps.APIDomainTrends.ListOrganizationDomainCheckTimeline(r.Context(), principal.OrganizationID, domain.ID, days)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "loading domain trends failed")
+			return
+		}
+		alignment := []reporter.AlignmentDay{}
+		if apikeys.Allows(principal, apikeys.ScopeReporterRead) {
+			alignment, err = deps.APIDomainTrends.ListOrganizationDomainAlignmentDaily(r.Context(), principal.OrganizationID, domain.ID, days)
+			if err != nil {
+				writeAPIError(w, http.StatusInternalServerError, "loading alignment trends failed")
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardTrendsResponse(domain, timeline, alignment, days, time.Now().UTC()))
+	})
+	r.Get("/api/v1/dashboard/domains/{id}/spf-route/history", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		domain, ok := dashboardDomainForAPI(w, r, deps, principal.OrganizationID)
+		if !ok {
+			return
+		}
+		if deps.APISPFRoutes == nil || deps.APISPFRouteHistory == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "SPF route history API is not configured")
+			return
+		}
+		route, err := deps.APISPFRoutes.GetOrganizationSPFRoute(r.Context(), principal.OrganizationID, domain.ID)
+		if err != nil {
+			writeAPIError(w, http.StatusNotFound, "SPF route was not found")
+			return
+		}
+		limit, err := apiLimit(r.URL.Query().Get("limit"), 50, 200)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		events, err := deps.APISPFRouteHistory.ListOperationalEventsByResource(r.Context(), "spf_route:"+route.ID, limit)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "loading SPF route history failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardSPFRouteHistoryResponse(route, events, time.Now().UTC()))
+	})
+	r.Get("/api/v1/dashboard/plan", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
+		if !ok {
+			return
+		}
+		if !requireOrganizationAPI(w, principal) {
+			return
+		}
+		if deps.APIPlan == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "plan API is not configured")
+			return
+		}
+		plan, err := deps.APIPlan.GetOrganizationPlan(r.Context(), principal.OrganizationID)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "loading organization plan failed")
+			return
+		}
+		count, err := deps.APIPlan.CountOrganizationDomains(r.Context(), principal.OrganizationID)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "counting organization domains failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardPlanResponse(plan, count))
 	})
 	r.Get("/api/v1/dashboard/domains/{id}/brand-risk", func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
@@ -1805,6 +1915,9 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			writeAPIError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if !allowOrganizationSavedDomains(w, r, deps, principal.OrganizationID, 1) {
+			return
+		}
 		saved, err := deps.APIDomainCreator.CreateOrganizationDomain(r.Context(), principal.OrganizationID, domainName)
 		if err != nil {
 			writeAPIError(w, http.StatusInternalServerError, "saving domain failed")
@@ -1855,6 +1968,9 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 		domainNames, err := domains.ParseCSV(r.Body)
 		if err != nil {
 			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if !allowOrganizationSavedDomains(w, r, deps, principal.OrganizationID, len(domainNames)) {
 			return
 		}
 		imported := make([]apicontracts.DomainResponse, 0, len(domainNames))
@@ -2057,6 +2173,48 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// allowOrganizationSavedDomains enforces the plan saved-domain limit before
+// creating additional domains. It fails open when the plan store is not
+// configured so older deployments keep working.
+func allowOrganizationSavedDomains(w http.ResponseWriter, r *http.Request, deps Deps, organizationID string, additional int) bool {
+	if deps.APIPlan == nil || additional <= 0 {
+		return true
+	}
+	plan, err := deps.APIPlan.GetOrganizationPlan(r.Context(), organizationID)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "loading organization plan failed")
+		return false
+	}
+	count, err := deps.APIPlan.CountOrganizationDomains(r.Context(), organizationID)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "counting organization domains failed")
+		return false
+	}
+	limits := entitlements.ForPlan(entitlements.Plan(strings.TrimSpace(strings.ToLower(plan))))
+	if !limits.AllowsSavedDomain(count + additional - 1) {
+		writeAPIError(w, http.StatusForbidden, fmt.Sprintf("plan limit reached: %d of %d saved domains are in use; upgrade the plan to add more", count, limits.SavedDomains))
+		return false
+	}
+	return true
+}
+
+func dashboardTrendDays(raw string) (int, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 30, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("days must be a positive integer")
+	}
+	if value < 7 {
+		return 7, nil
+	}
+	if value > 90 {
+		return 90, nil
+	}
+	return value, nil
 }
 
 func apiLimit(raw string, fallback int, max int) (int, error) {

@@ -7,6 +7,9 @@ const (
 	PlanMonitor  Plan = "monitor"
 	PlanReporter Plan = "reporter"
 	PlanBusiness Plan = "business"
+	// PlanPro is the legacy plan name written by bootstrap provisioning; it
+	// carries business-tier limits.
+	PlanPro Plan = "pro"
 )
 
 type Limits struct {
@@ -21,7 +24,7 @@ type Limits struct {
 
 func ForPlan(plan Plan) Limits {
 	switch plan {
-	case PlanBusiness:
+	case PlanBusiness, PlanPro:
 		return Limits{SavedDomains: 250, ScanCadenceMinutes: 60, ReportRetentionDays: 730, AlertChannels: 5, APIAccess: true, Reporter: true, Teams: true}
 	case PlanReporter:
 		return Limits{SavedDomains: 50, ScanCadenceMinutes: 240, ReportRetentionDays: 365, AlertChannels: 3, APIAccess: true, Reporter: true}

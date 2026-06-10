@@ -238,6 +238,84 @@ LIMIT $2
 	return events, rows.Err()
 }
 
+// ListOperationalEventsByResource lists recent operational events for one
+// resource identifier, newest first. The query relies on the recent-events
+// index; add a (resource, occurred_at DESC) index if per-resource reads
+// become hot.
+func (s *AppStore) ListOperationalEventsByResource(ctx context.Context, resource string, limit int) ([]ops.Event, error) {
+	resource = strings.TrimSpace(resource)
+	if resource == "" {
+		return []ops.Event{}, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := s.queries.db.Query(ctx, `
+SELECT id, kind, severity, message, actor, resource, metadata, occurred_at
+FROM operational_events
+WHERE resource = $1
+ORDER BY occurred_at DESC, id DESC
+LIMIT $2
+`, resource, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	events := []ops.Event{}
+	for rows.Next() {
+		var event ops.Event
+		var id pgtype.UUID
+		var metadata []byte
+		if err := rows.Scan(&id, &event.Kind, &event.Severity, &event.Message, &event.Actor, &event.Resource, &metadata, &event.OccurredAt); err != nil {
+			return nil, err
+		}
+		event.ID = uuidToString(id)
+		if len(metadata) > 0 {
+			if err := json.Unmarshal(metadata, &event.Metadata); err != nil {
+				return nil, fmt.Errorf("decoding operational event metadata: %w", err)
+			}
+		}
+		event.Metadata = ops.SanitizeMetadata(event.Metadata)
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
+func (s *AppStore) GetOrganizationPlan(ctx context.Context, organizationID string) (string, error) {
+	organizationUUID, err := uuidFromString(organizationID)
+	if err != nil {
+		return "", err
+	}
+	var plan string
+	err = s.queries.db.QueryRow(ctx, `
+SELECT plan
+FROM organizations
+WHERE id = $1
+`, organizationUUID).Scan(&plan)
+	if err != nil {
+		return "", err
+	}
+	return plan, nil
+}
+
+func (s *AppStore) CountOrganizationDomains(ctx context.Context, organizationID string) (int, error) {
+	organizationUUID, err := uuidFromString(organizationID)
+	if err != nil {
+		return 0, err
+	}
+	var count int
+	err = s.queries.db.QueryRow(ctx, `
+SELECT count(*)::integer
+FROM domains
+WHERE organization_id = $1
+`, organizationUUID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (s *AppStore) ApplyBillingWebhook(ctx context.Context, event billing.WebhookEvent) (bool, error) {
 	if strings.TrimSpace(event.ID) == "" {
 		return false, fmt.Errorf("billing event id is required")
@@ -1680,6 +1758,144 @@ LIMIT $3
 		history = append(history, entry)
 	}
 	return history, rows.Err()
+}
+
+// ListOrganizationDomainCheckTimeline returns the latest check per day for a
+// domain over the last `days` days, oldest day first.
+func (s *AppStore) ListOrganizationDomainCheckTimeline(ctx context.Context, organizationID string, domainID string, days int) ([]domains.HistoryEntry, error) {
+	organizationUUID, err := uuidFromString(organizationID)
+	if err != nil {
+		return nil, err
+	}
+	domainUUID, err := uuidFromString(domainID)
+	if err != nil {
+		return nil, err
+	}
+	if days <= 0 || days > 90 {
+		days = 30
+	}
+	rows, err := s.queries.db.Query(ctx, `
+SELECT
+    d.id,
+    d.domain,
+    c.spf_status,
+    c.spf_message,
+    c.spf_record,
+    c.dkim_status,
+    c.dkim_message,
+    c.dkim_record,
+    c.dmarc_status,
+    c.dmarc_message,
+    c.dmarc_record,
+    c.bimi_status,
+    c.bimi_message,
+    c.bimi_record,
+    c.created_at
+FROM domains d
+JOIN (
+    SELECT DISTINCT ON (date_trunc('day', created_at))
+        domain_id,
+        spf_status, spf_message, spf_record,
+        dkim_status, dkim_message, dkim_record,
+        dmarc_status, dmarc_message, dmarc_record,
+        bimi_status, bimi_message, bimi_record,
+        created_at
+    FROM domain_checks
+    WHERE domain_id = $2 AND created_at >= now() - make_interval(days => $3)
+    ORDER BY date_trunc('day', created_at) DESC, created_at DESC
+) c ON c.domain_id = d.id
+WHERE d.organization_id = $1 AND d.id = $2
+ORDER BY c.created_at ASC
+`, organizationUUID, domainUUID, days)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	timeline := []domains.HistoryEntry{}
+	for rows.Next() {
+		var entry domains.HistoryEntry
+		var id pgtype.UUID
+		var checkedAt pgtype.Timestamptz
+		var spfStatus, spfMessage, spfRecord string
+		var dkimStatus, dkimMessage, dkimRecord string
+		var dmarcStatus, dmarcMessage, dmarcRecord string
+		var bimiStatus, bimiMessage, bimiRecord string
+		if err := rows.Scan(
+			&id,
+			&entry.Domain,
+			&spfStatus,
+			&spfMessage,
+			&spfRecord,
+			&dkimStatus,
+			&dkimMessage,
+			&dkimRecord,
+			&dmarcStatus,
+			&dmarcMessage,
+			&dmarcRecord,
+			&bimiStatus,
+			&bimiMessage,
+			&bimiRecord,
+			&checkedAt,
+		); err != nil {
+			return nil, err
+		}
+		entry.DomainID = uuidToString(id)
+		entry.Check = domains.Check{
+			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.Status(spfStatus), Message: spfMessage, Record: spfRecord},
+			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.Status(dkimStatus), Message: dkimMessage, Record: dkimRecord},
+			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.Status(dmarcStatus), Message: dmarcMessage, Record: dmarcRecord},
+			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.Status(bimiStatus), Message: bimiMessage, Record: bimiRecord},
+			CheckedAt: checkedAt.Time,
+		}
+		timeline = append(timeline, entry)
+	}
+	return timeline, rows.Err()
+}
+
+// ListOrganizationDomainAlignmentDaily returns daily aggregate DMARC message
+// volume and aligned counts for a domain over the last `days` days, oldest
+// day first.
+func (s *AppStore) ListOrganizationDomainAlignmentDaily(ctx context.Context, organizationID string, domainID string, days int) ([]reporter.AlignmentDay, error) {
+	organizationUUID, err := uuidFromString(organizationID)
+	if err != nil {
+		return nil, err
+	}
+	domainUUID, err := uuidFromString(domainID)
+	if err != nil {
+		return nil, err
+	}
+	if days <= 0 || days > 90 {
+		days = 30
+	}
+	rows, err := s.queries.db.Query(ctx, `
+SELECT
+    date_trunc('day', r.begin_at) AS day,
+    sum(a.count)::integer AS total,
+    sum(CASE WHEN a.dkim_aligned_result = 'pass' OR a.spf_aligned_result = 'pass' THEN a.count ELSE 0 END)::integer AS aligned
+FROM dmarc_aggregate_rows a
+JOIN dmarc_reports r ON r.id = a.report_id
+JOIN domains d ON d.id = r.domain_id
+WHERE d.organization_id = $1 AND d.id = $2 AND r.begin_at >= now() - make_interval(days => $3)
+GROUP BY 1
+ORDER BY 1 ASC
+`, organizationUUID, domainUUID, days)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	daysOut := []reporter.AlignmentDay{}
+	for rows.Next() {
+		var day reporter.AlignmentDay
+		var bucket pgtype.Timestamptz
+		if err := rows.Scan(&bucket, &day.Total, &day.Aligned); err != nil {
+			return nil, err
+		}
+		day.Day = bucket.Time
+		daysOut = append(daysOut, day)
+	}
+	return daysOut, rows.Err()
 }
 
 func (s *AppStore) ListOrganizationDomainDrift(ctx context.Context, organizationID string, domainID string, limit int) ([]drift.Event, error) {

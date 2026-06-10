@@ -69,7 +69,9 @@ POST /api/v1/dashboard/domains/{id}/recheck
 GET /api/v1/dashboard/domains/{id}/spf-route
 PUT /api/v1/dashboard/domains/{id}/spf-route
 POST /api/v1/dashboard/domains/{id}/spf-route/sync
+GET /api/v1/dashboard/domains/{id}/spf-route/history
 GET /api/v1/dashboard/domains/{id}/change-plan
+GET /api/v1/dashboard/domains/{id}/trends
 GET /api/v1/dashboard/domains/{id}/brand-risk
 GET /api/v1/dashboard/domains/{id}/reporter
 GET /api/v1/dashboard/domains/{id}/reporter?filter=unknown
@@ -79,6 +81,7 @@ POST /api/v1/dashboard/alerts/{id}/ack
 POST /api/v1/dashboard/alerts/{id}/mute
 GET /api/v1/dashboard/settings
 POST /api/v1/dashboard/settings
+GET /api/v1/dashboard/plan
 GET /api/v1/domains
 GET /api/v1/domains/export
 POST /api/v1/domains
@@ -256,6 +259,11 @@ Returns staged DNS changes owned by the backend recommendation engine.
   "domain": "example.com",
   "generated_at": "2026-05-28T12:00:00Z",
   "journey_state": "ready_for_reject",
+  "journey_reason": "Reporter evidence shows enough aligned traffic and low unknown-sender risk for the next enforcement step.",
+  "journey_ready_for_next": true,
+  "journey_blocking_signals": [],
+  "policy": "quarantine",
+  "policy_percent": 100,
   "next_action": "Move the DMARC policy to \"p=reject\" after notifying mail owners and watching the next reporting window.",
   "changes": [
     {
@@ -273,7 +281,69 @@ Returns staged DNS changes owned by the backend recommendation engine.
 }
 ```
 
-Change status values are `ready`, `review`, `waiting`, and `blocked`.
+Change status values are `ready`, `review`, `waiting`, and `blocked`. `journey_blocking_signals` lists the Reporter evidence blockers that keep `journey_ready_for_next` false; it is empty when the next enforcement step is safe. `policy` and `policy_percent` mirror the published DMARC `p=`/`pct=` values.
+
+### GET `/api/v1/dashboard/domains/{id}/trends`
+
+Requires `domain:read`. Returns daily score history from persisted record checks (latest check per day) plus daily aggregate DMARC alignment volume. Alignment points are only included when the API key also has `reporter:read`. `days` accepts `7..90` (default `30`); values outside the range are clamped.
+
+```json
+{
+  "domain_id": "domain_opaque",
+  "domain": "example.com",
+  "generated_at": "2026-06-10T12:00:00Z",
+  "days": 30,
+  "score_points": [
+    {"date": "2026-06-01", "score": 72, "status": "warn"},
+    {"date": "2026-06-02", "score": 95, "status": "pass"}
+  ],
+  "alignment_points": [
+    {"date": "2026-06-01", "total": 200, "aligned": 150, "aligned_percentage": 75},
+    {"date": "2026-06-02", "total": 100, "aligned": 99, "aligned_percentage": 99}
+  ]
+}
+```
+
+### GET `/api/v1/dashboard/domains/{id}/spf-route/history`
+
+Requires `domain:read`. Returns recent SPF route operational events (upserts, queued syncs, sync failures) for the domain's route, newest first. `limit` accepts `1..200` (default `50`). Event metadata is restricted to the frontend-safe keys `job_id`, `error_class`, `status`, and `sources_count`; actor and request internals are never returned.
+
+```json
+{
+  "route_id": "route_opaque",
+  "domain_id": "domain_opaque",
+  "domain": "example.com",
+  "generated_at": "2026-06-10T12:00:00Z",
+  "events": [
+    {
+      "kind": "dashboard.spf_route.sync_queued",
+      "severity": "info",
+      "message": "dashboard SPF route sync queued",
+      "occurred_at": "2026-06-10T11:58:00Z",
+      "metadata": {"job_id": "job_opaque"}
+    }
+  ]
+}
+```
+
+### GET `/api/v1/dashboard/plan`
+
+Requires `domain:read`. Returns the organization plan and entitlement limits with current saved-domain usage. Domain creation (`POST /api/v1/domains` and `POST /api/v1/domains/import`) enforces `saved_domains_limit` and returns `403` with a `plan limit reached` error once the limit is in use.
+
+```json
+{
+  "plan": "monitor",
+  "saved_domains_limit": 10,
+  "saved_domains_used": 2,
+  "saved_domains_remaining": 8,
+  "scan_cadence_minutes": 720,
+  "report_retention_days": 30,
+  "alert_channels": 1,
+  "api_access": false,
+  "reporter": false,
+  "teams": false
+}
+```
 
 ### GET `/api/v1/dashboard/domains/{id}/brand-risk`
 

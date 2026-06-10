@@ -14,6 +14,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/dnsprovider"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
+	"github.com/AndriGitDev/meil/internal/entitlements"
 	"github.com/AndriGitDev/meil/internal/ops"
 	"github.com/AndriGitDev/meil/internal/recommendations"
 	"github.com/AndriGitDev/meil/internal/reporter"
@@ -319,12 +320,17 @@ func dashboardDNSRecordType(kind dnsprovider.RecordKind) string {
 }
 
 type DashboardChangePlanResponse struct {
-	DomainID     string               `json:"domain_id"`
-	Domain       string               `json:"domain"`
-	GeneratedAt  time.Time            `json:"generated_at"`
-	JourneyState dmarcjourney.State   `json:"journey_state"`
-	NextAction   string               `json:"next_action"`
-	Changes      []DashboardDNSChange `json:"changes"`
+	DomainID               string               `json:"domain_id"`
+	Domain                 string               `json:"domain"`
+	GeneratedAt            time.Time            `json:"generated_at"`
+	JourneyState           dmarcjourney.State   `json:"journey_state"`
+	JourneyReason          string               `json:"journey_reason"`
+	JourneyReadyForNext    bool                 `json:"journey_ready_for_next"`
+	JourneyBlockingSignals []string             `json:"journey_blocking_signals"`
+	Policy                 string               `json:"policy"`
+	PolicyPercent          int                  `json:"policy_percent"`
+	NextAction             string               `json:"next_action"`
+	Changes                []DashboardDNSChange `json:"changes"`
 }
 
 type DashboardDNSChange struct {
@@ -349,13 +355,22 @@ func NewDashboardChangePlanResponse(domain domains.Domain, evidence dmarcjourney
 	}
 	journey := dmarcjourney.Evaluate(result.DMARC, evidence)
 	changes := recommendations.BuildChangePlan(result, evidence)
+	blockingSignals := journey.BlockingSignals
+	if blockingSignals == nil {
+		blockingSignals = []string{}
+	}
 	response := DashboardChangePlanResponse{
-		DomainID:     domain.ID,
-		Domain:       domain.Domain,
-		GeneratedAt:  generatedAt.UTC(),
-		JourneyState: journey.State,
-		NextAction:   journey.NextAction,
-		Changes:      make([]DashboardDNSChange, 0, len(changes)),
+		DomainID:               domain.ID,
+		Domain:                 domain.Domain,
+		GeneratedAt:            generatedAt.UTC(),
+		JourneyState:           journey.State,
+		JourneyReason:          journey.Reason,
+		JourneyReadyForNext:    journey.ReadyForNext,
+		JourneyBlockingSignals: blockingSignals,
+		Policy:                 journey.Policy,
+		PolicyPercent:          journey.Percent,
+		NextAction:             journey.NextAction,
+		Changes:                make([]DashboardDNSChange, 0, len(changes)),
 	}
 	for _, change := range changes {
 		response.Changes = append(response.Changes, DashboardDNSChange{
@@ -371,6 +386,148 @@ func NewDashboardChangePlanResponse(domain domains.Domain, evidence dmarcjourney
 		})
 	}
 	return response
+}
+
+type DashboardTrendsResponse struct {
+	DomainID        string                         `json:"domain_id"`
+	Domain          string                         `json:"domain"`
+	GeneratedAt     time.Time                      `json:"generated_at"`
+	Days            int                            `json:"days"`
+	ScorePoints     []DashboardTrendScorePoint     `json:"score_points"`
+	AlignmentPoints []DashboardTrendAlignmentPoint `json:"alignment_points"`
+}
+
+type DashboardTrendScorePoint struct {
+	Date   string `json:"date"`
+	Score  int    `json:"score"`
+	Status string `json:"status"`
+}
+
+type DashboardTrendAlignmentPoint struct {
+	Date              string  `json:"date"`
+	Total             int     `json:"total"`
+	Aligned           int     `json:"aligned"`
+	AlignedPercentage float64 `json:"aligned_percentage"`
+}
+
+func NewDashboardTrendsResponse(domain domains.Domain, timeline []domains.HistoryEntry, alignment []reporter.AlignmentDay, days int, generatedAt time.Time) DashboardTrendsResponse {
+	response := DashboardTrendsResponse{
+		DomainID:        domain.ID,
+		Domain:          domain.Domain,
+		GeneratedAt:     generatedAt.UTC(),
+		Days:            days,
+		ScorePoints:     make([]DashboardTrendScorePoint, 0, len(timeline)),
+		AlignmentPoints: make([]DashboardTrendAlignmentPoint, 0, len(alignment)),
+	}
+	for _, entry := range timeline {
+		summary := scanner.Summarize(scanner.Result{
+			Domain: entry.Domain,
+			SPF:    entry.Check.SPF,
+			DKIM:   entry.Check.DKIM,
+			DMARC:  entry.Check.DMARC,
+			BIMI:   entry.Check.BIMI,
+		})
+		response.ScorePoints = append(response.ScorePoints, DashboardTrendScorePoint{
+			Date:   entry.Check.CheckedAt.UTC().Format("2006-01-02"),
+			Score:  summary.Score,
+			Status: string(summary.Status),
+		})
+	}
+	for _, day := range alignment {
+		response.AlignmentPoints = append(response.AlignmentPoints, DashboardTrendAlignmentPoint{
+			Date:              day.Day.UTC().Format("2006-01-02"),
+			Total:             day.Total,
+			Aligned:           day.Aligned,
+			AlignedPercentage: day.AlignedPercentage(),
+		})
+	}
+	return response
+}
+
+type DashboardSPFRouteHistoryResponse struct {
+	RouteID     string                          `json:"route_id"`
+	DomainID    string                          `json:"domain_id"`
+	Domain      string                          `json:"domain"`
+	GeneratedAt time.Time                       `json:"generated_at"`
+	Events      []DashboardSPFRouteHistoryEvent `json:"events"`
+}
+
+type DashboardSPFRouteHistoryEvent struct {
+	Kind       string         `json:"kind"`
+	Severity   string         `json:"severity"`
+	Message    string         `json:"message"`
+	OccurredAt time.Time      `json:"occurred_at"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+}
+
+// dashboardSPFRouteHistoryMetadataKeys is the frontend-safe whitelist; raw
+// operational-event metadata can carry actor/method internals and must not
+// reach the dashboard.
+var dashboardSPFRouteHistoryMetadataKeys = []string{"job_id", "error_class", "status", "sources_count"}
+
+func NewDashboardSPFRouteHistoryResponse(route spfroutes.Route, events []ops.Event, generatedAt time.Time) DashboardSPFRouteHistoryResponse {
+	response := DashboardSPFRouteHistoryResponse{
+		RouteID:     route.ID,
+		DomainID:    route.DomainID,
+		Domain:      route.Domain,
+		GeneratedAt: generatedAt.UTC(),
+		Events:      make([]DashboardSPFRouteHistoryEvent, 0, len(events)),
+	}
+	for _, event := range events {
+		item := DashboardSPFRouteHistoryEvent{
+			Kind:       event.Kind,
+			Severity:   string(event.Severity),
+			Message:    event.Message,
+			OccurredAt: event.OccurredAt.UTC(),
+		}
+		for _, key := range dashboardSPFRouteHistoryMetadataKeys {
+			if value, ok := event.Metadata[key]; ok {
+				if item.Metadata == nil {
+					item.Metadata = map[string]any{}
+				}
+				item.Metadata[key] = value
+			}
+		}
+		response.Events = append(response.Events, item)
+	}
+	return response
+}
+
+type DashboardPlanResponse struct {
+	Plan                  string `json:"plan"`
+	SavedDomainsLimit     int    `json:"saved_domains_limit"`
+	SavedDomainsUsed      int    `json:"saved_domains_used"`
+	SavedDomainsRemaining int    `json:"saved_domains_remaining"`
+	ScanCadenceMinutes    int    `json:"scan_cadence_minutes"`
+	ReportRetentionDays   int    `json:"report_retention_days"`
+	AlertChannels         int    `json:"alert_channels"`
+	APIAccess             bool   `json:"api_access"`
+	Reporter              bool   `json:"reporter"`
+	Teams                 bool   `json:"teams"`
+}
+
+func NewDashboardPlanResponse(plan string, savedDomains int) DashboardPlanResponse {
+	plan = strings.TrimSpace(strings.ToLower(plan))
+	if plan == "" {
+		plan = string(entitlements.PlanFree)
+	}
+	limits := entitlements.ForPlan(entitlements.Plan(plan))
+	remaining := limits.SavedDomains - savedDomains
+	if remaining < 0 {
+		remaining = 0
+	}
+	return DashboardPlanResponse{
+		Plan:                  plan,
+		SavedDomainsLimit:     limits.SavedDomains,
+		SavedDomainsUsed:      savedDomains,
+		SavedDomainsRemaining: remaining,
+		ScanCadenceMinutes:    limits.ScanCadenceMinutes,
+		ReportRetentionDays:   limits.ReportRetentionDays,
+		AlertChannels:         limits.AlertChannels,
+		APIAccess:             limits.APIAccess,
+		Reporter:              limits.Reporter,
+		Teams:                 limits.Teams,
+	}
 }
 
 type DashboardReporterResponse struct {

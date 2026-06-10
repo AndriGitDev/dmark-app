@@ -66,6 +66,12 @@ type webDomainStore struct {
 	spfRouteSyncErr     error
 	deletedUserID       string
 	checkedDomain       string
+	timeline            []domains.HistoryEntry
+	alignmentDays       []reporter.AlignmentDay
+	requestedTrendDays  int
+	plan                string
+	resourceEvents      []ops.Event
+	requestedResource   string
 }
 
 func (s *webDomainStore) GetSPFRoute(ctx context.Context, routeID string) (spfroutes.Route, error) {
@@ -115,6 +121,41 @@ func (s *webDomainStore) ListOrganizationDomainHistory(ctx context.Context, orga
 		filtered = filtered[:limit]
 	}
 	return filtered, nil
+}
+
+func (s *webDomainStore) ListOrganizationDomainCheckTimeline(ctx context.Context, organizationID string, domainID string, days int) ([]domains.HistoryEntry, error) {
+	s.requestedTrendDays = days
+	filtered := []domains.HistoryEntry{}
+	for _, entry := range s.timeline {
+		if entry.DomainID == domainID {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered, nil
+}
+
+func (s *webDomainStore) ListOrganizationDomainAlignmentDaily(ctx context.Context, organizationID string, domainID string, days int) ([]reporter.AlignmentDay, error) {
+	return append([]reporter.AlignmentDay(nil), s.alignmentDays...), nil
+}
+
+func (s *webDomainStore) GetOrganizationPlan(ctx context.Context, organizationID string) (string, error) {
+	if s.plan == "" {
+		return "free", nil
+	}
+	return s.plan, nil
+}
+
+func (s *webDomainStore) CountOrganizationDomains(ctx context.Context, organizationID string) (int, error) {
+	return len(s.domains), nil
+}
+
+func (s *webDomainStore) ListOperationalEventsByResource(ctx context.Context, resource string, limit int) ([]ops.Event, error) {
+	s.requestedResource = resource
+	events := append([]ops.Event(nil), s.resourceEvents...)
+	if limit > 0 && len(events) > limit {
+		events = events[:limit]
+	}
+	return events, nil
 }
 
 func (s *webDomainStore) ListOrganizationDomainDrift(ctx context.Context, organizationID string, domainID string, limit int) ([]drift.Event, error) {
@@ -2090,6 +2131,410 @@ func TestDashboardSPFRouteEndpointsRequireExpectedScopes(t *testing.T) {
 				t.Fatalf("scope-denied request reached SPF route store: route=%+v queued=%q", store.spfRoute, store.queuedSPFRouteID)
 			}
 		})
+	}
+}
+
+func TestDashboardTrendsReturnsScoreAndAlignmentSeries(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{
+		domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}},
+		timeline: []domains.HistoryEntry{
+			{
+				DomainID: "domain-1",
+				Domain:   "example.com",
+				Check: domains.Check{
+					CheckedAt: time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC),
+					SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass},
+					DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusMissing},
+					DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Record: "v=DMARC1; p=none"},
+					BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing},
+				},
+			},
+			{
+				DomainID: "domain-1",
+				Domain:   "example.com",
+				Check: domains.Check{
+					CheckedAt: time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC),
+					SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass},
+					DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass},
+					DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusPass, Record: "v=DMARC1; p=quarantine"},
+					BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing},
+				},
+			},
+		},
+		alignmentDays: []reporter.AlignmentDay{
+			{Day: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), Total: 200, Aligned: 150},
+			{Day: time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC), Total: 100, Aligned: 99},
+		},
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead, apikeys.ScopeReporterRead}}},
+		APIDomainChecker: store,
+		APIDomainTrends:  store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/trends?days=14", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body struct {
+		DomainID    string `json:"domain_id"`
+		Days        int    `json:"days"`
+		ScorePoints []struct {
+			Date   string `json:"date"`
+			Score  int    `json:"score"`
+			Status string `json:"status"`
+		} `json:"score_points"`
+		AlignmentPoints []struct {
+			Date              string  `json:"date"`
+			Total             int     `json:"total"`
+			Aligned           int     `json:"aligned"`
+			AlignedPercentage float64 `json:"aligned_percentage"`
+		} `json:"alignment_points"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if body.DomainID != "domain-1" || body.Days != 14 || store.requestedTrendDays != 14 {
+		t.Fatalf("trend request mismatch: %+v requestedDays=%d", body, store.requestedTrendDays)
+	}
+	if len(body.ScorePoints) != 2 || body.ScorePoints[0].Date != "2026-06-01" || body.ScorePoints[1].Date != "2026-06-02" {
+		t.Fatalf("score points mismatch: %+v", body.ScorePoints)
+	}
+	if body.ScorePoints[1].Score <= body.ScorePoints[0].Score {
+		t.Fatalf("expected improving score, got %+v", body.ScorePoints)
+	}
+	if len(body.AlignmentPoints) != 2 || body.AlignmentPoints[0].Total != 200 || body.AlignmentPoints[0].Aligned != 150 {
+		t.Fatalf("alignment points mismatch: %+v", body.AlignmentPoints)
+	}
+	if body.AlignmentPoints[0].AlignedPercentage != 75 {
+		t.Fatalf("aligned percentage = %v, want 75", body.AlignmentPoints[0].AlignedPercentage)
+	}
+}
+
+func TestDashboardTrendsOmitsAlignmentWithoutReporterScope(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{
+		domains:       []domains.Domain{{ID: "domain-1", Domain: "example.com"}},
+		alignmentDays: []reporter.AlignmentDay{{Day: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), Total: 100, Aligned: 50}},
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIDomainChecker: store,
+		APIDomainTrends:  store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/trends", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body struct {
+		Days            int   `json:"days"`
+		AlignmentPoints []any `json:"alignment_points"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if body.Days != 30 {
+		t.Fatalf("default days = %d, want 30", body.Days)
+	}
+	if len(body.AlignmentPoints) != 0 {
+		t.Fatalf("alignment points leaked without reporter scope: %+v", body.AlignmentPoints)
+	}
+}
+
+func TestDashboardTrendsClampsDaysAndRejectsInvalid(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name       string
+		query      string
+		wantStatus int
+		wantDays   int
+	}{
+		{name: "clamps high", query: "?days=500", wantStatus: http.StatusOK, wantDays: 90},
+		{name: "clamps low", query: "?days=2", wantStatus: http.StatusOK, wantDays: 7},
+		{name: "rejects junk", query: "?days=abc", wantStatus: http.StatusBadRequest},
+		{name: "rejects negative", query: "?days=-4", wantStatus: http.StatusBadRequest},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}}
+			router := NewRouterWithDeps(Deps{
+				APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+				APIDomainChecker: store,
+				APIDomainTrends:  store,
+			})
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/trends"+tt.query, nil)
+			req.Header.Set("Authorization", "Bearer meil_test")
+			rec := httptest.NewRecorder()
+
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d; body %s", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if tt.wantStatus == http.StatusOK && store.requestedTrendDays != tt.wantDays {
+				t.Fatalf("requested days = %d, want %d", store.requestedTrendDays, tt.wantDays)
+			}
+		})
+	}
+}
+
+func TestDashboardTrendsReturnsNotFoundForUnknownDomain(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIDomainChecker: store,
+		APIDomainTrends:  store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/other-domain/trends", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+}
+
+func TestDashboardSPFRouteHistorySanitizesMetadata(t *testing.T) {
+	t.Parallel()
+
+	occurredAt := time.Date(2026, 6, 3, 9, 30, 0, 0, time.UTC)
+	store := &webDomainStore{
+		domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}},
+		spfRoute: spfroutes.Route{
+			ID:             "route-1",
+			OrganizationID: "org-1",
+			DomainID:       "domain-1",
+			Domain:         "example.com",
+		},
+		resourceEvents: []ops.Event{
+			{
+				Kind:       "dashboard.spf_route.sync_queued",
+				Severity:   ops.SeverityInfo,
+				Message:    "dashboard SPF route sync queued",
+				Actor:      "api-key:secret-internals",
+				Resource:   "spf_route:route-1",
+				Metadata:   map[string]any{"job_id": "job-9", "method": "PUT", "remote_addr": "203.0.113.7", "status": "queued"},
+				OccurredAt: occurredAt,
+			},
+		},
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:            &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIDomainChecker:   store,
+		APISPFRoutes:       store,
+		APISPFRouteHistory: store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/spf-route/history", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if store.requestedResource != "spf_route:route-1" {
+		t.Fatalf("requested resource = %q, want spf_route:route-1", store.requestedResource)
+	}
+	raw := rec.Body.String()
+	if strings.Contains(raw, "remote_addr") || strings.Contains(raw, "203.0.113.7") || strings.Contains(raw, "secret-internals") || strings.Contains(raw, `"actor"`) {
+		t.Fatalf("history response leaked internal metadata: %s", raw)
+	}
+	var body struct {
+		RouteID string `json:"route_id"`
+		Events  []struct {
+			Kind       string         `json:"kind"`
+			Severity   string         `json:"severity"`
+			Message    string         `json:"message"`
+			OccurredAt time.Time      `json:"occurred_at"`
+			Metadata   map[string]any `json:"metadata"`
+		} `json:"events"`
+	}
+	if err := json.NewDecoder(strings.NewReader(raw)).Decode(&body); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if body.RouteID != "route-1" || len(body.Events) != 1 {
+		t.Fatalf("history mapping mismatch: %+v", body)
+	}
+	event := body.Events[0]
+	if event.Kind != "dashboard.spf_route.sync_queued" || event.Severity != "info" || !event.OccurredAt.Equal(occurredAt) {
+		t.Fatalf("event mapping mismatch: %+v", event)
+	}
+	if event.Metadata["job_id"] != "job-9" || event.Metadata["status"] != "queued" {
+		t.Fatalf("whitelisted metadata missing: %+v", event.Metadata)
+	}
+	if _, leaked := event.Metadata["method"]; leaked {
+		t.Fatalf("metadata whitelist failed: %+v", event.Metadata)
+	}
+}
+
+func TestDashboardSPFRouteHistoryRequiresDomainReadScope(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{domains: []domains.Domain{{ID: "domain-1", Domain: "example.com"}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:            &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeReporterRead}}},
+		APIDomainChecker:   store,
+		APISPFRoutes:       store,
+		APISPFRouteHistory: store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/spf-route/history", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+	if store.requestedResource != "" {
+		t.Fatalf("scope-denied request reached history store: %q", store.requestedResource)
+	}
+}
+
+func TestDashboardPlanReturnsEntitlementLimits(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{
+		domains: []domains.Domain{
+			{ID: "domain-1", Domain: "example.com"},
+			{ID: "domain-2", Domain: "example.is"},
+		},
+		plan: "monitor",
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys: &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIPlan: store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/plan", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body struct {
+		Plan                  string `json:"plan"`
+		SavedDomainsLimit     int    `json:"saved_domains_limit"`
+		SavedDomainsUsed      int    `json:"saved_domains_used"`
+		SavedDomainsRemaining int    `json:"saved_domains_remaining"`
+		ScanCadenceMinutes    int    `json:"scan_cadence_minutes"`
+		ReportRetentionDays   int    `json:"report_retention_days"`
+		Reporter              bool   `json:"reporter"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if body.Plan != "monitor" || body.SavedDomainsLimit != 10 || body.SavedDomainsUsed != 2 || body.SavedDomainsRemaining != 8 {
+		t.Fatalf("plan limits mismatch: %+v", body)
+	}
+	if body.ScanCadenceMinutes != 720 || body.ReportRetentionDays != 30 || body.Reporter {
+		t.Fatalf("plan entitlements mismatch: %+v", body)
+	}
+}
+
+func TestDomainCreateEnforcesPlanSavedDomainLimit(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{
+		domains: []domains.Domain{
+			{ID: "domain-1", Domain: "one.example"},
+			{ID: "domain-2", Domain: "two.example"},
+			{ID: "domain-3", Domain: "three.example"},
+		},
+		plan: "free",
+	}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
+		APIDomainCreator: store,
+		APIPlan:          store,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/domains", strings.NewReader(`{"domain":"four.example"}`))
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "plan limit reached") {
+		t.Fatalf("expected plan limit error, got %s", rec.Body.String())
+	}
+	if len(store.domains) != 3 {
+		t.Fatalf("domain was created despite plan limit: %d domains", len(store.domains))
+	}
+}
+
+func TestDashboardChangePlanExposesJourneyEvidence(t *testing.T) {
+	t.Parallel()
+
+	store := &webDomainStore{domains: []domains.Domain{{
+		ID:     "domain-1",
+		Domain: "example.com",
+		LatestCheck: &domains.Check{
+			CheckedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+			SPF:       scanner.CheckResult{Name: "SPF", Status: scanner.StatusPass},
+			DKIM:      scanner.CheckResult{Name: "DKIM", Status: scanner.StatusPass},
+			DMARC:     scanner.CheckResult{Name: "DMARC", Status: scanner.StatusWarn, Record: "v=DMARC1; p=none; pct=50"},
+			BIMI:      scanner.CheckResult{Name: "BIMI", Status: scanner.StatusMissing},
+		},
+	}}}
+	router := NewRouterWithDeps(Deps{
+		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}}},
+		APIDomainChecker: store,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/domains/domain-1/change-plan", nil)
+	req.Header.Set("Authorization", "Bearer meil_test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body struct {
+		JourneyState           string   `json:"journey_state"`
+		JourneyReason          string   `json:"journey_reason"`
+		JourneyReadyForNext    bool     `json:"journey_ready_for_next"`
+		JourneyBlockingSignals []string `json:"journey_blocking_signals"`
+		Policy                 string   `json:"policy"`
+		PolicyPercent          int      `json:"policy_percent"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if body.JourneyState != "observing" || body.Policy != "none" || body.PolicyPercent != 50 {
+		t.Fatalf("journey mapping mismatch: %+v", body)
+	}
+	if body.JourneyReason == "" {
+		t.Fatalf("journey reason missing: %+v", body)
+	}
+	if body.JourneyReadyForNext {
+		t.Fatalf("expected not ready for next without reporter evidence: %+v", body)
+	}
+	if len(body.JourneyBlockingSignals) == 0 {
+		t.Fatalf("expected blocking signals without reporter evidence: %+v", body)
 	}
 }
 
