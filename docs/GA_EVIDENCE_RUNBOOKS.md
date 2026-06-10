@@ -1,6 +1,8 @@
 # GA Evidence Runbooks
 
-Step-by-step operator runbooks for the four remaining human-gated GA gates in `docs/GA_READINESS.md`. Each runbook ends with an explicit evidence line to paste into `docs/GA_READINESS.md` and the evidence packet (`docs/GA_OPERATOR_HANDOFF.md` section 8). Never record magic links, tokens, API keys, or connection strings.
+**Status: all four gates passed and GA was declared on 2026-06-10** (see `docs/GA_READINESS.md`). These runbooks remain the canonical procedures for re-running any gate after material changes (provider config, infra moves, restore-target changes) and for the SPF route gate when it graduates from operator dog-fooding to customer rollout.
+
+Step-by-step operator runbooks for the four human-gated GA gates in `docs/GA_READINESS.md`. Each runbook ends with an explicit evidence line to paste into `docs/GA_READINESS.md` and the evidence packet (`docs/GA_OPERATOR_HANDOFF.md` section 8). Never record magic links, tokens, API keys, or connection strings.
 
 Run the non-mutating preflight from `docs/GA_OPERATOR_HANDOFF.md` section 1 before any runbook below.
 

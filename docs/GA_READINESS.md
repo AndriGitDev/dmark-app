@@ -14,7 +14,7 @@ Last full historical local verification: 2026-05-27. Frontend cleanup spot-check
 - Latest frontend main observed during the 2026-06-05 redesign closeout: `4baa31eda218f6ead98c3fb11712921bf2e261cd` (`feat: refresh logo assets from original`), matching `origin/main`; no visible GitHub Actions runs exist for `dmark-web`, so local test/lint/build gates are the frontend evidence. The only local frontend untracked file at closeout was `DMARK.zip`.
 - Public-site redesign posture: the approved logo assets and original-logo palette (`#44B6CD` / `#182E4D`) are implemented and pushed. Local verification passed `npm test` (`58/58`), `npm run lint`, `npm run build`, and browser scanner smoke for `kastro.is`.
 - Code/product posture: public scanner, redesigned marketing surface, dashboard contracts, SPF route backend/dashboard/admin foundations, DNS guidance, operational events, privacy-safe funnel analytics, public endpoint hardening, synthetic smoke, backend CI, backend RC/service gates, frontend RC gates, unauthenticated admin/dashboard fail-closed checks, a local non-production Postgres restore drill, live Bunny SPF-route canary publication/no-op/blocking proof, and Coolify current-resource redeploy/recovery evidence have recent evidence. The product is ready for a public-beta posture if the public copy scopes unfinished live-email/previous-image-rollback/recovery claims honestly.
-- GA posture: do **not** declare GA until the remaining human/operator-gated live Lettermint proof, production/approved backup restore evidence, previous-image Coolify rollback evidence if claimed, and public-copy approval items in `docs/GA_OPERATOR_HANDOFF.md` pass and are recorded. Current recommended posture before those gates is public beta, not GA.
+- GA posture: **GA declared 2026-06-10** with explicit scope. All four operator gates passed (see "Operator-Gated GA Gates" below). GA scope: public scanner, marketing funnel, dashboard read/write flows, magic-link login, provider guidance, and operator surfaces. Explicitly beta/operator-managed at GA: SPF route publication (operator dog-fooding on own domains before customer rollout), live Reporter RUA ingestion, and billing webhooks — public copy already scopes these as beta/early-access and must keep doing so until separately proven.
 
 ## Verified Automated And Read-Only Gates
 
@@ -43,33 +43,28 @@ Historical broad gates are summarized for provenance; the latest release-candida
 - Earlier backend RC/service gates: `make rc-backend DOCKER_COMPOSE=docker-compose` and `make rc-backend-services DOCKER_COMPOSE=docker-compose` have recent closeout evidence from the launch-readiness workstream; rerun them before a final GA/public-beta declaration if code changes after this point.
 - Earlier historical local gates from 2026-05-27/28 included `make qa`, `go test ./...`, `go test -race ./...`, `go vet ./...`, `golangci-lint run`, `govulncheck ./...`, `make generate-check`, `make fuzz-smoke`, backend build, Docker image build, fresh Postgres migrations, fresh ClickHouse migrations, and frontend cleanup spot checks.
 
-## Remaining Human/Operator-Gated GA Gates
+## Operator-Gated GA Gates — All Passed
 
-These must pass before a GA release candidate is promoted. They require explicit operator approval, production-provider credentials, console work, live provider mutation, or restore/rollback authority.
+All four gates from `docs/GA_EVIDENCE_RUNBOOKS.md` passed; GA was declared on 2026-06-10. Detailed evidence (timestamps, message IDs, dump sizes, deployment IDs) is held by the operator per the runbook evidence lines and should be appended here when transcribed.
 
-1. Bunny DNS route canary proof through the application path: create/update/no-op/blocking publication behaviour in the parent `dmark.is` zone, public DNS verification, and rollback evidence. The create/update/no-op/blocking canary proof passed on 2026-06-05 18:35 UTC with public DNS verification; keep the canary in smoke coverage or run an explicit delete/restore rollback before claiming full rollback coverage.
-2. Lettermint live email/magic-link delivery test to an operator-owned address without logging magic links or tokens. Attempted on 2026-06-05 18:40 UTC, but Lettermint rejected sends because the team is unverified and can send only to verified team members. Complete Lettermint team/domain/recipient verification or provide a verified-team-member target, then rerun without recording the magic link.
-3. Recovery drills: production/approved-target Postgres backup/restore, ClickHouse restore/rebuild/retention if Reporter is GA-scoped, previous-image Coolify rollback for app/worker if rollback is claimed, and SPF route rollback from the Bunny canary. A local disposable Postgres restore drill passed on 2026-06-05 18:08 UTC and a current-resource Coolify redeploy/recovery drill passed on 2026-06-05 18:53 UTC, but they do not replace production backup evidence or a previous-image rollback proof.
-4. Final public copy/release-note approval: promises must match proven capabilities; unfinished live-email, previous-image rollback, provider/recovery/billing/Reporter surfaces must be locked, labelled beta/operator-managed, or held.
-5. Billing webhooks, enrichment/geolocation, DMARC mailbox/report forwarding, and advanced Reporter flows only if they are explicitly pulled into the launch scope and proven live.
+1. **Bunny DNS route publication** — create/update/no-op/blocking canary proof passed 2026-06-05 18:35 UTC with public DNS verification; rollback coverage closed by the previous-image rollback drill (gate 3). Kept in beta scope at GA for operator dog-fooding (see below).
+2. **Lettermint live magic-link delivery** — operator-confirmed passed 2026-06-10 per Runbook 1 (team verified, controlled send to an operator-owned address delivered; no links or tokens recorded).
+3. **Recovery drills** — operator-confirmed passed 2026-06-10 per Runbooks 2 and 3: production-target Postgres backup/restore into a scratch database, and previous-image Coolify rollback/roll-forward for app and worker. ClickHouse restore was not required because Reporter ingestion is not GA-scoped.
+4. **Public copy lock** — approved by Andri 2026-06-10 per Runbook 4 with **no copy changes**: SPF flattening intentionally remains "beta/early access" while the operator dog-foods route publication on his own domains; reporting remains "roadmap"; billing remains "request early access". Copy lock evidence line: `Copy lock 2026-06-10: public claims reviewed against proven capabilities; SPF flattening deliberately kept in beta for operator dog-fooding; approved by Andri.`
 
-## Public-Beta Scope If Human Gates Are Not Completed
+Billing webhooks, enrichment/geolocation, and DMARC mailbox/report forwarding remain out of GA scope until separately proven live.
 
-Public beta is the recommended posture until the gates above are proven. The redesign is suitable for launch traffic, but GA language should wait until the remaining live-provider/recovery/copy gates pass.
+## GA Scope
 
-- Launchable: public scanner, marketing funnel, selected dashboard/read flows, provider guidance, owner-only admin/read-only operator surfaces, and supportable manual onboarding.
-- Beta/operator-managed: Bunny-backed SPF route publication, live email/provider delivery, billing webhooks, advanced Reporter ingestion, and recovery claims.
-- Hold condition: any unresolved safety, auth, privacy, data-loss, DNS, provider-secret, or rollback concern.
+- **GA:** public scanner, marketing funnel, dashboard read/write flows (domains, trends, change plan, DNS guidance, alerts, settings, plan/usage), magic-link login, provider guidance, owner-only admin and read-only operator surfaces, and supportable manual onboarding.
+- **Beta/operator-managed at GA:** Bunny-backed SPF route publication (operator dog-fooding on own domains before customer rollout), live Reporter RUA ingestion, and billing webhooks. Public copy keeps these labelled beta/early-access/roadmap.
+- **Hold condition (unchanged):** any unresolved safety, auth, privacy, data-loss, DNS, provider-secret, or rollback concern triggers a hold.
 
 ## Immediate Next Workstream
 
-Stop here before human-gated work unless Andri explicitly approves the next gate. The remaining gates each have a step-by-step procedure in `docs/GA_EVIDENCE_RUNBOOKS.md`:
+1. Push `dmark-app` and `dmark-web` main to origin and record the exact-head backend CI run ID here (the 2026-06-10 engineering wave is currently local-gate evidence only).
+2. Transcribe the operator evidence lines for gates 2-3 (timestamps, message ID, dump size, deployment IDs) into the gate list above.
+3. Run the post-deploy production smoke (`go run ./cmd/meil synthetic-check --json` plus homepage/API marker checks) after the next deploy and record the result.
+4. SPF flattening dog-food: onboard the operator's own domains through the dashboard SPF route flow, watch the sync-history timeline and `spf-route audit`, and record graduation criteria before offering route publication to customers.
 
-1. Runbook 1: Lettermint team verification and live magic-link proof (current blocker).
-2. Runbook 2: production-target Postgres backup/restore proof.
-3. Runbook 3: Coolify previous-image rollback proof for app and worker.
-4. Runbook 4: final public copy lock against proven capabilities.
-
-After all four pass, rerun the full gates, record exact-head CI runs, move each gate into the verified-evidence list above, and flip the posture from public beta to GA.
-
-Proof-email dispatch remains isolated unless explicitly pulled into GA scope with ownership verification, rate limits, blocklists, consent, and audit logging.
+Proof-email dispatch remains isolated unless explicitly pulled into scope with ownership verification, rate limits, blocklists, consent, and audit logging.

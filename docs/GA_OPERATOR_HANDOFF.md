@@ -184,7 +184,9 @@ If any drill cannot be run safely before launch, choose public beta or hold. DNS
 
 ## 7. Launch decision
 
-Current recommended launch posture unless the operator-gated proof below is completed: **public beta**, not GA.
+**Decision recorded 2026-06-10: GA**, with SPF route publication, live Reporter ingestion, and billing webhooks explicitly scoped beta/operator-managed (see `docs/GA_READINESS.md`). The decision rule below remains in force for future releases; the public-beta guidance applies whenever any gate regresses.
+
+Historical guidance: recommended launch posture unless the operator-gated proof below is completed was **public beta**, not GA.
 
 Public beta scope:
 
