@@ -8,7 +8,7 @@ The repository is named `dmark-app` after the Dmark app split. The Go module, bi
 
 ## Local Development
 
-Prerequisites: Go 1.26.4+, Docker, `sqlc`, and `air` installed locally.
+Prerequisites: Go 1.26.5+, Docker, `sqlc`, and `air` installed locally.
 
 ```sh
 make dev
