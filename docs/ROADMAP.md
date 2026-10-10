@@ -1,5 +1,7 @@
 # Dmark Product Roadmap
 
+> Historical scope, superseded 2026-10-10 by [FREE_PRODUCT_PLAN.md](FREE_PRODUCT_PLAN.md). Paid tiers and hosted SPF flattening are not current product commitments. Runtime retirement requires the dependency migration plan.
+
 Dmark is a DMARC, email-authentication, and brand-name risk defense product for domain owners.
 
 It starts with public DNS, SPF, DKIM, DMARC, and BIMI posture checks. It then grows into protected-domain monitoring, drift alerts, DMARC aggregate report ingestion, sender attribution, and brand-name risk defense for spoofing and impersonation risks.
@@ -252,3 +254,4 @@ Definition of Done:
 - Accessibility audits for keyboard, screen reader, color contrast, and focus states in `dmark-web`.
 - Abuse prevention for unauthenticated DNS scans and login attempts.
 - Privacy review for raw DMARC report storage.
+

@@ -1,5 +1,7 @@
 # Bunny.net SPF Flattening Service Plan
 
+> Historical scope, superseded 2026-10-10 by the [free Kastro product plan](FREE_PRODUCT_PLAN.md). Paid tiers, hosted SPF flattening and earlier GA promises below are not current product commitments. Runtime retirement must follow the dependency migration plan; historical implementation evidence remains useful.
+
 This is a GA-scope implementation plan for Dmark's automated SPF flattening service. The service belongs in `dmark-app` because it owns protected-domain state, background jobs, backend API contracts, secrets, and DNS publication. `dmark-web` should only render the operator UI and call server-side dashboard endpoints.
 
 ## GA Position
@@ -314,3 +316,4 @@ For GA with SPF flattening included:
 - A forced include-resolution failure blocks publication and surfaces an operator-visible error.
 - Dashboard shows CNAME instructions, detected DNS provider guidance, provider deep links where stable, and sync status without exposing secrets.
 - Production runbook documents Bunny credentials, zone delegation, provider-guidance fallback behavior, rollback, and failure handling.
+

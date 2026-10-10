@@ -1,5 +1,7 @@
 # Dmark Competitive Roadmap
 
+> Historical scope, superseded 2026-10-10 by the [free Kastro product plan](FREE_PRODUCT_PLAN.md). Paid tiers, hosted SPF flattening and earlier GA promises below are not current product commitments. Runtime retirement must follow the dependency migration plan; historical implementation evidence remains useful.
+
 Dmark is the Icelandic DMARC, email-authentication, and domain-trust platform for SMB and midmarket companies. The goal is to beat Dmarcian and EasyDMARC locally first, then expand feature parity where customers prove demand.
 
 ## Positioning
@@ -103,3 +105,4 @@ Choose based on customer pull:
 - MSP multi-tenant packaging.
 - DNS provider integrations.
 - SSO and procurement/security package.
+

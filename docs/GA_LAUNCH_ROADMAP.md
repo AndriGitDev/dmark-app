@@ -1,5 +1,7 @@
 # Dmark GA Launch Roadmap
 
+> Historical scope, superseded 2026-10-10 by the [free Kastro product plan](FREE_PRODUCT_PLAN.md). Paid tiers, hosted SPF flattening and earlier GA promises below are not current product commitments. Runtime retirement must follow the dependency migration plan; historical implementation evidence remains useful.
+
 This is the current working roadmap for taking Dmark from the deployed SPF-route persistence slice to a GA-ready release candidate.
 
 **Planning date:** 2026-05-31
@@ -491,3 +493,4 @@ On or before Friday 2026-06-05, choose one of:
 - **Hold:** a safety, recovery, DNS, auth, privacy, or data-loss concern remains unresolved.
 
 The launch date is a target, not a trap. Dmark may be ambitious, but DNS is not impressed by optimism.
+
