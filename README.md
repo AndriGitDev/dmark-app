@@ -1,5 +1,9 @@
 # Dmark Backend
 
+Dmark is a free email-authentication tool from Kastro, with optional separately quoted setup assistance. There is no paid Dmark plan or new hosted SPF flattening offering. The current scope and safe legacy retirement sequence are defined in [FREE_PRODUCT_PLAN.md](docs/FREE_PRODUCT_PLAN.md).
+
+This backend retains legacy billing, reporting and SPF-publishing implementation. The scope revision does not disable those runtime paths or modify production DNS. Inventory and migrate any dependent domains before retiring publication workers or credentials.
+
 Dmark is an interactive DMARC, SPF, and DKIM diagnostic and remediation platform for teams that need trusted email delivery. This repository contains the Go backend, worker, ingestion, scanner, API, and deployment assets.
 
 The frontend and marketing website live in the separate `dmark-web` repository. This repository intentionally has no Node, Next.js, Tailwind, templ, or static browser asset build. Keep visual marketing work there; keep domain logic, persistence, jobs, API contracts, ingestion, and operational work here.
@@ -39,9 +43,13 @@ If browser code calls the backend directly, set `FRONTEND_ORIGINS` on this servi
 
 ## Coolify
 
-The current deployment target is `https://dmark.kastro.is` until `dmark.is` is purchased. The legacy hostname `https://recordmaster.kastro.is` should remain available as a redirect during the transition. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.
+The legacy backend deployment target is `https://dmark.kastro.is`; the public free tool is at `https://dmark.is`. The legacy hostname `https://recordmaster.kastro.is` should remain available as a redirect during the transition. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.
 
-## Planning
+## Current product plan
+
+- [Free product plan and legacy retirement](docs/FREE_PRODUCT_PLAN.md) is authoritative.
+
+## Historical planning and implementation evidence
 
 - Long-term product and engineering roadmap: `docs/ROADMAP.md`
 - Roadmap implementation audit: `docs/ROADMAP_AUDIT.md`
@@ -56,3 +64,4 @@ The current deployment target is `https://dmark.kastro.is` until `dmark.is` is p
 - API and webhook contracts: `docs/API.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Brand-risk research: `docs/BRAND_RISK_RESEARCH.md`
+
