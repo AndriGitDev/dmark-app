@@ -125,6 +125,9 @@ func TestFreeAccountFlow(t *testing.T) {
 			token = u.Query().Get("token")
 		}
 	}
+	if !strings.Contains(sender.messages[0].HTML, `<a href="https://dmark.is/api/account/confirm/?`) {
+		t.Fatal("HTML email needs a clickable confirmation link")
+	}
 	if len(token) != 43 {
 		t.Fatal("missing login link")
 	}

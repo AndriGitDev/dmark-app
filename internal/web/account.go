@@ -142,7 +142,7 @@ func registerAccountRoutes(r chi.Router, deps Deps) {
 				subject = "Skrá inn í Dmark"
 				text = "Opnaðu hlekkinn í sama vafra og þú óskaðir eftir honum. Hann gildir í stuttan tíma og aðeins einu sinni.\n\n" + link + "\n\nVinnusvæðið þitt er áfram ókeypis."
 			}
-			if err := deps.Sender.Send(req.Context(), notifier.Email{To: email, Subject: subject, Text: text, HTML: "<p>" + strings.ReplaceAll(html.EscapeString(text), "\n", "<br>") + "</p>"}); err != nil {
+			if err := deps.Sender.Send(req.Context(), notifier.Email{To: email, Subject: subject, Text: text, HTML: "<p>" + strings.ReplaceAll(strings.ReplaceAll(html.EscapeString(text), html.EscapeString(link), `<a href="`+html.EscapeString(link)+`">`+html.EscapeString(link)+`</a>`), "\n", "<br>") + "</p>"}); err != nil {
 				failure(w, 503, "ACCOUNT_UNAVAILABLE")
 				return
 			}
