@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	FrontendBaseURL                   string   `env:"FRONTEND_BASE_URL" envDefault:"https://dmark.is"`
 	HTTPAddr                          string   `env:"HTTP_ADDR" envDefault:":8080"`
 	PublicBaseURL                     string   `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8080"`
 	DatabaseURL                       string   `env:"DATABASE_URL" envDefault:"postgres://meil:meil@localhost:5432/meil?sslmode=disable"`
@@ -72,6 +73,12 @@ func (c Config) Validate() error {
 	publicBaseURL, err := url.Parse(c.PublicBaseURL)
 	if err != nil || publicBaseURL.Scheme == "" || publicBaseURL.Host == "" {
 		return fmt.Errorf("PUBLIC_BASE_URL must be an absolute URL")
+	}
+	if c.FrontendBaseURL != "" {
+		frontend, err := url.Parse(c.FrontendBaseURL)
+		if err != nil || (frontend.Scheme != "https" && frontend.Scheme != "http") || frontend.Host == "" || frontend.User != nil || (frontend.Path != "" && frontend.Path != "/") || frontend.RawQuery != "" || frontend.Fragment != "" {
+			return fmt.Errorf("FRONTEND_BASE_URL must be an absolute HTTP origin")
+		}
 	}
 	if c.AuthTokenTTL <= 0 {
 		return fmt.Errorf("AUTH_TOKEN_TTL_MINUTES must be greater than zero")

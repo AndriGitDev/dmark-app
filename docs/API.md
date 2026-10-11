@@ -574,3 +574,19 @@ Consumers must verify the signature over the raw request body before parsing JSO
 - `billing.subscription_updated`
 
 Webhook deliveries are idempotent by endpoint and event ID. Receivers should also treat event IDs as idempotency keys.
+
+
+## Free browser account workspace
+
+These session-authenticated routes are independent of legacy API keys, organizations, billing and hosted SPF entitlements. Every response is `no-store`. The frontend proxies the backend `session` cookie to an HttpOnly same-origin cookie.
+
+| Route | Contract |
+| --- | --- |
+| GET /api/account/me | `{authenticated,email,csrf,available}`; creates an anonymous CSRF session |
+| POST /api/account/start | `{email,locale}`; sends a single-use link to the configured `FRONTEND_BASE_URL`; 202 only after delivery succeeds |
+| POST /api/account/finish | `{token}`; validates requesting-session binding, consumes login token and renews session |
+| GET /api/account/workspace | `{domains,version}` for the session user; empty workspace has version 0 |
+| POST /api/account/workspace | `{domains,version}`; creates/updates atomically, returning new version; 409 for stale saves |
+| POST /api/account/logout | Destroys the session |
+
+All POSTs require an exact configured frontend Origin and `X-CSRF-Token` from `/me`. Domain entries contain `domain`, whitelisted `completed` task IDs and optional `selector`. Maximum 20 domains and 16 KB request body; no scan payloads are stored. A private list of public domain names does not claim ownership. Account sessions last 24 hours and currently use SCS memory storage: restarts require sign-in again. Workspace data survives restarts in PostgreSQL migration 00009. Start requests are bounded per session, normalized recipient and upstream source. The shared frontend proxy can share the 120/minute source quota. Use shared sessions/rate limits before adding backend replicas. Login links must be opened in the requesting browser and confirmed by POST; GET never consumes a token. Email sender failure yields 503 rather than a false success.

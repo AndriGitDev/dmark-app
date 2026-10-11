@@ -19,6 +19,13 @@ type AbuseDecision struct {
 	CreatedAt  pgtype.Timestamptz
 }
 
+type AccountWorkspace struct {
+	UserID    pgtype.UUID
+	Domains   []byte
+	Version   int64
+	UpdatedAt pgtype.Timestamptz
+}
+
 type AdminCase struct {
 	ID         pgtype.UUID
 	Kind       string

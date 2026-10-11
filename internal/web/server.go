@@ -44,6 +44,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/statuspage"
 	"github.com/AndriGitDev/meil/internal/teams"
 	"github.com/AndriGitDev/meil/internal/webhooks"
+	"github.com/AndriGitDev/meil/internal/workspace"
 )
 
 type EmailScanner interface {
@@ -215,6 +216,8 @@ type StatusAdminStore interface {
 }
 
 type Deps struct {
+	Workspace                    workspace.Store
+	FrontendBaseURL              string
 	Scanner                      EmailScanner
 	APIKeys                      APIKeyAuthenticator
 	APIDomains                   OrganizationDomainLister
@@ -329,6 +332,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 	r.Use(corsMiddleware(deps.FrontendOrigins))
 	r.Use(deps.SessionManager.LoadAndSave)
 	r.Use(backendOnlySurface)
+	registerAccountRoutes(r, deps)
 	publicLimiter := newPublicRateLimiter(deps.PublicChecksPerMinute)
 	r.Get("/api/public/scan", func(w http.ResponseWriter, r *http.Request) {
 		if !publicLimiter.allow(publicRateKey(r), time.Now()) {
