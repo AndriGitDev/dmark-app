@@ -43,6 +43,7 @@ import (
 	"github.com/AndriGitDev/meil/internal/store/ch"
 	"github.com/AndriGitDev/meil/internal/store/pg"
 	"github.com/AndriGitDev/meil/internal/web"
+	"github.com/AndriGitDev/meil/internal/workspace"
 )
 
 func main() {
@@ -820,6 +821,8 @@ func newServeCommand() *cobra.Command {
 			server := &http.Server{
 				Addr: cfg.HTTPAddr,
 				Handler: web.NewRouterWithDeps(web.Deps{
+					Workspace:                    workspace.NewPostgresStore(pool),
+					FrontendBaseURL:              cfg.FrontendBaseURL,
 					Scanner:                      emailScanner,
 					APIKeys:                      apiKeyAuthenticator,
 					APIDomains:                   store,

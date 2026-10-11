@@ -1,6 +1,6 @@
 # Dmark: free email security by Kastro
 
-Decision date: 2026-10-10. This is the current product direction and overrides the commercial SaaS and hosted SPF plans in this repository.
+Decision date: 2026-10-10; public-app revision: 2026-10-11. This is the current product direction and overrides the commercial SaaS and hosted SPF plans in this repository.
 
 Dmark is a free, provider-neutral email-authentication tool and a source of qualified enquiries for Kastro. There is no paid Dmark subscription, premium security tier, hosted SPF flattening, customer DNS publishing or promise of managed email delivery. Revenue belongs to optional, separately quoted Kastro implementation work. A user must be able to get useful findings and setup guidance without contacting Kastro.
 
@@ -18,7 +18,7 @@ Sources checked 2026-10-10:
 ## Useful free product
 
 1. Public domain check without signup: SPF and DMARC observations, common DKIM discovery, optional exact DKIM selector lookup, and default BIMI publication lookup.
-2. Add domains and work through a per-domain sender/setup checklist. The first release saves names and manual checklist progress in the browser, with explicit device-only storage and deletion controls. It does not imply an authenticated account, monitoring, cloud sync or automatic validation.
+2. Add domains and work through a per-domain sender/setup checklist. The homepage is the working app, with domain navigation, records and a setup checklist. Guest domains, selectors and manual progress persist in a bounded first-party cookie. Registration is optional: email-link accounts can explicitly import and save the guest workspace across devices. There is no scheduled monitoring or automatic validation.
 3. Explain findings and next steps in natural Icelandic and English. A DNS rating is not proof of safe mail delivery, message signing or alignment.
 4. Help users inventory staff mail, invoicing, CRM, newsletters, support tools, website forms and devices before changing policies.
 5. Guide users to verify sender alignment and report evidence before tightening DMARC. Preserve existing enforcement while investigating. Aligned SPF **or** aligned DKIM can satisfy DMARC.
@@ -37,7 +37,7 @@ BIMI is optional branding, after authentication. Missing BIMI must not lower the
 
 ## Current implementation boundary
 
-The live public frontend uses Kastro Lookup for SPF/DMARC/common-selector evidence, not this Go service's authenticated dashboard. `dmark-web` now owns the device-only domain workspace and bounded supplementary DNS publication lookups. This release does not add hosted DMARC report ingestion, a reporting mailbox, scheduled scans, an authenticated dashboard or a public automation API.
+The live public frontend uses Kastro Lookup for SPF/DMARC/common-selector evidence, not this Go service's authenticated dashboard. `dmark-web` owns the app-first workspace, guest cookie persistence and bounded supplementary DNS publication lookups. New `/api/account/*` Go routes provide passwordless browser sessions and user-scoped PostgreSQL workspace saving, independent of legacy commercial entitlements. Deploy migration 00009 and the account API alongside the frontend; configure `FRONTEND_BASE_URL`, email delivery and matching frontend proxy origins. This release does not add hosted DMARC report ingestion, a reporting mailbox, scheduled scans or a public automation API.
 
 The Go repository retains substantial legacy account, worker, reporting, billing and SPF publication code. This document changes product scope; it does **not** certify that old runtime endpoints have been disabled. Preserve existing migrations, tests and data until an evidence-based operational retirement is complete. Do not present the legacy feature audit as proof of the new free product's release readiness.
 
@@ -45,7 +45,7 @@ The Go repository retains substantial legacy account, worker, reporting, billing
 
 - Reuse and improve parsers, scan evidence, domain normalization, explicit selectors, recommendations and API abuse controls.
 - Correct recommendations that imply mandatory SPF flattening, blanket `p=none`, automatic safe sender removal or safe enforcement from DNS alone.
-- If server-backed saved domains are justified by use, reuse existing auth and organization isolation with one free capability set. Keep any resource limits as explicit fair-use limits, never upgrade prompts.
+- Free saved-domain accounts reuse existing email-link auth and add user-isolated workspace storage with one free capability set. Keep any resource limits as explicit fair-use limits, never upgrade prompts.
 - Ownership verification is required before enabling domain-specific report ingestion, notifications or other automation. Public lookup and a private list of public domain names need no claim of ownership.
 - Add bounded scheduled rechecks and change summaries only after job, email delivery, consent, abuse and cost controls are proven. Never advertise these as available before release verification.
 - Use existing reporting providers initially. Consider safe manual aggregate-report import only if users show demand; no raw message or forensic-report collection by default.
@@ -63,9 +63,9 @@ The Go repository retains substantial legacy account, worker, reporting, billing
 
 ## Stages and release acceptance
 
-**This revision:** free positioning, no pricing grid, real anonymous scans, domain checklist storage, exact DKIM/BIMI publication checks, official setup references, optional Kastro assistance and an authoritative scope reset in both repositories.
+**This revision:** free positioning, no pricing grid, real anonymous scans, app-first domain workspace, guest cookie storage, optional passwordless account import/saving, exact DKIM/BIMI publication checks, official setup references, optional Kastro assistance and an authoritative scope reset in both repositories.
 
-**Next, if needed:** retire legacy paid/hosted-SPF runtime paths using the inventory above; audit the backend recommendation and DNS-guidance builders; decide whether account sync brings enough user value to justify its ongoing operational cost.
+**Next, if needed:** retire legacy paid/hosted-SPF runtime paths using the inventory above; audit the backend recommendation and DNS-guidance builders; validate real account adoption and move sessions/rate limits to shared stores before multi-replica deployment.
 
 **Later, demand-led:** verified free account monitoring, report imports and source summaries. Enterprise teams, premium retention, paid API plans, hosted SPF infrastructure and broad brand-risk surveillance are outside the current product scope.
 

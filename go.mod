@@ -1,8 +1,8 @@
 module github.com/AndriGitDev/meil
 
-go 1.25.0
+go 1.26.0
 
-toolchain go1.26.5
+toolchain go1.26.9
 
 require (
 	github.com/alexedwards/scs/v2 v2.9.0
@@ -15,7 +15,7 @@ require (
 	github.com/riverqueue/river/rivertype v0.20.0
 	github.com/spf13/cobra v1.10.2
 	go.opentelemetry.io/otel v1.35.0
-	golang.org/x/net v0.55.0
+	golang.org/x/net v0.60.0
 )
 
 require (
@@ -42,7 +42,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
