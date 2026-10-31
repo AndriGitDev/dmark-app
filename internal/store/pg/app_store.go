@@ -18,7 +18,6 @@ import (
 	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/attribution"
 	"github.com/AndriGitDev/meil/internal/auth"
-	"github.com/AndriGitDev/meil/internal/billing"
 	"github.com/AndriGitDev/meil/internal/bootstrap"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
@@ -71,7 +70,7 @@ LIMIT 1
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = s.queries.db.QueryRow(ctx, `
 INSERT INTO organizations (name, plan)
-VALUES ($1, 'pro')
+VALUES ($1, 'dmark')
 RETURNING id
 `, organizationName).Scan(&organizationID)
 	}
@@ -314,59 +313,6 @@ WHERE organization_id = $1
 		return 0, err
 	}
 	return count, nil
-}
-
-func (s *AppStore) ApplyBillingWebhook(ctx context.Context, event billing.WebhookEvent) (bool, error) {
-	if strings.TrimSpace(event.ID) == "" {
-		return false, fmt.Errorf("billing event id is required")
-	}
-	if strings.TrimSpace(event.CustomerID) == "" && strings.TrimSpace(event.SubscriptionID) == "" {
-		return false, fmt.Errorf("billing customer or subscription id is required")
-	}
-	if event.OccurredAt.IsZero() {
-		event.OccurredAt = time.Now().UTC()
-	}
-	tag, err := s.queries.db.Exec(ctx, `
-UPDATE organizations
-SET
-    plan = $1,
-    billing_customer_id = $2,
-    billing_subscription_id = $3,
-    billing_status = $4,
-    billing_last_event_id = $5,
-    updated_at = $6
-WHERE (($2 <> '' AND billing_customer_id = $2) OR ($3 <> '' AND billing_subscription_id = $3))
-  AND billing_last_event_id IS DISTINCT FROM $5
-`, event.Plan, event.CustomerID, event.SubscriptionID, event.Status, event.ID, event.OccurredAt.UTC())
-	if err != nil {
-		return false, err
-	}
-	return tag.RowsAffected() > 0, nil
-}
-
-func (s *AppStore) RequestBillingCancellation(ctx context.Context, organizationID string, reason string, periodEndsAt time.Time) (billing.Cancellation, error) {
-	organizationUUID, err := uuidFromString(organizationID)
-	if err != nil {
-		return billing.Cancellation{}, err
-	}
-	requestedAt := time.Now().UTC()
-	cancellation, err := billing.NewCancellation(organizationID, reason, requestedAt, periodEndsAt)
-	if err != nil {
-		return billing.Cancellation{}, err
-	}
-	err = s.queries.db.QueryRow(ctx, `
-UPDATE organizations
-SET
-    billing_cancel_requested_at = $2,
-    billing_cancel_effective_at = $3,
-    updated_at = $2
-WHERE id = $1
-RETURNING billing_cancel_requested_at, billing_cancel_effective_at
-`, organizationUUID, cancellation.RequestedAt, cancellation.EffectiveAt).Scan(&cancellation.RequestedAt, &cancellation.EffectiveAt)
-	if err != nil {
-		return billing.Cancellation{}, err
-	}
-	return cancellation, nil
 }
 
 func (s *AppStore) ListOrganizationAPIKeys(ctx context.Context, organizationID string) ([]apikeys.Key, error) {

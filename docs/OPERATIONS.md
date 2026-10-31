@@ -1,4 +1,4 @@
-# Dmark Operations
+# dmark Operations
 
 ## Release Gates
 
@@ -59,16 +59,16 @@ The default scan domain remains `kastro.is`. Repeated `--scan-fixture-domain` va
 
 Current production-safe fixture registry for the GA runbook:
 
-- `kastro.is`: Dmark/Kastro-owned production baseline; expected to scan successfully and exercise live Icelandic DNS. Enforced in smoke today.
-- `dmark.is`: Dmark-owned launch domain; useful as an owned missing/partial-record fixture until launch DNS records are intentionally published. Enforced in smoke today, but expected classification may change as launch DNS is completed.
-- `example.com`: standards-reserved public DNS baseline; useful as a non-customer control. Enforced in smoke today for freshness/schema, not as a Dmark-owned reliability proof.
+- `kastro.is`: dmark/Kastro-owned production baseline; expected to scan successfully and exercise live Icelandic DNS. Enforced in smoke today.
+- `dmark.is`: dmark-owned launch domain; useful as an owned missing/partial-record fixture until launch DNS records are intentionally published. Enforced in smoke today, but expected classification may change as launch DNS is completed.
+- `example.com`: standards-reserved public DNS baseline; useful as a non-customer control. Enforced in smoke today for freshness/schema, not as a dmark-owned reliability proof.
 - `xn--bcher-kva.example`: standards-reserved IDN/punycode normalization fixture. Enforced in smoke today for normalization/schema.
-- `broken-spf.canary.dmark.is`: reserved Dmark-owned canary name for intentionally malformed SPF. Provision once before enforcing in production smoke.
-- `spf-too-many-lookups.canary.dmark.is`: reserved Dmark-owned canary name for an SPF record that exceeds the DNS lookup budget. Provision once before enforcing in production smoke.
-- `parked-no-mx.canary.dmark.is`: reserved Dmark-owned canary name for parked/no-MX posture. Advisory until scanner MX classification exists.
-- `route-published.canary.dmark.is`: reserved Dmark-owned customer-facing CNAME canary for SPF route publication proof, paired with a stable route target such as `route-published.route.dmark.is`. Provision once, then smoke read-only with `--route-cname-name`/`--route-cname-want` and `--route-txt-name`/`--route-txt-want`.
+- `broken-spf.canary.dmark.is`: reserved dmark-owned canary name for intentionally malformed SPF. Provision once before enforcing in production smoke.
+- `spf-too-many-lookups.canary.dmark.is`: reserved dmark-owned canary name for an SPF record that exceeds the DNS lookup budget. Provision once before enforcing in production smoke.
+- `parked-no-mx.canary.dmark.is`: reserved dmark-owned canary name for parked/no-MX posture. Advisory until scanner MX classification exists.
+- `route-published.canary.dmark.is`: reserved dmark-owned customer-facing CNAME canary for SPF route publication proof, paired with a stable route target such as `route-published.route.dmark.is`. Provision once, then smoke read-only with `--route-cname-name`/`--route-cname-want` and `--route-txt-name`/`--route-txt-want`.
 
-Synthetic smoke must remain read-only. It must not create, update, or delete Bunny records; canary DNS records are provisioned out-of-band through an explicit operator change. Do not rely on random third-party broken SPF or too-many-lookup domains for GA smoke. The CLI verifies scan freshness/schema for fixture domains and can enforce expected class/status via `--scan-fixture-expect-status domain=status` once Dmark-owned canary DNS is deliberately provisioned.
+Synthetic smoke must remain read-only. It must not create, update, or delete Bunny records; canary DNS records are provisioned out-of-band through an explicit operator change. Do not rely on random third-party broken SPF or too-many-lookup domains for GA smoke. The CLI verifies scan freshness/schema for fixture domains and can enforce expected class/status via `--scan-fixture-expect-status domain=status` once dmark-owned canary DNS is deliberately provisioned.
 
 ## Incident Process
 
@@ -81,7 +81,7 @@ Synthetic smoke must remain read-only. It must not create, update, or delete Bun
 ## Backups And Restore
 
 - Postgres must be backed up at least daily once customer data is present.
-- DMARC raw XML retention must match the customer plan and privacy policy.
+- DMARC raw XML retention must match the configured retention controls and privacy policy.
 - Restore drills should validate users, domains, checks, drift events, reports, and audit logs.
 - Deployment rollback drills should record the current deploy artifact, promote a candidate, run smoke and service-backed QA gates, roll back to the previous artifact, and verify health, API scan, worker startup, and Reporter reads.
 

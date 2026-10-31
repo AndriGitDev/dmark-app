@@ -16,7 +16,6 @@ import (
 	"github.com/AndriGitDev/meil/internal/alerts"
 	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/attribution"
-	"github.com/AndriGitDev/meil/internal/billing"
 	"github.com/AndriGitDev/meil/internal/domains"
 	"github.com/AndriGitDev/meil/internal/drift"
 	"github.com/AndriGitDev/meil/internal/entitlements"
@@ -582,30 +581,6 @@ func (s *webDomainStore) CreateCheck(ctx context.Context, domainID string, resul
 	return nil
 }
 
-type webBillingStore struct {
-	event        billing.WebhookEvent
-	applied      bool
-	cancellation billing.Cancellation
-}
-
-func (s *webBillingStore) ApplyBillingWebhook(ctx context.Context, event billing.WebhookEvent) (bool, error) {
-	s.event = event
-	if !s.applied {
-		s.applied = true
-		return true, nil
-	}
-	return false, nil
-}
-
-func (s *webBillingStore) RequestBillingCancellation(ctx context.Context, organizationID string, reason string, periodEndsAt time.Time) (billing.Cancellation, error) {
-	cancellation, err := billing.NewCancellation(organizationID, reason, time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC), periodEndsAt)
-	if err != nil {
-		return billing.Cancellation{}, err
-	}
-	s.cancellation = cancellation
-	return cancellation, nil
-}
-
 type webAPIKeyAuth struct {
 	principal apikeys.Principal
 	err       error
@@ -816,56 +791,6 @@ func TestMuteUntil(t *testing.T) {
 	}
 	if got := muteUntil("", now); !got.Equal(now.Add(24 * time.Hour)) {
 		t.Fatalf("muteUntil default = %s, want one day", got)
-	}
-}
-
-func TestBillingWebhookAppliesVerifiedEvent(t *testing.T) {
-	t.Parallel()
-
-	store := &webBillingStore{}
-	body := `{"id":"evt_1","customer_id":"cus_1","subscription_id":"sub_1","plan":"reporter","status":"active","occurred_at":"2026-05-16T12:00:00Z"}`
-	req := httptest.NewRequest(http.MethodPost, "/billing/webhook", strings.NewReader(body))
-	req.Header.Set("X-Billing-Signature", billing.SignPayload("secret", []byte(body)))
-	rec := httptest.NewRecorder()
-
-	NewRouterWithDeps(Deps{
-		Billing:              store,
-		BillingWebhookSecret: "secret",
-	}).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-	if store.event.ID != "evt_1" || store.event.Plan != "reporter" {
-		t.Fatalf("stored billing event = %+v, want evt_1 reporter", store.event)
-	}
-	if !strings.Contains(rec.Body.String(), `"applied":true`) {
-		t.Fatalf("body missing applied response: %s", rec.Body.String())
-	}
-}
-
-func TestBillingWebhookRejectsInvalidSignature(t *testing.T) {
-	t.Parallel()
-
-	req := httptest.NewRequest(http.MethodPost, "/billing/webhook", strings.NewReader(`{"id":"evt_1"}`))
-	signature := "sha256=badfixturevalue"
-	req.Header.Set("X-Billing-Signature", signature)
-	rec := httptest.NewRecorder()
-
-	NewRouterWithDeps(Deps{
-		Billing:              &webBillingStore{},
-		BillingWebhookSecret: "billing-fixture-value",
-	}).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
-	}
-	body := rec.Body.String()
-	if !strings.Contains(body, "invalid billing webhook signature") {
-		t.Fatalf("body missing signature error: %s", body)
-	}
-	if strings.Contains(body, signature) || strings.Contains(body, "billing-fixture-value") {
-		t.Fatalf("body leaked webhook secret material: %s", body)
 	}
 }
 
@@ -2410,7 +2335,7 @@ func TestDashboardSPFRouteHistoryRequiresDomainReadScope(t *testing.T) {
 	}
 }
 
-func TestDashboardPlanReturnsEntitlementLimits(t *testing.T) {
+func TestDashboardPlanReturnsSharedResourceLimits(t *testing.T) {
 	t.Parallel()
 
 	store := &webDomainStore{
@@ -2445,15 +2370,15 @@ func TestDashboardPlanReturnsEntitlementLimits(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("Decode returned error: %v", err)
 	}
-	if body.Plan != "monitor" || body.SavedDomainsLimit != 10 || body.SavedDomainsUsed != 2 || body.SavedDomainsRemaining != 8 {
-		t.Fatalf("plan limits mismatch: %+v", body)
+	if body.Plan != "dmark" || body.SavedDomainsLimit != 250 || body.SavedDomainsUsed != 2 || body.SavedDomainsRemaining != 248 {
+		t.Fatalf("resource limits mismatch: %+v", body)
 	}
-	if body.ScanCadenceMinutes != 720 || body.ReportRetentionDays != 30 || body.Reporter {
-		t.Fatalf("plan entitlements mismatch: %+v", body)
+	if body.ScanCadenceMinutes != 60 || body.ReportRetentionDays != 730 || !body.Reporter {
+		t.Fatalf("shared capabilities mismatch: %+v", body)
 	}
 }
 
-func TestDomainCreateEnforcesPlanSavedDomainLimit(t *testing.T) {
+func TestDomainCreateEnforcesSharedSavedDomainLimit(t *testing.T) {
 	t.Parallel()
 
 	store := &webDomainStore{
@@ -2463,6 +2388,9 @@ func TestDomainCreateEnforcesPlanSavedDomainLimit(t *testing.T) {
 			{ID: "domain-3", Domain: "three.example"},
 		},
 		plan: "free",
+	}
+	for len(store.domains) < entitlements.DefaultLimits().SavedDomains {
+		store.domains = append(store.domains, domains.Domain{Domain: fmt.Sprintf("domain-%d.example", len(store.domains))})
 	}
 	router := NewRouterWithDeps(Deps{
 		APIKeys:          &webAPIKeyAuth{principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainWrite}}},
@@ -2478,11 +2406,11 @@ func TestDomainCreateEnforcesPlanSavedDomainLimit(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "plan limit reached") {
-		t.Fatalf("expected plan limit error, got %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "resource limit reached") {
+		t.Fatalf("expected resource limit error, got %s", rec.Body.String())
 	}
-	if len(store.domains) != 3 {
-		t.Fatalf("domain was created despite plan limit: %d domains", len(store.domains))
+	if len(store.domains) != 250 {
+		t.Fatalf("domain was created despite resource limit: %d domains", len(store.domains))
 	}
 }
 
@@ -2976,56 +2904,6 @@ func TestAPIWebhooksRequireManageScope(t *testing.T) {
 	}
 }
 
-func TestAPIBillingCancelRecordsCancellation(t *testing.T) {
-	t.Parallel()
-
-	store := &webBillingStore{}
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/billing/cancel", strings.NewReader(`{"reason":"switching providers","period_ends_at":"2026-06-16T12:00:00Z"}`))
-	req.Header.Set("Authorization", "Bearer meil_test")
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	NewRouterWithDeps(Deps{
-		APIKeys: &webAPIKeyAuth{
-			principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeBillingManage}},
-		},
-		BillingCancellation: store,
-	}).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-	if store.cancellation.OrganizationID != "org-1" || store.cancellation.Reason != "switching providers" {
-		t.Fatalf("cancellation = %+v, want org-1 switching providers", store.cancellation)
-	}
-	if body := rec.Body.String(); !strings.Contains(body, `"organization_id":"org-1"`) || !strings.Contains(body, `"effective_at":"2026-06-16T12:00:00Z"`) {
-		t.Fatalf("body missing cancellation response: %s", body)
-	}
-}
-
-func TestAPIBillingCancelRequiresManageScope(t *testing.T) {
-	t.Parallel()
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/billing/cancel", strings.NewReader(`{}`))
-	req.Header.Set("Authorization", "Bearer meil_test")
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	NewRouterWithDeps(Deps{
-		APIKeys: &webAPIKeyAuth{
-			principal: apikeys.Principal{OrganizationID: "org-1", Scopes: []apikeys.Scope{apikeys.ScopeDomainRead}},
-		},
-		BillingCancellation: &webBillingStore{},
-	}).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
-	}
-	if !strings.Contains(rec.Body.String(), "required scope") {
-		t.Fatalf("body missing scope error: %s", rec.Body.String())
-	}
-}
-
 func TestAPIKeyManagementListCreateAndRevoke(t *testing.T) {
 	t.Parallel()
 
@@ -3241,7 +3119,7 @@ func TestAPIPrivacyRetentionRejectsInvalidSettings(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
-	if !strings.Contains(rec.Body.String(), "raw report retention exceeds plan limit") {
+	if !strings.Contains(rec.Body.String(), "raw report retention exceeds resource limit") {
 		t.Fatalf("body missing validation error: %s", rec.Body.String())
 	}
 }
@@ -3439,10 +3317,10 @@ func TestAPIAdminOperationalEventsListRequiresOwnerAdminAndFiltersSeverity(t *te
 	store := &webDomainStore{operationalEvents: []ops.Event{
 		{
 			ID:         "event-error",
-			Kind:       "billing.webhook_failed",
+			Kind:       "webhook.delivery_failed",
 			Severity:   ops.SeverityError,
-			Message:    "billing webhook failed",
-			Resource:   "billing",
+			Message:    "webhook delivery failed",
+			Resource:   "webhook",
 			Metadata:   map[string]any{"provider": "stripe"},
 			OccurredAt: time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC),
 		},
@@ -4140,6 +4018,17 @@ func TestSecurityEndpointReturnsJSON(t *testing.T) {
 	for _, want := range []string{"contact", "API keys", "DMARC report ingestion rejects unsafe archives"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestRemovedCommercialRoutesReturnNotFound(t *testing.T) {
+	router := NewRouterWithDeps(Deps{})
+	for _, path := range []string{"/billing/webhook", "/api/v1/billing/cancel"} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("%s: status = %d, want 404", path, rec.Code)
 		}
 	}
 }

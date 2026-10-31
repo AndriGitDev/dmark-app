@@ -18,7 +18,6 @@ type CaseKind string
 const (
 	CaseSupport CaseKind = "support"
 	CaseAbuse   CaseKind = "abuse"
-	CaseBilling CaseKind = "billing"
 )
 
 type Case struct {

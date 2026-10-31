@@ -11,7 +11,6 @@ type SecretStatus struct {
 func SecretStatuses(c Config) []SecretStatus {
 	return []SecretStatus{
 		{Name: "LETTERMINT_TOKEN", Present: strings.TrimSpace(c.LettermintToken) != "", Required: false},
-		{Name: "BILLING_WEBHOOK_SECRET", Present: strings.TrimSpace(c.BillingWebhookSecret) != "", Required: false},
 	}
 }
 

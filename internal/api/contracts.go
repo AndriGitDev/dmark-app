@@ -8,7 +8,6 @@ import (
 	"github.com/AndriGitDev/meil/internal/admin"
 	"github.com/AndriGitDev/meil/internal/alerts"
 	"github.com/AndriGitDev/meil/internal/apikeys"
-	"github.com/AndriGitDev/meil/internal/billing"
 	"github.com/AndriGitDev/meil/internal/brandrisk"
 	"github.com/AndriGitDev/meil/internal/dmarcjourney"
 	"github.com/AndriGitDev/meil/internal/dnsprovider"
@@ -506,18 +505,14 @@ type DashboardPlanResponse struct {
 	Teams                 bool   `json:"teams"`
 }
 
-func NewDashboardPlanResponse(plan string, savedDomains int) DashboardPlanResponse {
-	plan = strings.TrimSpace(strings.ToLower(plan))
-	if plan == "" {
-		plan = string(entitlements.PlanFree)
-	}
-	limits := entitlements.ForPlan(entitlements.Plan(plan))
+func NewDashboardPlanResponse(savedDomains int) DashboardPlanResponse {
+	limits := entitlements.DefaultLimits()
 	remaining := limits.SavedDomains - savedDomains
 	if remaining < 0 {
 		remaining = 0
 	}
 	return DashboardPlanResponse{
-		Plan:                  plan,
+		Plan:                  "dmark",
 		SavedDomainsLimit:     limits.SavedDomains,
 		SavedDomainsUsed:      savedDomains,
 		SavedDomainsRemaining: remaining,
@@ -1125,22 +1120,6 @@ func NewWebhookEndpointResponse(endpoint webhooks.Endpoint, secret string) Webho
 		CreatedAt:  endpoint.CreatedAt.UTC(),
 		UpdatedAt:  endpoint.UpdatedAt.UTC(),
 		Secret:     secret,
-	}
-}
-
-type BillingCancellationResponse struct {
-	OrganizationID string    `json:"organization_id"`
-	Reason         string    `json:"reason,omitempty"`
-	RequestedAt    time.Time `json:"requested_at"`
-	EffectiveAt    time.Time `json:"effective_at"`
-}
-
-func NewBillingCancellationResponse(cancellation billing.Cancellation) BillingCancellationResponse {
-	return BillingCancellationResponse{
-		OrganizationID: cancellation.OrganizationID,
-		Reason:         cancellation.Reason,
-		RequestedAt:    cancellation.RequestedAt.UTC(),
-		EffectiveAt:    cancellation.EffectiveAt.UTC(),
 	}
 }
 

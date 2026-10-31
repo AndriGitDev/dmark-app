@@ -25,7 +25,6 @@ import (
 	apicontracts "github.com/AndriGitDev/meil/internal/api"
 	"github.com/AndriGitDev/meil/internal/apikeys"
 	"github.com/AndriGitDev/meil/internal/auth"
-	"github.com/AndriGitDev/meil/internal/billing"
 	"github.com/AndriGitDev/meil/internal/brand"
 	"github.com/AndriGitDev/meil/internal/brandrisk"
 	"github.com/AndriGitDev/meil/internal/buildinfo"
@@ -91,7 +90,6 @@ type OrganizationDomainTrendStore interface {
 }
 
 type OrganizationPlanStore interface {
-	GetOrganizationPlan(ctx context.Context, organizationID string) (string, error)
 	CountOrganizationDomains(ctx context.Context, organizationID string) (int, error)
 }
 
@@ -134,14 +132,6 @@ type OrganizationWebhookStore interface {
 	CreateOrganizationWebhookEndpoint(ctx context.Context, organizationID string, rawURL string, eventTypes []string) (webhooks.Endpoint, string, error)
 	RotateOrganizationWebhookSecret(ctx context.Context, organizationID string, endpointID string) (webhooks.Endpoint, string, error)
 	DisableOrganizationWebhookEndpoint(ctx context.Context, organizationID string, endpointID string) (webhooks.Endpoint, error)
-}
-
-type BillingWebhookStore interface {
-	ApplyBillingWebhook(ctx context.Context, event billing.WebhookEvent) (bool, error)
-}
-
-type BillingCancellationStore interface {
-	RequestBillingCancellation(ctx context.Context, organizationID string, reason string, periodEndsAt time.Time) (billing.Cancellation, error)
 }
 
 type OrganizationAPIKeyStore interface {
@@ -238,9 +228,6 @@ type Deps struct {
 	UserReporter                 UserReporterStore
 	AuditClaims                  AuditClaimStore
 	APIWebhooks                  OrganizationWebhookStore
-	Billing                      BillingWebhookStore
-	BillingCancellation          BillingCancellationStore
-	BillingWebhookSecret         string
 	APIKeyManagement             OrganizationAPIKeyStore
 	APITeams                     OrganizationTeamStore
 	APIPrivacy                   OrganizationPrivacyStore
@@ -452,40 +439,6 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 				BlockedReason: audit.BlockedReason,
 			},
 		})
-	})
-	r.Post("/billing/webhook", func(w http.ResponseWriter, r *http.Request) {
-		if deps.Billing == nil || strings.TrimSpace(deps.BillingWebhookSecret) == "" {
-			writeAPIError(w, http.StatusServiceUnavailable, "billing webhooks are not configured")
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, 65536)
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			writeAPIError(w, http.StatusBadRequest, "invalid webhook body")
-			return
-		}
-		signature := r.Header.Get("X-Billing-Signature")
-		if signature == "" {
-			signature = r.Header.Get("X-Meil-Billing-Signature")
-		}
-		if err := billing.VerifyWebhook(deps.BillingWebhookSecret, body, signature); err != nil {
-			writeAPIError(w, http.StatusUnauthorized, "invalid billing webhook signature")
-			return
-		}
-		var event billing.WebhookEvent
-		if err := json.Unmarshal(body, &event); err != nil {
-			writeAPIError(w, http.StatusBadRequest, "invalid billing webhook JSON")
-			return
-		}
-		if event.OccurredAt.IsZero() {
-			event.OccurredAt = time.Now().UTC()
-		}
-		applied, err := deps.Billing.ApplyBillingWebhook(r.Context(), event)
-		if err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "applying billing webhook failed")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"applied": applied})
 	})
 	r.Get("/api/v1/scan", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeScanRead); !ok {
@@ -842,12 +795,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			return
 		}
 		if deps.APIPlan == nil {
-			writeAPIError(w, http.StatusServiceUnavailable, "plan API is not configured")
-			return
-		}
-		plan, err := deps.APIPlan.GetOrganizationPlan(r.Context(), principal.OrganizationID)
-		if err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "loading organization plan failed")
+			writeAPIError(w, http.StatusServiceUnavailable, "resource API is not configured")
 			return
 		}
 		count, err := deps.APIPlan.CountOrganizationDomains(r.Context(), principal.OrganizationID)
@@ -855,7 +803,7 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			writeAPIError(w, http.StatusInternalServerError, "counting organization domains failed")
 			return
 		}
-		writeJSON(w, http.StatusOK, apicontracts.NewDashboardPlanResponse(plan, count))
+		writeJSON(w, http.StatusOK, apicontracts.NewDashboardPlanResponse(count))
 	})
 	r.Get("/api/v1/dashboard/domains/{id}/brand-risk", func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeDomainRead)
@@ -1326,35 +1274,6 @@ func NewRouterWithDeps(deps Deps) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, apicontracts.NewWebhookEndpointResponse(endpoint, ""))
-	})
-	r.Post("/api/v1/billing/cancel", func(w http.ResponseWriter, r *http.Request) {
-		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeBillingManage)
-		if !ok {
-			return
-		}
-		if deps.BillingCancellation == nil {
-			writeAPIError(w, http.StatusServiceUnavailable, "billing API is not configured")
-			return
-		}
-		if strings.TrimSpace(principal.OrganizationID) == "" {
-			writeAPIError(w, http.StatusForbidden, "API key is not attached to an organization")
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, 4096)
-		var payload struct {
-			Reason       string    `json:"reason"`
-			PeriodEndsAt time.Time `json:"period_ends_at"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
-			writeAPIError(w, http.StatusBadRequest, "invalid JSON body")
-			return
-		}
-		cancellation, err := deps.BillingCancellation.RequestBillingCancellation(r.Context(), principal.OrganizationID, payload.Reason, payload.PeriodEndsAt)
-		if err != nil {
-			writeAPIError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, apicontracts.NewBillingCancellationResponse(cancellation))
 	})
 	r.Get("/api/v1/api-keys", func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := authorizeAPI(w, r, deps.APIKeys, deps.APIOperations, apikeys.ScopeAPIKeyManage)
@@ -2179,26 +2098,21 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-// allowOrganizationSavedDomains enforces the plan saved-domain limit before
-// creating additional domains. It fails open when the plan store is not
+// allowOrganizationSavedDomains enforces the shared saved-domain limit before
+// creating additional domains. It fails open when the domain count store is not
 // configured so older deployments keep working.
 func allowOrganizationSavedDomains(w http.ResponseWriter, r *http.Request, deps Deps, organizationID string, additional int) bool {
 	if deps.APIPlan == nil || additional <= 0 {
 		return true
-	}
-	plan, err := deps.APIPlan.GetOrganizationPlan(r.Context(), organizationID)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "loading organization plan failed")
-		return false
 	}
 	count, err := deps.APIPlan.CountOrganizationDomains(r.Context(), organizationID)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "counting organization domains failed")
 		return false
 	}
-	limits := entitlements.ForPlan(entitlements.Plan(strings.TrimSpace(strings.ToLower(plan))))
+	limits := entitlements.DefaultLimits()
 	if !limits.AllowsSavedDomain(count + additional - 1) {
-		writeAPIError(w, http.StatusForbidden, fmt.Sprintf("plan limit reached: %d of %d saved domains are in use; upgrade the plan to add more", count, limits.SavedDomains))
+		writeAPIError(w, http.StatusForbidden, fmt.Sprintf("resource limit reached: %d of %d saved domains are in use", count, limits.SavedDomains))
 		return false
 	}
 	return true

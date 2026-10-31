@@ -1,6 +1,6 @@
-# Dmark Coolify Deployment
+# dmark Coolify Deployment
 
-The production compose file deploys the Dmark backend `app` service running `meil serve`, a `worker` service running `meil worker`, and a private Postgres `db` service with a persistent Docker volume. The worker processes River scan/enrichment/SPF-route jobs and enqueues due SPF-route resyncs on the configured cadence. Frontend and marketing deployment, including Node/Next.js build configuration, belong to the separate `dmark-web` repository.
+The production compose file deploys the dmark backend `app` service running `meil serve`, a `worker` service running `meil worker`, and a private Postgres `db` service with a persistent Docker volume. The worker processes River scan/enrichment/SPF-route jobs and enqueues due SPF-route resyncs on the configured cadence. Frontend and marketing deployment, including Node/Next.js build configuration, belong to the separate `dmark-web` repository.
 
 ## Hostnames
 
@@ -39,8 +39,7 @@ APP_VERSION=2026.06.04
 GIT_COMMIT=<full-git-sha>
 BUILD_TIME=<rfc3339-utc-time>
 LETTERMINT_TOKEN=
-LETTERMINT_FROM=Dmark <login@dmark.kastro.is>
-BILLING_WEBHOOK_SECRET=
+LETTERMINT_FROM=dmark <login@dmark.kastro.is>
 FRONTEND_ORIGINS=https://dmark.is,https://www.dmark.is
 PUBLIC_CHECKS_PER_MINUTE=12
 AUTH_TOKEN_TTL_MINUTES=15

@@ -1,17 +1,5 @@
 package entitlements
 
-type Plan string
-
-const (
-	PlanFree     Plan = "free"
-	PlanMonitor  Plan = "monitor"
-	PlanReporter Plan = "reporter"
-	PlanBusiness Plan = "business"
-	// PlanPro is the legacy plan name written by bootstrap provisioning; it
-	// carries business-tier limits.
-	PlanPro Plan = "pro"
-)
-
 type Limits struct {
 	SavedDomains        int
 	ScanCadenceMinutes  int
@@ -22,17 +10,9 @@ type Limits struct {
 	Teams               bool
 }
 
-func ForPlan(plan Plan) Limits {
-	switch plan {
-	case PlanBusiness, PlanPro:
-		return Limits{SavedDomains: 250, ScanCadenceMinutes: 60, ReportRetentionDays: 730, AlertChannels: 5, APIAccess: true, Reporter: true, Teams: true}
-	case PlanReporter:
-		return Limits{SavedDomains: 50, ScanCadenceMinutes: 240, ReportRetentionDays: 365, AlertChannels: 3, APIAccess: true, Reporter: true}
-	case PlanMonitor:
-		return Limits{SavedDomains: 10, ScanCadenceMinutes: 720, ReportRetentionDays: 30, AlertChannels: 1}
-	default:
-		return Limits{SavedDomains: 3, ScanCadenceMinutes: 1440, ReportRetentionDays: 0}
-	}
+// DefaultLimits applies the same resource limits and capabilities to every organization.
+func DefaultLimits() Limits {
+	return Limits{SavedDomains: 250, ScanCadenceMinutes: 60, ReportRetentionDays: 730, AlertChannels: 5, APIAccess: true, Reporter: true, Teams: true}
 }
 
 func (limits Limits) AllowsSavedDomain(currentCount int) bool {
@@ -79,7 +59,6 @@ type Permission string
 const (
 	PermissionViewDomain    Permission = "domain:view"
 	PermissionManageDomain  Permission = "domain:manage"
-	PermissionManageBilling Permission = "billing:manage"
 	PermissionManageMembers Permission = "members:manage"
 	PermissionManageAPIKeys Permission = "api_keys:manage"
 	PermissionViewAuditLog  Permission = "audit_log:view"
@@ -98,7 +77,7 @@ func HasPermission(role Role, permission Permission) bool {
 func permissionsForRole(role Role) []Permission {
 	switch role {
 	case RoleOwner:
-		return []Permission{PermissionViewDomain, PermissionManageDomain, PermissionManageBilling, PermissionManageMembers, PermissionManageAPIKeys, PermissionViewAuditLog}
+		return []Permission{PermissionViewDomain, PermissionManageDomain, PermissionManageMembers, PermissionManageAPIKeys, PermissionViewAuditLog}
 	case RoleAdmin:
 		return []Permission{PermissionViewDomain, PermissionManageDomain, PermissionManageMembers, PermissionManageAPIKeys, PermissionViewAuditLog}
 	case RoleMember:

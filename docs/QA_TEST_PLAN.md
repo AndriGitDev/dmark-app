@@ -1,4 +1,4 @@
-# Dmark QA Test Plan
+# dmark QA Test Plan
 
 This plan stages QA from the current Checker/Auth baseline through the long-term Reporter product. Each stage should be treated as a release gate: automated checks run in CI, and manual exploratory checks are completed before promoting to production.
 
@@ -12,11 +12,11 @@ Existing tests cover:
 - Domain service add-and-scan behavior.
 - Lettermint request shape.
 - Browser route handoff coverage for `/`, `/login`, `/auth/callback`, `/check`, `/claim-audit`, `/app/*`, and `/assets/*`.
-- Backend `/healthz`, `/status`, `/security`, public JSON bridge, API, billing, webhook, admin, privacy, and status routes.
+- Backend `/healthz`, `/status`, `/security`, public JSON bridge, API, webhook, admin, privacy, and status routes.
 - CLI scan argument validation, formatted output, JSON output, ingest command validation, and worker job listing.
-- Drift classification, alert lifecycle rules, job retry/dead-letter helpers, DMARC ingestion with sanitized provider/gateway fixtures, reporter summaries, attribution, risk, recommendations, DMARC enforcement journey states, monthly trust report models, billing, teams, entitlements, API-key helpers, webhooks, privacy, admin, status, and operations policy logic.
+- Drift classification, alert lifecycle rules, job retry/dead-letter helpers, DMARC ingestion with sanitized provider/gateway fixtures, reporter summaries, attribution, risk, recommendations, DMARC enforcement journey states, monthly trust report models, teams, shared resource limits, API-key helpers, webhooks, privacy, admin, status, and operations policy logic.
 - Defender lookalike candidate generation for typo and Icelandic-character homoglyph variants.
-- Sales-audit grading, risk labels, proof eligibility, and proof blocklist behavior.
+- Domain-audit grading, risk labels, proof eligibility, and proof blocklist behavior.
 - Dependency vulnerability scanning is wired through `govulncheck`; the local scan passes after upgrading the project toolchain target to Go 1.25.10, `github.com/jackc/pgx/v5` to v5.9.0, and `golang.org/x/net` to v0.55.0.
 
 Known gaps:
@@ -24,7 +24,7 @@ Known gaps:
 - Database-backed integration tests now cover fresh migrations, auth token states, domain uniqueness/isolation, latest-check selection, and delete cascades when `MEIL_DB_INTEGRATION=1` and `DATABASE_URL` are set.
 - Browser-level tests and frontend build checks now belong in the separate `dmark-web` repository.
 - Local unit, race, vet, lint, build, sqlc, Docker build, Postgres migration, River migration, and ClickHouse migration gates have successful evidence from the current local toolchain and Colima-backed services.
-- No live-provider billing, email, enrichment, geolocation, or DMARC mailbox tests; current coverage uses deterministic service-level tests and attribution fixtures.
+- No live-provider email, enrichment, geolocation, or DMARC mailbox tests; current coverage uses deterministic service-level tests and attribution fixtures.
 
 ## Stage 0: Static And Repository Hygiene
 
@@ -78,7 +78,7 @@ Handler and CLI tests:
 - GET `/api/v1/scan?domain=...` returns stable JSON for valid API keys.
 - GET `/api/v1/scan` returns `400` for missing or invalid domains.
 - GET/POST `/api/public/scan` returns stable JSON without an API key and enforces public rate limits.
-- POST `/api/public/audit-claims` validates matching work-email domains before persisting a sales-audit claim.
+- POST `/api/public/audit-claims` validates matching work-email domains before persisting a domain-audit claim.
 - Browser routes return JSON `404` because browser surfaces are served by `dmark-web`.
 - `meil scan <domain>` prints the same statuses as scanner results.
 - Future `meil scan --json <domain>` returns stable JSON suitable for scripts.
@@ -242,38 +242,17 @@ Release gate:
 - Attribution is explainable from stored evidence.
 - Unknown-sender alerts avoid obvious expected provider false positives.
 
-## Stage 6: Billing, Teams, And API
+## Stage 6: Teams and API
 
-Run before monetization or multi-user collaboration.
+Run before enabling multi-user collaboration.
 
-Unit tests:
-
-- Entitlement checks enforce plan limits at service boundaries.
-- RBAC permissions protect billing, domain settings, team invitations, API keys, and exports.
-- Billing webhook signature verification rejects invalid payloads.
-- Billing webhook handling is idempotent.
-- API key authentication accepts active keys and rejects revoked or expired keys.
-
-Integration tests:
-
-- Plan changes update domain limits, scan cadence, report retention, and alert channels.
-- Team invitation accept/revoke flows work.
-- Domain transfer preserves checks, drift events, and report data.
-- API endpoints enforce organization scope.
-- Audit log writes append-only records for sensitive actions.
-
-Manual exploratory checks:
-
-- Upgrade, downgrade, cancel, and payment-failure flows.
-- Invite users with different roles and test forbidden actions.
-- Rotate and revoke API keys.
-- Export account and domain data.
-
-Release gate:
-
-- Billing state cannot grant accidental access.
-- Organization boundaries are enforced by automated tests.
-- Sensitive actions produce audit records.
+- Verify shared resource limits at create and import boundaries, independently of stored organization labels.
+- Verify role permissions for domain settings, team invitations, API keys and exports.
+- Accept active API keys and reject revoked or expired keys.
+- Verify invitation accept/revoke flows and domain transfers preserve data.
+- Enforce organization scope on reads and writes.
+- Record sensitive actions in the audit log.
+- Test forbidden actions with each role and verify API key rotation and revocation.
 
 ## Stage 7: Nonfunctional QA
 
@@ -281,7 +260,7 @@ Run continuously, with full passes before major releases.
 
 Security:
 
-- Threat model API scan abuse, report ingestion, billing webhooks, and admin tooling.
+- Threat model API scan abuse, report ingestion, outbound webhooks, and admin tooling.
 - Check API auth, body limits, redirect behavior, and secret logging.
 - Run dependency vulnerability scans.
 - Fuzz scanner parsers and DMARC XML ingestion. Seed corpus entry points are `FuzzNormalizeDomain`, `FuzzParseSPF`, `FuzzParseTagRecord`, and `FuzzParseAggregatePayload`; `make fuzz-smoke` runs short smoke passes.
@@ -342,12 +321,11 @@ Maintain deterministic fixtures for:
 - DMARC aggregate report XML, gzip, and zip files.
 - Production-safe public scan fixture domains split by fixture class:
   - deterministic unit/integration fixtures use fake DNS and standards-reserved names only;
-  - live production smoke uses Dmark-owned domains plus standards-reserved controls;
-  - selected Dmark-owned canary names are `broken-spf.canary.dmark.is`, `spf-too-many-lookups.canary.dmark.is`, `parked-no-mx.canary.dmark.is`, and `route-published.canary.dmark.is`;
+  - live production smoke uses dmark-owned domains plus standards-reserved controls;
+  - selected dmark-owned canary names are `broken-spf.canary.dmark.is`, `spf-too-many-lookups.canary.dmark.is`, `parked-no-mx.canary.dmark.is`, and `route-published.canary.dmark.is`;
   - run only provisioned/read-only fixtures through `meil synthetic-check --scan-fixture-domain ...` after deploys;
   - add `--scan-fixture-expect-status domain=pass|warn|fail|missing|unknown` only after the canary DNS class is intentionally provisioned and stable;
   - keep live DNS mutation out of smoke checks.
 - Attribution provider rules and source IP examples.
-- Billing webhook examples.
 
 Fixtures should avoid real customer data. Sanitized real-world DMARC reports must remove domains, emails, IPs where required, message IDs, and organization identifiers unless explicit permission exists.

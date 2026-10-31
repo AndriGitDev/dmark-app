@@ -50,7 +50,7 @@ func NewDeletionPlan(userID string) DeletionPlan {
 			{Name: "delete_domains", Description: "Delete protected domains; cascades checks, settings, drift events, notifications, reports, and attributions.", Destructive: true},
 			{Name: "remove_memberships", Description: "Remove organization memberships or transfer ownership before deletion.", Destructive: true},
 			{Name: "delete_user", Description: "Delete the user row; cascades login tokens.", Destructive: true},
-			{Name: "retain_audit_tombstone", Description: "Retain minimal audit tombstones required for security and billing integrity.", Destructive: false},
+			{Name: "retain_audit_tombstone", Description: "Retain minimal audit tombstones required for security integrity.", Destructive: false},
 		},
 	}
 }
@@ -72,13 +72,13 @@ func ValidateRetentionRequest(request RetentionRequest, limits RetentionLimits) 
 		return RetentionRequest{}, fmt.Errorf("retention days cannot be negative")
 	}
 	if request.RawReportDays > limits.MaxRawReportDays {
-		return RetentionRequest{}, fmt.Errorf("raw report retention exceeds plan limit")
+		return RetentionRequest{}, fmt.Errorf("raw report retention exceeds resource limit")
 	}
 	if request.AggregateRowDays > limits.MaxAggregateRowDays {
-		return RetentionRequest{}, fmt.Errorf("aggregate row retention exceeds plan limit")
+		return RetentionRequest{}, fmt.Errorf("aggregate row retention exceeds resource limit")
 	}
 	if request.NotificationLogDays > limits.MaxNotificationLogDays {
-		return RetentionRequest{}, fmt.Errorf("notification retention exceeds plan limit")
+		return RetentionRequest{}, fmt.Errorf("notification retention exceeds resource limit")
 	}
 	if request.RawReportDays > 0 && request.AggregateRowDays > 0 && request.RawReportDays > request.AggregateRowDays {
 		return RetentionRequest{}, fmt.Errorf("raw report retention cannot exceed aggregate row retention")

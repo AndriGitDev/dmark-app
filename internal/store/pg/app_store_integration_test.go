@@ -473,10 +473,8 @@ VALUES
 	if err != nil {
 		t.Fatalf("get organization plan: %v", err)
 	}
-	// Bootstrap provisioning writes the legacy 'pro' plan, which maps to
-	// business-tier entitlements.
-	if plan != "pro" {
-		t.Fatalf("plan = %q, want pro", plan)
+	if plan != "dmark" {
+		t.Fatalf("plan = %q, want dmark", plan)
 	}
 	count, err := store.CountOrganizationDomains(ctx, bootstrap.OrganizationID)
 	if err != nil {

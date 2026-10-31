@@ -1,21 +1,20 @@
 # Threat Model
 
-This threat model covers the current roadmap surfaces: auth foundations, API scan abuse, protected-domain monitoring, Brand Risk findings, DMARC report ingestion, API keys, outbound webhooks, and billing webhooks. Browser-facing flows are owned by `dmark-web`.
+This threat model covers the current roadmap surfaces: auth foundations, API scan abuse, protected-domain monitoring, Brand Risk findings, DMARC report ingestion, API keys, outbound webhooks and outbound delivery. Browser-facing flows are owned by `dmark-web`.
 
 ## Assets
 
 - User accounts, sessions, and login-token hashes.
 - Protected domains, domain settings, DNS snapshots, Brand Risk findings, drift events, and notification dispatches.
 - DMARC aggregate report metadata, raw XML, aggregate rows, and sender attribution evidence.
-- Organization membership, roles, billing state, API keys, webhook secrets, and audit logs.
+- Organization membership, roles, API keys, webhook secrets, and audit logs.
 
 ## Trust Boundaries
 
 - `dmark-web` browser frontend to backend JSON routes.
 - Public API clients to API-key authenticated routes.
 - External mailbox providers to DMARC report ingestion.
-- Billing provider to billing webhook receiver.
-- Dmark to outbound email, Slack, and webhook delivery providers.
+- dmark to outbound email, Slack, and webhook delivery providers.
 - Application workers to Postgres and ClickHouse.
 
 ## Auth And Sessions
@@ -41,14 +40,14 @@ Threats:
 - DNS scan amplification.
 - Large request bodies or malformed domains consuming resources.
 - Resolver timeouts causing web handler exhaustion.
-- Sales-audit or reality-check flows creating pressure to send abuse-prone proof emails.
+- Domain-audit or reality-check flows creating pressure to send abuse-prone proof emails.
 
 Controls:
 
 - API scan requests are authenticated, domain-length guarded, and persistence-free by default.
 - Scanner results carry resolver error classes and lookup timing for monitoring.
 - DKIM selector probes use bounded concurrency.
-- Sales-audit grading is safe to run in-process, but proof dispatch must remain behind verified ownership, strict rate limits, domain blocklists, explicit consent, and audit logging.
+- Domain-audit grading is safe to run in-process, but proof dispatch must remain behind verified ownership, strict rate limits, domain blocklists, explicit consent, and audit logging.
 - Proof emails, if enabled, must be sent only to the verified inbox for the audited domain and from an isolated mail service, not from the main web process.
 
 ## Brand-Name Risk
@@ -84,7 +83,7 @@ Controls:
 - Zip entries reject absolute paths and parent traversal.
 - Payloads are size-limited before parsing.
 - Reports are keyed by normalized org, report ID, policy domain, and content hash for deduplication.
-- Raw XML retention follows plan-level retention controls and should not be rendered in user-facing pages.
+- Raw XML retention follows configured retention controls and should not be rendered in user-facing pages.
 
 ## API Keys And Webhooks
 
@@ -101,21 +100,6 @@ Controls:
 - Webhook endpoints must use HTTPS.
 - Outbound webhook payloads are signed with HMAC-SHA256 over the raw JSON body.
 - Webhook deliveries are idempotent by endpoint and event ID.
-
-## Billing Webhooks
-
-Threats:
-
-- Forged subscription events.
-- Duplicate or out-of-order lifecycle updates.
-- Billing privilege misuse by team members.
-
-Controls:
-
-- Billing webhook payloads require HMAC verification with `BILLING_WEBHOOK_SECRET`.
-- Subscription event application is idempotent by event ID.
-- RBAC gates billing management to owner role.
-- Billing state changes should be written to the audit log.
 
 ## Residual Risks
 

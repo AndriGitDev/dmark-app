@@ -22,7 +22,6 @@ const (
 	ScopeDomainRead    Scope = "domain:read"
 	ScopeDomainWrite   Scope = "domain:write"
 	ScopeReporterRead  Scope = "reporter:read"
-	ScopeBillingManage Scope = "billing:manage"
 	ScopePrivacyManage Scope = "privacy:manage"
 	ScopeAPIKeyManage  Scope = "api_key:manage"
 	ScopeTeamManage    Scope = "team:manage"

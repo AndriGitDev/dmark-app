@@ -1,18 +1,14 @@
-# Dmark Backend
+# dmark
 
-Dmark is a free email-authentication tool from Kastro, with optional separately quoted setup assistance. There is no paid Dmark plan or new hosted SPF flattening offering. The current scope and safe legacy retirement sequence are defined in [FREE_PRODUCT_PLAN.md](docs/FREE_PRODUCT_PLAN.md).
+dmark is an open-source email security tool for inspecting email-authentication records and helping people understand and improve their configuration. This repository contains its Go backend, account persistence, scanner, ingestion, workers and deployment assets. The bilingual [web app](https://github.com/AndriGitDev/dmark-web) lives in a separate repository.
 
-This backend retains legacy billing, reporting and SPF-publishing implementation. The scope revision does not disable those runtime paths or modify production DNS. Inventory and migrate any dependent domains before retiring publication workers or credentials.
+The repository is named `dmark-app`. The Go module, binary, CLI command, database names and deployment service names remain `meil` for compatibility.
 
-Dmark is an interactive DMARC, SPF, and DKIM diagnostic and remediation platform for teams that need trusted email delivery. This repository contains the Go backend, worker, ingestion, scanner, API, and deployment assets.
-
-The frontend and marketing website live in the separate `dmark-web` repository. This repository intentionally has no Node, Next.js, Tailwind, templ, or static browser asset build. Keep visual marketing work there; keep domain logic, persistence, jobs, API contracts, ingestion, and operational work here.
-
-The repository is named `dmark-app` after the Dmark app split. The Go module, binary, CLI command, database names, and deployment service names intentionally remain `meil` for now.
+See [project scope](docs/PROJECT.md) for available web features and backend operating boundaries.
 
 ## Local Development
 
-Prerequisites: Go 1.26.9+, Docker, `sqlc`, and `air` installed locally.
+Prerequisites: Go 1.26.10+, Docker, `sqlc`, and `air` installed locally.
 
 ```sh
 make dev
@@ -32,36 +28,27 @@ make build
 
 ## Frontend Connection
 
-`dmark-web` can connect to this backend through the public JSON bridge:
+The public web app performs anonymous checks through Kastro Lookup and supplementary public DNS queries. It deliberately has no accounts and does not call this service's account endpoints.
 
-```sh
-DMARK_SCAN_API_URL=https://dmark.kastro.is/api/public/scan
-DMARK_USE_MOCK=false
-```
+The backend retains `/api/account/*` and organization APIs for operator deployments. To use its account endpoints separately, apply PostgreSQL migrations, configure the email sender and set `FRONTEND_BASE_URL` to the exact trusted client origin. For local development, the backend runs at `http://localhost:8080`.
 
-If browser code calls the backend directly, set `FRONTEND_ORIGINS` on this service to a comma-separated list of exact frontend origins, for example `https://dmark.is,https://www.dmark.is`.
+For direct browser API access, set `FRONTEND_ORIGINS` to exact allowed origins. Do not accept browser-supplied callback URLs. Sessions currently live in memory for 24 hours; use shared session and rate-limit storage before serving accounts across multiple replicas.
 
 ## Coolify
 
 The legacy backend deployment target is `https://dmark.kastro.is`; the public free tool is at `https://dmark.is`. The legacy hostname `https://recordmaster.kastro.is` should remain available as a redirect during the transition. Use the Docker Compose file at `infra/coolify/docker-compose.yml`; deployment notes live in `infra/coolify/README.md`.
 
-## Current product plan
+## Technical documentation
 
-- [Free product plan and legacy retirement](docs/FREE_PRODUCT_PLAN.md) is authoritative.
+- [API contracts](docs/API.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Operations](docs/OPERATIONS.md)
+- [DNS guidance](docs/DNS_GUIDE.md)
+- [Security and data handling](docs/SECURITY.md)
+- [Threat model](docs/THREAT_MODEL.md)
+- [QA test plan](docs/QA_TEST_PLAN.md)
+- [Release verification runbooks](docs/GA_EVIDENCE_RUNBOOKS.md)
 
-## Historical planning and implementation evidence
+## License
 
-- Long-term product and engineering roadmap: `docs/ROADMAP.md`
-- Roadmap implementation audit: `docs/ROADMAP_AUDIT.md`
-- GA readiness tracker: `docs/GA_READINESS.md`
-- GA operator-gate runbooks: `docs/GA_EVIDENCE_RUNBOOKS.md`
-- Competitive Icelandic DMARC SaaS roadmap: `docs/COMPETITIVE_ROADMAP.md`
-- Checkmate sales-audit integration notes: `docs/CHECKMATE_INTEGRATION.md`
-- Staged QA and release test plan: `docs/QA_TEST_PLAN.md`
-- Operational release and incident process: `docs/OPERATIONS.md`
-- DNS setup and report forwarding guidance: `docs/DNS_GUIDE.md`
-- Security and data-handling notes: `docs/SECURITY.md`
-- API and webhook contracts: `docs/API.md`
-- Threat model: `docs/THREAT_MODEL.md`
-- Brand-risk research: `docs/BRAND_RISK_RESEARCH.md`
-
+Copyright (C) 2026 dmark contributors. Licensed under [GNU AGPL version 3](LICENSE) (`AGPL-3.0-only`). See [CONTRIBUTING.md](CONTRIBUTING.md).
