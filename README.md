@@ -8,7 +8,7 @@ See [project scope](docs/PROJECT.md) for available web features and backend oper
 
 ## Local Development
 
-Prerequisites: Go 1.26.9+, Docker, `sqlc`, and `air` installed locally.
+Prerequisites: Go 1.26.10+, Docker, `sqlc`, and `air` installed locally.
 
 ```sh
 make dev
