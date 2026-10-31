@@ -28,11 +28,11 @@ make build
 
 ## Frontend Connection
 
-The public web app performs anonymous checks through Kastro Lookup and supplementary public DNS queries. This service provides optional account saving through `/api/account/*`.
+The public web app performs anonymous checks through Kastro Lookup and supplementary public DNS queries. It deliberately has no accounts and does not call this service's account endpoints.
 
-Apply PostgreSQL migrations, configure the email sender and set `FRONTEND_BASE_URL=https://dmark.is`. On the web app, set `DMARK_ACCOUNT_API_URL` to this backend's HTTPS origin and `DMARK_FRONTEND_ORIGIN` to the web app origin. For local development, use `http://localhost:8080` and `http://localhost:3000` respectively, with a matching backend `FRONTEND_BASE_URL`.
+The backend retains `/api/account/*` and organization APIs for operator deployments. To use its account endpoints separately, apply PostgreSQL migrations, configure the email sender and set `FRONTEND_BASE_URL` to the exact trusted client origin. For local development, the backend runs at `http://localhost:8080`.
 
-If an API client calls this service from a browser directly, set `FRONTEND_ORIGINS` to exact allowed origins. Do not accept browser-supplied callback URLs. Sessions currently live in memory for 24 hours; use shared session and rate-limit storage before serving accounts across multiple replicas.
+For direct browser API access, set `FRONTEND_ORIGINS` to exact allowed origins. Do not accept browser-supplied callback URLs. Sessions currently live in memory for 24 hours; use shared session and rate-limit storage before serving accounts across multiple replicas.
 
 ## Coolify
 
