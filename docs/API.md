@@ -1,6 +1,6 @@
-# Dmark API And Webhooks
+# dmark API And Webhooks
 
-This document defines the external API and webhook contracts for paid tiers. API access requires an API key with the required scope.
+This document defines the external API and webhook contracts for dmark. API access requires an API key with the required scope.
 
 ## Public Browser Bridge
 
@@ -51,7 +51,6 @@ Keys are stored as hashes only. Revoke and rotate keys from organization setting
 - `domain:read`: list or export Protected domains and latest checks.
 - `domain:write`: add, update, recheck, import, or delete Protected domains.
 - `reporter:read`: read Reporter reports, sender inventory, and attribution.
-- `billing:manage`: request billing cancellation and manage billing lifecycle actions.
 - `privacy:manage`: read and update organization data retention settings.
 - `api_key:manage`: create, list, and revoke organization API keys.
 - `team:manage`: create and list organization team invitations.
@@ -96,7 +95,6 @@ GET /api/v1/webhooks
 POST /api/v1/webhooks
 POST /api/v1/webhooks/{id}/rotate-secret
 POST /api/v1/webhooks/{id}/disable
-POST /api/v1/billing/cancel
 GET /api/v1/api-keys
 POST /api/v1/api-keys
 POST /api/v1/api-keys/{id}/revoke
@@ -115,7 +113,6 @@ POST /api/v1/status/components
 GET /api/v1/status/incidents
 POST /api/v1/status/incidents
 POST /api/v1/status/incidents/{id}/resolve
-POST /billing/webhook
 ```
 
 API responses include stable IDs, timestamps in RFC3339, and machine-readable status strings that match internal scanner, drift, report-health, and risk models. Browser-facing pages, static assets, and public form flows belong in the separate `dmark-web` repository.
@@ -124,7 +121,7 @@ Public terminology maps these endpoints to Record checks, Protected domains, Fin
 
 ## Dashboard API
 
-The `/api/v1/dashboard/*` endpoints are the frontend-ready product contract for `dmark-web`. They require bearer API keys attached to an organization. Read endpoints require `domain:read` or `reporter:read` where Reporter data is returned. Recheck, alert actions, and settings updates require `domain:write`.
+The `/api/v1/dashboard/*` endpoints provide organization dashboard data to API clients. The current public web app uses the account workspace routes described below. They require bearer API keys attached to an organization. Read endpoints require `domain:read` or `reporter:read` where Reporter data is returned. Recheck, alert actions, and settings updates require `domain:write`.
 
 Dashboard responses are JSON unless `format=csv` is explicitly requested on the Reporter endpoint. IDs are opaque strings. Timestamps are RFC3339 UTC.
 
@@ -328,20 +325,20 @@ Requires `domain:read`. Returns recent SPF route operational events (upserts, qu
 
 ### GET `/api/v1/dashboard/plan`
 
-Requires `domain:read`. Returns the organization plan and entitlement limits with current saved-domain usage. Domain creation (`POST /api/v1/domains` and `POST /api/v1/domains/import`) enforces `saved_domains_limit` and returns `403` with a `plan limit reached` error once the limit is in use.
+Requires `domain:read`. Returns the shared resource limits and current saved-domain usage. The path and `plan` field are retained for API compatibility; every organization receives `dmark` capabilities. Stored organization labels do not control access. Domain creation (`POST /api/v1/domains` and `POST /api/v1/domains/import`) enforces `saved_domains_limit` and returns `403` with a `resource limit reached` error once the limit is in use.
 
 ```json
 {
-  "plan": "monitor",
-  "saved_domains_limit": 10,
+  "plan": "dmark",
+  "saved_domains_limit": 250,
   "saved_domains_used": 2,
-  "saved_domains_remaining": 8,
-  "scan_cadence_minutes": 720,
-  "report_retention_days": 30,
-  "alert_channels": 1,
-  "api_access": false,
-  "reporter": false,
-  "teams": false
+  "saved_domains_remaining": 248,
+  "scan_cadence_minutes": 60,
+  "report_retention_days": 730,
+  "alert_channels": 5,
+  "api_access": true,
+  "reporter": true,
+  "teams": true
 }
 ```
 
@@ -528,14 +525,14 @@ DMARC enforcement journeys should use these stable state strings when exposed th
 
 Monthly trust reports should summarize protected-domain posture, DMARC journey state, Reporter sender risk, Brand Risk findings, and prioritized next actions. They should not include raw secrets, API keys, login tokens, webhook secrets, or raw DMARC XML.
 
-Sales-audit and reality-check surfaces should use these stable risk strings:
+Domain-audit and reality-check surfaces should use these stable risk strings:
 
 - `low`
 - `medium`
 - `high`
 - `critical`
 
-Sales-audit responses should include a grade, buyer-facing message, CTA, proof eligibility, and evidence signals. Public audit claims should require a matching work-email domain, send the existing passwordless magic link, persist a durable claim record, and attach the claimed domain to protected domains after callback when the same browser session is available. Proof eligibility does not mean a proof email can be sent directly; any future proof dispatch must require verified ownership, rate limits, blocklist checks, explicit consent, and audit logging.
+Domain-audit responses should include a grade, user-facing message, CTA, proof eligibility, and evidence signals. Public audit claims should require a matching work-email domain, send the existing passwordless magic link, persist a durable claim record, and attach the claimed domain to protected domains after callback when the same browser session is available. Proof eligibility does not mean a proof email can be sent directly; any future proof dispatch must require verified ownership, rate limits, blocklist checks, explicit consent, and audit logging.
 
 ## Webhook Signatures
 
@@ -571,14 +568,13 @@ Consumers must verify the signature over the raw request body before parsing JSO
 - `report.ingested`
 - `report.ingestion_failed`
 - `domain.scan_failed`
-- `billing.subscription_updated`
 
 Webhook deliveries are idempotent by endpoint and event ID. Receivers should also treat event IDs as idempotency keys.
 
 
 ## Free browser account workspace
 
-These session-authenticated routes are independent of legacy API keys, organizations, billing and hosted SPF entitlements. Every response is `no-store`. The frontend proxies the backend `session` cookie to an HttpOnly same-origin cookie.
+These session-authenticated routes are independent of organization API keys and hosted SPF configuration. Every response is `no-store`. The frontend proxies the backend `session` cookie to an HttpOnly same-origin cookie.
 
 | Route | Contract |
 | --- | --- |

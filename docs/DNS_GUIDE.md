@@ -1,6 +1,6 @@
-# Dmark DNS and Domain Trust Guide
+# dmark DNS and Domain Trust Guide
 
-DNS records affect brand trust because mail providers, security tools, and customers use public domain evidence to decide whether a message or site should be trusted. Dmark currently checks public DNS and email-auth posture; planned Defender work extends that evidence into broader brand-name risk monitoring.
+DNS records affect brand trust because mail providers, security tools, and customers use public domain evidence to decide whether a message or site should be trusted. dmark checks public DNS and email-authentication posture.
 
 ## SPF
 
@@ -43,7 +43,7 @@ MX records show whether the domain receives mail. NS records show the delegated 
 
 Reporter ingestion expects mailbox forwarding or direct delivery of DMARC aggregate attachments. Supported payloads are plain XML, gzip-compressed XML, and zip archives containing XML files.
 
-When Dmark provisions a reporting target, it uses a domain-specific address under the configured ingestion mailbox domain:
+When dmark provisions a reporting target, it uses a domain-specific address under the configured ingestion mailbox domain:
 
 ```txt
 reports+example=com@ingest.dmark.example
@@ -61,4 +61,4 @@ _dmarc.example.com. TXT "v=DMARC1; p=none; rua=mailto:reports+example=com@ingest
 - SPF records that are missing, duplicated, syntactically broken, or too permissive.
 - DKIM selectors removed before a sender is retired.
 - Unknown sender infrastructure appearing in DMARC aggregate reports.
-- Lookalike domains with active MX or web services. Detection for this is planned Defender work, not a current feed.
+- Lookalike domains with active MX or web services. The public web app does not provide a lookalike-domain feed.
